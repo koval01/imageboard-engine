@@ -1,18 +1,32 @@
 use anyhow::{Context, Result};
-use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use std::time::Duration;
 
-const MAX_CONNECTIONS: u32 = 10;
+pub async fn connect(pool_url: &str) -> Result<DatabaseConnection> {
+    // Check if the protocol is sqlite and append ?mode=rwc if not present
+    // This forces sqlx/sea-orm to create the file if it doesn't exist
+    let url = if pool_url.starts_with("sqlite:") && !pool_url.contains("mode=rwc") {
+        if pool_url.contains('?') {
+            format!("{}&mode=rwc", pool_url)
+        } else {
+            format!("{}?mode=rwc", pool_url)
+        }
+    } else {
+        pool_url.to_owned()
+    };
 
-/// Create a new `SqlitePoolOptions` instance and set the
-/// maximum number of connections in the connection pool to 10.
-pub async fn connect(pool_url: &str) -> Result<SqlitePool> {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(MAX_CONNECTIONS)
-        .connect(pool_url)
+    let mut opt = ConnectOptions::new(url);
+    opt.max_connections(10)
+        .min_connections(5)
+        .connect_timeout(Duration::from_secs(8))
+        .idle_timeout(Duration::from_secs(8))
+        .sqlx_logging(true);
+
+    let db = Database::connect(opt)
         .await
-        .context("Error: 🔥 unable to connect to database!")?;
+        .context("Error: unable to connect to database!")?;
 
-    println!("✅ Successfully connected to database!");
+    println!("Successfully connected to database!");
 
-    Ok(pool)
+    Ok(db)
 }

@@ -1,5 +1,5 @@
 {
-  "name": "rust-axum-askama-htmx",
+  "name": "ebala",
   "version": "0.1.0",
   "description": "Rust/Axum+Askama+Htmx: Full stack application using Rust's Axum framework & Askama templating language with user auth management (JWT) + CRUD to a SQLite database (To Do List) and HTMX in the frontend",
   "main": "index.js",

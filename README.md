@@ -1,6 +1,6 @@
 <div align="center">
   
-<h1 align="center">rust-axum-askama-htmx-todoapp</h1>
+<h1 align="center">ebala-todoapp</h1>
 
 <img src="assets/img/banner.png" width="100%">
 
@@ -92,7 +92,7 @@ $ npm run build-css-prod
 Build the binary file and run it with the command (in proyect root):
 
 ```
-$ cargo build --release && ./target/release/rust-axum-askama-htmx # Ctrl + C to stop the application
+$ cargo build --release && ./target/release/ebala # Ctrl + C to stop the application
 ```
 
 #### Build for development
