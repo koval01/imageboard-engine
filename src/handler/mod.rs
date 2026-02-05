@@ -7,7 +7,7 @@ pub use auth_handler::{
     register_page_handler, register_user_handler,
 };
 use chrono::{Local, NaiveDateTime, TimeZone};
-use chrono_tz::Tz;
+use chrono_tz::{Tz, UTC};
 pub use middleware::auth_middleware;
 pub use todo_handler::{
     todo_add_handler, todo_create_handler, todo_delete_handler, todo_edit_handler,
@@ -82,7 +82,8 @@ fn get_messages(messages: Messages) -> (String, String) {
 /// database (UTC timestamp) to a string in RFC822Z format,
 /// taking the client's timezone (&str) and a datetime (NaiveDateTime).
 pub fn convert_datetime(tzone: &str, dt: NaiveDateTime) -> String {
-    let tz = tzone.parse::<Tz>().unwrap();
+    let tz = tzone.parse::<Tz>().unwrap_or(UTC);
+
     let converted = Local.from_utc_datetime(&dt);
     let dttz = converted.with_timezone(&tz).to_rfc2822();
 
