@@ -12,8 +12,8 @@ chrono = { version = "0.4.43", features = ["serde"] }
 dotenv = "0.15.0"
 jsonwebtoken = "10.3.0"
 serde = { version = "1.0.228", features = ["derive"] }
-sea-orm = { version = "0.12.15", features = [ "sqlx-sqlite", "runtime-tokio-native-tls", "macros", "with-chrono", "with-uuid" ] }
-sea-orm-migration = "0.12.15"
+sea-orm = { version = "1.1.19", features = [ "sqlx-sqlite", "runtime-tokio-native-tls", "macros", "with-chrono", "with-uuid" ] }
+sea-orm-migration = "1.1.19"
 time = "0.3.47"
 tokio = { version = "1.49.0", features = ["full"] }
 tower-http = { version = "0.6.8", features = ["fs", "trace"] }
