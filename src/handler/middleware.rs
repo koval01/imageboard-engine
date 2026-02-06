@@ -1,5 +1,4 @@
 use std::sync::Arc;
-
 use axum::{
     extract::{Request, State},
     http::header,
@@ -37,38 +36,35 @@ pub async fn auth_middleware(
                 })
         });
 
-    // let token = token.ok_or_else(|| "You are not logged in, please provide token")?;
-
     let token = if let Some(tk) = token_option {
         tk
     } else {
         set_flag_in_session(&session, false).await;
-
-        Err(HtmlTemplate(Error401Template {
+        return Err(HtmlTemplate(Error401Template {
             title: "Error 401".to_string(),
             reason: "You are not logged in, please provide token".to_string(),
             is_error: true,
             ..Default::default()
         })
-        .into_response())?
+            .into_response());
     };
 
-    let claims = if let Ok(clm) = decode::<TokenClaims>(
+    let claims = match decode::<TokenClaims>(
         &token,
-        &DecodingKey::from_secret(&state.read().await.config.jwt_secret.as_ref()),
+        &DecodingKey::from_secret(state.read().await.config.jwt_secret.as_bytes()),
         &Validation::default(),
     ) {
-        clm.claims
-    } else {
-        set_flag_in_session(&session, false).await;
-
-        Err(HtmlTemplate(Error401Template {
-            title: "Error 401".to_string(),
-            reason: "Invalid token".to_string(),
-            is_error: true,
-            ..Default::default()
-        })
-        .into_response())?
+        Ok(clm) => clm.claims,
+        Err(_) => {
+            set_flag_in_session(&session, false).await;
+            return Err(HtmlTemplate(Error401Template {
+                title: "Error 401".to_string(),
+                reason: "Invalid token".to_string(),
+                is_error: true,
+                ..Default::default()
+            })
+                .into_response());
+        }
     };
 
     let user_id = &claims.sub;
@@ -79,33 +75,30 @@ pub async fn auth_middleware(
 
     if let Err(e) = result.clone() {
         set_flag_in_session(&session, false).await;
-
-        Err(HtmlTemplate(Error401Template {
+        return Err(HtmlTemplate(Error401Template {
             title: "Error 401".to_string(),
             reason: e,
             is_error: true,
             ..Default::default()
         })
-        .into_response())?
+            .into_response());
     };
 
     let user = if let Some(u) = result.unwrap() {
         u
     } else {
         set_flag_in_session(&session, false).await;
-
-        Err(HtmlTemplate(Error401Template {
+        return Err(HtmlTemplate(Error401Template {
             title: "Error 401".to_string(),
             reason: "The user belonging to this token no longer exists".to_string(),
             is_error: true,
             ..Default::default()
         })
-        .into_response())?
+            .into_response());
     };
 
     set_flag_in_session(&session, true).await;
-
     req.extensions_mut().insert(user);
 
-    Ok::<Response, _>(next.run(req).await)
+    Ok(next.run(req).await)
 }

@@ -8,16 +8,14 @@ pub struct Config {
 
 impl Config {
     pub fn init() -> Self {
-        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-        let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
-        let jwt_expires_in = std::env::var("JWT_EXPIRED_IN").expect("JWT_EXPIRED_IN must be set");
-        let jwt_maxage = std::env::var("JWT_MAXAGE").expect("JWT_MAXAGE must be set");
-
         Self {
-            database_url,
-            jwt_secret,
-            jwt_expires_in,
-            jwt_maxage: jwt_maxage.parse::<i32>().unwrap(),
+            database_url: std::env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
+            jwt_secret: std::env::var("JWT_SECRET").expect("JWT_SECRET must be set"),
+            jwt_expires_in: std::env::var("JWT_EXPIRED_IN").expect("JWT_EXPIRED_IN must be set"),
+            jwt_maxage: std::env::var("JWT_MAXAGE")
+                .expect("JWT_MAXAGE must be set")
+                .parse::<i32>()
+                .unwrap(),
         }
     }
 }

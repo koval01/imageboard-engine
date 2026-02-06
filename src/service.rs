@@ -8,8 +8,6 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
 };
 use uuid::Uuid;
-
-// Import the specific Entity/Model modules
 use crate::model::{todos, users, Todo, User};
 
 pub async fn create_user(
@@ -18,7 +16,6 @@ pub async fn create_user(
     username: String,
     db: &DatabaseConnection,
 ) -> Result<User> {
-    // Check if the email is already in use
     let user_exists = users::Entity::find()
         .filter(users::Column::Email.eq(email.to_ascii_lowercase()))
         .one(db)
@@ -71,7 +68,7 @@ pub async fn check_email_password(
         Ok(parsed_hash) => Argon2::default()
             .verify_password(password.as_bytes(), &parsed_hash)
             .map_or(false, |_| true),
-        Err(_err) => false,
+        Err(_) => false,
     };
 
     if !is_valid {
@@ -99,7 +96,7 @@ pub async fn add_todo(
         title: Set(title),
         description: Set(description),
         status: Set(false),
-        created_at: Set(Utc::now().naive_utc()), // Ensure chrono feature is enabled
+        created_at: Set(Utc::now().naive_utc()),
         ..Default::default()
     };
 
@@ -152,7 +149,6 @@ pub async fn update_todo(
     todo_id: i64,
     db: &DatabaseConnection,
 ) -> Result<()> {
-    // 1. Find the existing todo
     let todo: Option<todos::Model> = todos::Entity::find_by_id(todo_id)
         .one(db)
         .await
@@ -164,13 +160,11 @@ pub async fn update_todo(
         bail!(format!("Todo with ID: {} not found", todo_id));
     };
 
-    // 2. Convert to ActiveModel and update fields
     let mut active_todo: todos::ActiveModel = todo.into();
     active_todo.title = Set(title);
     active_todo.description = Set(description);
     active_todo.status = Set(status);
 
-    // 3. Update
     active_todo
         .update(db)
         .await

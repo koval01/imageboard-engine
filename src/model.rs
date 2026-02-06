@@ -1,10 +1,7 @@
 use chrono::NaiveDateTime;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-
 use crate::serialization::{deserialize_checkbox, false_fn};
-
-// --- Request/Form Schemas ---
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterUserSchema {
@@ -41,8 +38,6 @@ pub struct TodoEditSchema {
     pub status: bool,
 }
 
-// --- SeaORM Entities ---
-
 pub mod users {
     use super::*;
 
@@ -63,7 +58,7 @@ pub mod users {
         Todos,
     }
 
-    impl Related<super::todos::Entity> for Entity {
+    impl Related<todos::Entity> for Entity {
         fn to() -> RelationDef {
             Relation::Todos.def()
         }
@@ -99,7 +94,7 @@ pub mod todos {
         User,
     }
 
-    impl Related<super::users::Entity> for Entity {
+    impl Related<users::Entity> for Entity {
         fn to() -> RelationDef {
             Relation::User.def()
         }

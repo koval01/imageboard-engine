@@ -20,11 +20,7 @@ pub async fn connect(pool_url: &str) -> Result<DatabaseConnection> {
         .idle_timeout(Duration::from_secs(8))
         .sqlx_logging(true);
 
-    let db = Database::connect(opt)
+    Database::connect(opt)
         .await
-        .context("Error: unable to connect to database!")?;
-
-    println!("Successfully connected to database!");
-
-    Ok(db)
+        .context("Error: unable to connect to database")
 }

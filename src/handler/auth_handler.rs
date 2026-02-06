@@ -1,5 +1,4 @@
 use std::sync::Arc;
-
 use axum::{
     extract::State,
     http::{header::SET_COOKIE, HeaderMap},
@@ -68,23 +67,17 @@ pub async fn register_user_handler(
         form_data.username,
         &state.read().await.pool,
     )
-    .await;
+        .await;
 
     if let Err(err) = result {
-        let err = format!("Something went wrong: {}", err);
-        messages.error(err);
-
+        messages.error(format!("Something went wrong: {}", err));
         return Redirect::to("/register");
     }
 
-    // println!("{:?}", result.unwrap());
-
     messages.success("You have successfully registered!!");
-
     Redirect::to("/login")
 }
 
-/// Handler to serve the Login Page template.
 pub async fn login_page_handler(session: Session, messages: Messages) -> impl IntoResponse {
     let from_protected: bool = session
         .get(FROM_PROTECTED_KEY)
@@ -103,7 +96,6 @@ pub async fn login_page_handler(session: Session, messages: Messages) -> impl In
     })
 }
 
-/// Handle the `POST` request of the user login form.
 pub async fn login_user_handler(
     headers: HeaderMap,
     session: Session,
@@ -119,17 +111,14 @@ pub async fn login_user_handler(
         form_data.password,
         &state.read().await.pool,
     )
-    .await;
+        .await;
 
     if let Err(err) = result {
-        let err = format!("Something went wrong: {}", err);
-        messages.error(err);
-
+        messages.error(format!("Something went wrong: {}", err));
         return Redirect::to("/login").into_response();
     }
 
     let user_id = result.unwrap().id;
-
     let now = chrono::Utc::now();
     let iat = now.timestamp() as usize;
     let exp = (now + chrono::Duration::minutes(60)).timestamp() as usize;
@@ -142,9 +131,9 @@ pub async fn login_user_handler(
     let token = encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(&state.read().await.config.jwt_secret.as_ref()),
+        &EncodingKey::from_secret(state.read().await.config.jwt_secret.as_bytes()),
     )
-    .unwrap();
+        .unwrap();
 
     let cookie = Cookie::build(("token", token.to_owned()))
         .path("/")
@@ -164,21 +153,18 @@ pub async fn login_user_handler(
             is_error: true,
             ..Default::default()
         })
-        .into_response();
+            .into_response();
     }
     drop(lock);
 
     let mut lock = state.write().await;
-
     lock.todos = result.unwrap();
     drop(lock);
 
     messages.success("You have successfully logged in!!");
-
     (headers, Redirect::to("/todo/list")).into_response()
 }
 
-/// User Logout Handler.
 pub async fn logout_handler(session: Session, messages: Messages) -> impl IntoResponse {
     set_flag_in_session(&session, false).await;
 
@@ -191,11 +177,9 @@ pub async fn logout_handler(session: Session, messages: Messages) -> impl IntoRe
     let headers = AppendHeaders([(SET_COOKIE, cookie.to_string())]);
 
     messages.success("You have successfully logged out!!");
-
     (headers, Redirect::to("/login"))
 }
 
-/// Global Error 404 Handler (to handle unknown paths).
 pub async fn handler_404(session: Session) -> impl IntoResponse {
     let from_protected: bool = session
         .get(FROM_PROTECTED_KEY)

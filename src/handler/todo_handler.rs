@@ -1,5 +1,4 @@
 use std::sync::Arc;
-
 use askama::filters::capitalize;
 use axum::{
     extract::{Query, State},
@@ -23,13 +22,11 @@ use super::{
     FROM_PROTECTED_KEY, TZONE_KEY,
 };
 
-/// Struct for holding the todo_id (i64) that comes in query params.
 #[derive(Debug, Deserialize)]
 pub struct QueryParams {
     pub id: i64,
 }
 
-/// Handler to serve the Todo List Page template.
 pub async fn todo_list_handler(
     Extension(user): Extension<User>,
     State(state): State<Arc<RwLock<AppState>>>,
@@ -63,29 +60,27 @@ pub async fn todo_list_handler(
         from_protected,
         ..Default::default()
     })
-    .into_response()
+        .into_response()
 }
 
-/// Handler to show the Todo Create Modal template.
 pub async fn todo_create_handler() -> impl IntoResponse {
     HtmlTemplate(TodoCreationModalTemplate)
 }
 
-/// Handle the `POST` request to create a new Todo.
 pub async fn todo_add_handler(
     Extension(user): Extension<User>,
     messages: Messages,
     State(state): State<Arc<RwLock<AppState>>>,
     Form(form_data): Form<TodoSchema>,
 ) -> impl IntoResponse {
-    if form_data.title.trim() == "" {
+    if form_data.title.trim().is_empty() {
         return HtmlTemplate(Error400Template {
             title: "Error 400".to_string(),
             reason: "You must enter at least one title for the Todo".to_string(),
             is_error: true,
             ..Default::default()
         })
-        .into_response();
+            .into_response();
     }
 
     let lock = state.read().await;
@@ -98,7 +93,6 @@ pub async fn todo_add_handler(
             drop(lock);
 
             messages.success("Task created successfully!!");
-
             Redirect::to("/todo/list").into_response()
         }
         Err(e) => HtmlTemplate(Error500Template {
@@ -108,18 +102,16 @@ pub async fn todo_add_handler(
             link: "/todo/list".to_string(),
             ..Default::default()
         })
-        .into_response(),
+            .into_response(),
     }
 }
 
-/// Handler to show the Todo Edit Modal template.
 pub async fn todo_edit_handler(
     Query(QueryParams { id }): Query<QueryParams>,
     session: Session,
     State(state): State<Arc<RwLock<AppState>>>,
 ) -> impl IntoResponse {
     let lock = state.read().await;
-
     let result = get_todo_by_id(id, &lock.pool).await;
     drop(lock);
 
@@ -146,25 +138,23 @@ pub async fn todo_edit_handler(
     })
 }
 
-/// Handle the `PATCH` request to edit a Todo.
 pub async fn todo_patch_handler(
     Query(QueryParams { id }): Query<QueryParams>,
     messages: Messages,
     State(state): State<Arc<RwLock<AppState>>>,
     Form(form_data): Form<TodoEditSchema>,
 ) -> impl IntoResponse {
-    if form_data.title.trim() == "" {
+    if form_data.title.trim().is_empty() {
         return HtmlTemplate(Error400Template {
             title: "Error 400".to_string(),
             reason: "You must enter at least one title for the Todo".to_string(),
             is_error: true,
             ..Default::default()
         })
-        .into_response();
+            .into_response();
     }
 
     let lock = state.read().await;
-
     let result = update_todo(
         form_data.title.clone(),
         form_data.description.clone(),
@@ -172,7 +162,7 @@ pub async fn todo_patch_handler(
         id,
         &lock.pool,
     )
-    .await;
+        .await;
     drop(lock);
 
     let mut lock = state.write().await;
@@ -186,21 +176,20 @@ pub async fn todo_patch_handler(
             is_error: true,
             ..Default::default()
         })
-        .into_response();
+            .into_response();
     }
 
-    let index = lock.todos.iter().position(|item| item.id == id).unwrap();
-    lock.todos[index].title = form_data.title;
-    lock.todos[index].description = form_data.description;
-    lock.todos[index].status = form_data.status;
+    if let Some(index) = lock.todos.iter().position(|item| item.id == id) {
+        lock.todos[index].title = form_data.title;
+        lock.todos[index].description = form_data.description;
+        lock.todos[index].status = form_data.status;
+    }
     drop(lock);
 
     messages.success("Task successfully updated!!");
-
     Redirect::to("/todo/list").into_response()
 }
 
-/// Handle the `DELETE` request to remove a Todo.
 pub async fn todo_delete_handler(
     Query(QueryParams { id }): Query<QueryParams>,
     messages: Messages,
@@ -213,16 +202,9 @@ pub async fn todo_delete_handler(
             drop(lock);
             let mut lock = state.write().await;
             lock.todos.retain(|item| item.id != id);
-            // lock.todos = lock
-            //     .todos
-            //     .clone()
-            //     .into_iter()
-            //     .filter(|item| item.id != id)
-            //     .collect();
             drop(lock);
 
             messages.success("Task successfully deleted!!");
-
             Redirect::to("/todo/list").into_response()
         }
         Err(e) => {
@@ -238,7 +220,7 @@ pub async fn todo_delete_handler(
                 is_error: true,
                 ..Default::default()
             })
-            .into_response()
+                .into_response()
         }
     }
 }

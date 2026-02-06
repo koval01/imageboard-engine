@@ -6,7 +6,6 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // 1. Create Users Table
         manager
             .create_table(
                 Table::create()
@@ -19,13 +18,12 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Users::Username).string().not_null())
-                    .col(ColumnDef::new(Users::Email).string().not_null().unique_key()) // Unique Index
+                    .col(ColumnDef::new(Users::Email).string().not_null().unique_key())
                     .col(ColumnDef::new(Users::Password).string().not_null())
                     .to_owned(),
             )
             .await?;
 
-        // 2. Create Todos Table
         manager
             .create_table(
                 Table::create()
