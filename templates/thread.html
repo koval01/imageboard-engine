@@ -1,40 +1,68 @@
 {% extends "layout/base.html" %}
 
 {% block content %}
-<div class="mb-4">
-    <a href="/{{ board.slug }}" class="text-orange-600 hover:underline">&lt; Return to /{{ board.slug }}/</a>
+
+<!-- Navigation Links -->
+<div class="mb-2 text-sm border-b border-gray-300 pb-2">
+    <a href="/{{ board.slug }}" class="text-dvach-link font-bold hover:underline">Return</a>
+    <span class="text-gray-400 mx-2">|</span>
+    <a href="#bottom" class="text-dvach-link hover:underline">Bottom</a>
 </div>
 
-<div class="bg-white p-4 border border-gray-300 rounded mb-8">
-    <div class="text-sm text-gray-500 mb-2">
-        {% if let Some(subject) = thread.subject %}
-        <span class="font-bold text-indigo-800">{{ subject }}</span>
-        {% endif %}
-        <span class="font-bold">Anonymous</span>
-        {{ thread.created_at.format("%Y-%m-%d %H:%M:%S") }}
-        No.{{ thread.id }}
-    </div>
-    <div class="text-gray-800 whitespace-pre-wrap ml-4 text-lg">{{ thread.content }}</div>
-</div>
+<!-- Thread Container -->
+<div class="thread max-w-full">
 
-<div class="flex flex-col gap-1 ml-4 md:ml-8 mb-8">
-    {% for post in posts %}
-    <div class="bg-gray-100 p-3 border-b border-gray-200 rounded-r">
-        <div class="text-xs text-gray-500 mb-1">
-            <span class="font-bold">Anonymous</span>
-            {{ post.created_at.format("%Y-%m-%d %H:%M:%S") }}
-            No.{{ post.id }}
+    <!-- OP Post (No Background, just raw on the board bg) -->
+    <div class="post op-post mb-4" id="post-{{ thread.id }}">
+        <div class="post-details text-xs text-gray-500 mb-2">
+            {% if let Some(subject) = thread.subject %}
+            <span class="font-bold text-dvach-link text-sm">{{ subject }}</span>
+            {% endif %}
+            <span class="font-bold text-[#117743]">Anonymous</span>
+            <span>{{ thread.created_at.format("%d/%m/%y(%a)%H:%M:%S") }}</span>
+            <span class="cursor-pointer hover:text-red-600">No.{{ thread.id }}</span>
         </div>
-        <div class="text-gray-800 whitespace-pre-wrap ml-2">{{ post.content }}</div>
+        <div class="post-body pl-2">
+            <!-- Image would go here float-left -->
+            <blockquote class="whitespace-pre-wrap text-[15px]">{{ thread.content }}</blockquote>
+        </div>
     </div>
-    {% endfor %}
+
+    <!-- Replies -->
+    <div class="replies flex flex-col items-start gap-1">
+        {% for post in posts %}
+        <div class="post reply-post table bg-dvach-post-bg border border-dvach-border rounded-sm p-2 min-w-[400px] mb-1" id="post-{{ post.id }}">
+
+            <div class="post-details text-xs text-gray-500 mb-1">
+                <span class="font-bold text-[#117743]">Anonymous</span>
+                <span>{{ post.created_at.format("%d/%m/%y(%a)%H:%M:%S") }}</span>
+                <span class="cursor-pointer hover:text-red-600">No.{{ post.id }}</span>
+            </div>
+
+            <blockquote class="post-message whitespace-pre-wrap text-[14px] text-[#333]">
+                {{ post.content }}
+            </blockquote>
+        </div>
+        {% endfor %}
+    </div>
+
 </div>
 
-<div class="bg-white p-4 border border-gray-300 rounded max-w-2xl mx-auto">
-    <h3 class="text-lg font-bold mb-2">Reply to Thread</h3>
-    <form action="/{{ board.slug }}/thread/{{ thread.id }}/reply" method="post" class="flex flex-col gap-2">
-        <textarea name="content" rows="4" placeholder="Comment" class="border p-2 rounded" required></textarea>
-        <button type="submit" class="bg-slate-800 text-white p-2 rounded hover:bg-slate-700">Reply</button>
-    </form>
+<hr class="border-gray-300 my-4">
+
+<!-- Reply Form (Floating or Static at bottom) -->
+<div class="flex justify-center mt-8">
+    <div class="bg-dvach-bg border border-dvach-orange p-2 rounded shadow-md w-full max-w-md">
+        <a id="bottom"></a>
+        <h3 class="text-sm font-bold text-dvach-orange mb-1 border-b border-gray-300 pb-1">Reply to Thread</h3>
+        <form action="/{{ board.slug }}/thread/{{ thread.id }}/reply" method="post" class="flex flex-col gap-2 text-sm">
+            <textarea name="content" rows="5" class="border border-gray-400 p-1 w-full bg-white focus:border-dvach-orange outline-none resize-y" placeholder="Comment" required></textarea>
+            <div class="flex justify-between items-center">
+                <span class="text-xs text-gray-400">Sage: [ ]</span>
+                <button type="submit" class="bg-dvach-dark text-white px-4 py-1 text-xs font-bold hover:bg-dvach-orange">Reply</button>
+            </div>
+        </form>
+    </div>
 </div>
+
 {% endblock %}

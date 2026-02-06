@@ -1,38 +1,68 @@
 {% extends "layout/base.html" %}
 
 {% block content %}
-<div class="mb-4 text-center">
-    <h1 class="text-3xl font-bold text-orange-600">/{{ board.slug }}/ - {{ board.name }}</h1>
-    <p class="text-sm text-gray-500">{{ board.description }}</p>
+
+<!-- Board Header -->
+<div class="text-center mb-6">
+    <h2 class="text-2xl text-dvach-orange font-bold">/{{ board.slug }}/ - {{ board.name }}</h2>
+    <div class="text-gray-600 italic">{{ board.description }}</div>
 </div>
 
-<div class="bg-white p-4 border border-gray-300 rounded mb-8 max-w-2xl mx-auto">
-    <h3 class="text-lg font-bold mb-2 text-center">Start a New Thread</h3>
-    <form action="/{{ board.slug }}/submit" method="post" class="flex flex-col gap-2">
-        <input type="text" name="subject" placeholder="Subject" class="border p-2 rounded">
-        <textarea name="content" rows="4" placeholder="Comment" class="border p-2 rounded" required></textarea>
-        <button type="submit" class="bg-slate-800 text-white p-2 rounded hover:bg-slate-700">Post</button>
-    </form>
-</div>
-
-<hr class="border-gray-300 my-6">
-
-<div class="flex flex-col gap-6">
-    {% for thread in threads %}
-    <div class="bg-gray-200 p-1 rounded">
-        <div class="bg-white p-4">
-            <div class="text-sm text-gray-500 mb-2">
-                {% if let Some(subject) = thread.subject %}
-                <span class="font-bold text-indigo-800">{{ subject }}</span>
-                {% endif %}
-                <span class="font-bold">Anonymous</span>
-                {{ thread.created_at.format("%Y-%m-%d %H:%M:%S") }}
-                No.{{ thread.id }}
-                <a href="/{{ board.slug }}/thread/{{ thread.id }}" class="text-orange-600 hover:underline">[Reply]</a>
+<!-- Posting Form (Center) -->
+<div class="flex justify-center mb-8">
+    <div class="bg-dvach-bg border border-dvach-orange/50 p-2 rounded w-full max-w-lg">
+        <form action="/{{ board.slug }}/submit" method="post" class="flex flex-col gap-1 text-sm">
+            <div class="flex gap-1">
+                <span class="bg-dvach-orange text-white px-2 py-1 text-xs font-bold w-24 text-center">Subject</span>
+                <input type="text" name="subject" class="border border-gray-400 p-1 w-full bg-white focus:border-dvach-orange outline-none">
             </div>
-            <div class="text-gray-800 whitespace-pre-wrap ml-4">{{ thread.content }}</div>
-        </div>
+            <div class="flex gap-1">
+                <span class="bg-dvach-orange text-white px-2 py-1 text-xs font-bold w-24 text-center">Comment</span>
+                <textarea name="content" rows="4" class="border border-gray-400 p-1 w-full bg-white focus:border-dvach-orange outline-none" required></textarea>
+            </div>
+            <div class="flex justify-end mt-1">
+                <button type="submit" class="bg-dvach-dark text-white px-4 py-1 text-xs font-bold hover:bg-dvach-orange transition-colors">Post</button>
+            </div>
+        </form>
     </div>
+</div>
+
+<hr class="border-gray-300 mb-6">
+
+<!-- Threads -->
+<div class="flex flex-col gap-4">
+    {% for thread in threads %}
+    <div class="thread-container" id="thread-{{ thread.id }}">
+
+        <!-- OP Post -->
+        <div class="post op-post mb-1">
+            <div class="post-details text-gray-500 mb-1">
+                {% if let Some(subject) = thread.subject %}
+                <span class="font-bold text-dvach-link text-sm">{{ subject }}</span>
+                {% endif %}
+                <span class="font-bold text-[#117743]">Anonymous</span>
+                <span class="text-gray-400">{{ thread.created_at.format("%d/%m/%y(%a)%H:%M:%S") }}</span>
+                <span>No.<a href="/{{ board.slug }}/thread/{{ thread.id }}" class="hover:text-dvach-orange">{{ thread.id }}</a></span>
+                <span class="text-xs">[<a href="/{{ board.slug }}/thread/{{ thread.id }}" class="text-dvach-link hover:underline">Reply</a>]</span>
+            </div>
+
+            <div class="flex flex-row">
+                <!-- Image Placeholder (Until file upload is implemented) -->
+                <!-- <div class="float-left mr-4 mb-2">
+                    <img src="..." class="max-w-[200px] max-h-[200px] border border-gray-400">
+                </div> -->
+
+                <blockquote class="post-message whitespace-pre-wrap ml-4 text-[14px]">
+                    {{ thread.content }}
+                </blockquote>
+            </div>
+        </div>
+
+        <!-- In real 2ch, we only show last 3 posts here.
+             Since your logic passes limited data, we assume this view. -->
+
+    </div>
+    <hr class="border-gray-300 clear-both my-4">
     {% endfor %}
 </div>
 {% endblock %}
