@@ -5,7 +5,7 @@
 <!-- Navigation -->
 <div class="py-2 border-b border-skin-border mb-4 text-sm font-bold">
     <a href="/{{ board.slug }}" class="text-skin-link hover:underline">
-        &larr; Back to /{{ board.slug }}/
+        &larr; Назад до /{{ board.slug }}/
     </a>
 </div>
 
@@ -16,7 +16,7 @@
         <div class="flex flex-col sm:flex-row gap-3">
             <div class="shrink-0">
                 <div class="w-[200px] h-[200px] bg-skin-surface border border-skin-border flex items-center justify-center text-xs text-skin-muted">
-                    OP Image
+                    ОП Зображення
                 </div>
             </div>
             <div class="flex-grow">
@@ -24,9 +24,9 @@
                     {% if let Some(subject) = thread.subject %}
                     <span class="font-bold text-skin-text text-base mr-2">{{ subject }}</span>
                     {% endif %}
-                    <span class="font-bold text-green-600">Anonymous</span>
-                    <span>{{ thread.created_at.format("%Y/%m/%d(%a)%H:%M:%S") }}</span>
-                    <span class="text-skin-text">No.{{ thread.id }}</span>
+                    <span class="font-bold text-green-600">Анонім</span>
+                    <span>{{ thread.created_at.format("%d.%m.%Y %H:%M:%S") }}</span>
+                    <span class="text-skin-text">№{{ thread.id }}</span>
                 </div>
                 <div class="text-base text-skin-text leading-relaxed whitespace-pre-wrap">
                     {{ thread.content }}
@@ -41,13 +41,13 @@
         <div class="reply-container bg-skin-surface border border-skin-border rounded-r-lg rounded-bl-lg p-3 min-w-[300px] max-w-full sm:max-w-4xl" id="p{{ post.id }}">
             <div class="text-xs text-skin-muted mb-2 pb-1 border-b border-skin-border/50 border-dashed flex justify-between">
                 <div>
-                    <span class="font-bold text-green-600">Anonymous</span>
-                    <span>{{ post.created_at.format("%d/%m/%y %H:%M:%S") }}</span>
-                    <a href="#p{{ post.id }}" class="hover:text-skin-accent">No.{{ post.id }}</a>
+                    <span class="font-bold text-green-600">Анонім</span>
+                    <span>{{ post.created_at.format("%d.%m.%Y %H:%M:%S") }}</span>
+                    <a href="#p{{ post.id }}" class="hover:text-skin-accent">№{{ post.id }}</a>
                 </div>
                 <div class="opacity-0 hover:opacity-100 transition-opacity">
                     <!-- ID for clickable reply later -->
-                    <span class="cursor-pointer" onclick="replyTo({{ post.id }})">Reply</span>
+                    <span class="cursor-pointer" onclick="replyTo({{ post.id }})">Відповісти</span>
                 </div>
             </div>
             <div class="text-sm text-skin-text whitespace-pre-wrap">{{ post.content }}</div>
@@ -60,15 +60,15 @@
 <!-- Static/Sticky Reply Form -->
 <div class="fixed bottom-0 left-0 right-0 p-2 sm:p-0 sm:relative sm:mt-8 sm:flex sm:justify-center bg-skin-base sm:bg-transparent border-t sm:border-0 border-skin-border z-40">
     <div class="bg-skin-surface border border-skin-border p-3 rounded shadow-lg w-full sm:w-[500px]">
-        <div class="text-xs font-bold text-skin-accent mb-2 uppercase tracking-widest">Reply to Thread</div>
+        <div class="text-xs font-bold text-skin-accent mb-2 uppercase tracking-widest">Відповісти в тред</div>
         <form action="/{{ board.slug }}/thread/{{ thread.id }}/reply" method="post" class="flex flex-col gap-2">
-            <textarea id="reply-box" name="content" rows="4" class="w-full p-2 text-sm rounded border border-skin-border bg-skin-input focus:ring-1 focus:ring-skin-accent resize-y" placeholder="Write a reply..." required></textarea>
+            <textarea id="reply-box" name="content" rows="4" class="w-full p-2 text-sm rounded border border-skin-border bg-skin-input focus:ring-1 focus:ring-skin-accent resize-y" placeholder="Напишіть відповідь..." required></textarea>
             <div class="flex justify-between items-center">
                 <label class="flex items-center gap-2 text-xs text-skin-muted cursor-pointer">
                     <input type="checkbox" name="sage" class="rounded text-skin-accent focus:ring-0">
                     Sage
                 </label>
-                <button type="submit" class="bg-skin-primary text-white px-4 py-1.5 rounded text-xs font-bold uppercase hover:bg-skin-primary-hover transition-colors">Reply</button>
+                <button type="submit" class="bg-skin-primary text-white px-4 py-1.5 rounded text-xs font-bold uppercase hover:bg-skin-primary-hover transition-colors">Відповісти</button>
             </div>
         </form>
     </div>

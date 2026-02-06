@@ -60,12 +60,14 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // Translated Seed Data
         let board_insert = Query::insert()
             .into_table(Boards::Table)
             .columns([Boards::Slug, Boards::Name, Boards::Description])
-            .values_panic(["b".into(), "Random".into(), "The wild west".into()])
-            .values_panic(["tech".into(), "Technology".into(), "Computers and stuff".into()])
-            .values_panic(["a".into(), "Anime".into(), "Japanese animation".into()])
+            .values_panic(["m".into(), "Маячня".into(), "Все підряд без правил".into()])
+            .values_panic(["tech".into(), "Технології".into(), "Комп'ютери, софт та залізо".into()])
+            .values_panic(["a".into(), "Аніме".into(), "Японська анімація та культура".into()])
+            .values_panic(["sex".into(), "Секс".into(), "Ми шануємо дрочунів".into()])
             .to_owned();
 
         manager.exec_stmt(board_insert).await
