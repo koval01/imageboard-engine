@@ -2,30 +2,76 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-    background-color: #eeeeee; /* Hardcode the classic gray */
-    color: #333;
+@layer base {
+    /* Classic Light Theme (Makaba inspired) */
+    :root {
+        --color-bg-base: #eeeeee;
+        --color-bg-surface: #dddddd;
+        --color-bg-header: #282a2e;
+        --color-bg-input: #ffffff;
+
+        --color-text-base: #222222;
+        --color-text-muted: #707070;
+        --color-text-accent: #ff9933;
+        --color-text-link: #ff6600;
+        --color-text-green: #789922;
+        --color-text-red: #d00;
+
+        --color-border: #b7c5d9;
+        --color-primary: #ff9933;
+        --color-primary-hover: #e68a00;
+    }
+
+    /* Dark Theme (Modern) */
+    [data-theme="dark"] {
+        --color-bg-base: #1b1b1b;
+        --color-bg-surface: #282828;
+        --color-bg-header: #111111;
+        --color-bg-input: #333333;
+
+        --color-text-base: #e0e0e0;
+        --color-text-muted: #888888;
+        --color-text-accent: #ffaa44;
+        --color-text-link: #ff8833;
+        --color-text-green: #9acd32;
+        --color-text-red: #ff4444;
+
+        --color-border: #444444;
+        --color-primary: #ff8833;
+        --color-primary-hover: #ff6600;
+    }
 }
 
-/* Iconic Imageboard styles */
+body {
+    background-color: var(--color-bg-base);
+    color: var(--color-text-base);
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Custom Imageboard Elements */
 .greentext {
-    color: #789922;
+    color: var(--color-text-green);
     font-family: inherit;
 }
 
 .post-link {
-    color: #ff6600;
+    color: var(--color-text-link);
     text-decoration: none;
-}
-.post-link:hover {
-    color: #cc3300;
+    font-weight: 500;
 }
 
-/* Force links in navbar */
-.board-nav a {
-    text-decoration: none;
-    padding: 0 2px;
+.post-link:hover {
+    text-decoration: underline;
 }
-.board-nav a:hover {
-    color: #ff9933;
+
+/* Styling the DaisyUI/Tailwind components with vars */
+input, textarea {
+    background-color: var(--color-bg-input);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-base);
+}
+
+input:focus, textarea:focus {
+    outline: 2px solid var(--color-text-accent);
+    border-color: transparent;
 }

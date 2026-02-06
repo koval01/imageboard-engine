@@ -4,7 +4,7 @@ use axum::{
     response::{IntoResponse, Redirect},
     Form,
 };
-use sea_orm::{EntityTrait, QueryOrder, Set, ActiveModelTrait, ModelTrait, QueryFilter, ColumnTrait};
+use sea_orm::{EntityTrait, QueryOrder, Set, ActiveModelTrait, ModelTrait, QueryFilter, ColumnTrait, QuerySelect};
 use tokio::sync::RwLock;
 use askama::Template;
 use chrono::Utc;
@@ -16,6 +16,11 @@ use crate::{
     handler::HtmlTemplate,
 };
 
+struct ThreadWithPosts {
+    thread: threads::Model,
+    posts: Vec<posts::Model>,
+}
+
 #[derive(Template)]
 #[template(path = "home.html")]
 struct HomeTemplate {
@@ -26,7 +31,7 @@ struct HomeTemplate {
 #[template(path = "board.html")]
 struct BoardTemplate {
     board: boards::Model,
-    threads: Vec<threads::Model>,
+    threads: Vec<ThreadWithPosts>,
 }
 
 #[derive(Template)]
@@ -50,14 +55,33 @@ pub async fn view_board_handler(
     let board = boards::Entity::find_by_id(&slug).one(db).await.unwrap();
 
     if let Some(board) = board {
-        let threads = threads::Entity::find()
+        // Find threads
+        let threads_raw = threads::Entity::find()
             .filter(threads::Column::BoardSlug.eq(&slug))
             .order_by_desc(threads::Column::UpdatedAt)
+            .limit(10)
             .all(db)
             .await
             .unwrap();
 
-        return HtmlTemplate(BoardTemplate { board, threads }).into_response();
+        // Populate posts for each thread (N+1 query mostly, optimizing later is fine)
+        let mut threads_with_posts = Vec::new();
+        for t in threads_raw {
+            // Get last 5 posts for preview
+            let posts = posts::Entity::find()
+                .filter(posts::Column::ThreadId.eq(t.id))
+                .order_by_asc(posts::Column::CreatedAt)
+                .all(db)
+                .await
+                .unwrap();
+
+            threads_with_posts.push(ThreadWithPosts {
+                thread: t,
+                posts: posts
+            });
+        }
+
+        return HtmlTemplate(BoardTemplate { board, threads: threads_with_posts }).into_response();
     }
 
     Redirect::to("/").into_response()

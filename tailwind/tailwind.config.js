@@ -3,34 +3,43 @@ const { fontFamily } = require('tailwindcss/defaultTheme');
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ["../templates/**/*.{html,js}"],
+  darkMode: ['class', '[data-theme="dark"]'], // Enable class-based dark mode
   theme: {
     extend: {
       fontFamily: {
-        // 2ch uses standard system fonts for readability
-        sans: ['Arial', 'Helvetica', 'sans-serif', ...fontFamily.sans],
+        sans: ['Inter', 'Arial', 'Helvetica', 'sans-serif', ...fontFamily.sans],
+        mono: ['"JetBrains Mono"', 'monospace'],
       },
       colors: {
-        // The classic Dvach/Makaba palette
-        'dvach-bg': '#eeeeee',        // Main background
-        'dvach-post-bg': '#dddddd',   // Reply background
-        'dvach-orange': '#ff9933',    // Highlights/Logos
-        'dvach-text': '#333333',      // Main text
-        'dvach-red': '#aa0000',       // Sage/Admin
-        'dvach-green': '#789922',     // >Greentext
-        'dvach-link': '#ff6600',      // Links
-        'dvach-dark': '#222222',      // Navbar bg
-        'dvach-border': '#b7c5d9',    // Post borders
+        skin: {
+          base: 'var(--color-bg-base)',
+          surface: 'var(--color-bg-surface)',
+          header: 'var(--color-bg-header)',
+          input: 'var(--color-bg-input)',
+
+          text: 'var(--color-text-base)',
+          muted: 'var(--color-text-muted)',
+          accent: 'var(--color-text-accent)',
+          link: 'var(--color-text-link)',
+          green: 'var(--color-text-green)', // For greentext
+          red: 'var(--color-text-red)',     // For sage/admin
+
+          border: 'var(--color-border)',
+          primary: 'var(--color-primary)',
+          'primary-hover': 'var(--color-primary-hover)',
+        }
       },
-      fontSize: {
-        'tiny': '0.7rem',
+      boxShadow: {
+        'post': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
       }
     },
   },
   plugins: [
+    require("@tailwindcss/typography"),
     require("daisyui")
   ],
   daisyui: {
-    // We largely want to override DaisyUI defaults for that "old school" look
-    themes: ["light"]
+    themes: [], // Disable daisyUI default themes to use our custom CSS variables
+    logs: false,
   }
 }

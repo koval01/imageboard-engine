@@ -2,67 +2,85 @@
 
 {% block content %}
 
-<!-- Navigation Links -->
-<div class="mb-2 text-sm border-b border-gray-300 pb-2">
-    <a href="/{{ board.slug }}" class="text-dvach-link font-bold hover:underline">Return</a>
-    <span class="text-gray-400 mx-2">|</span>
-    <a href="#bottom" class="text-dvach-link hover:underline">Bottom</a>
+<!-- Navigation -->
+<div class="py-2 border-b border-skin-border mb-4 text-sm font-bold">
+    <a href="/{{ board.slug }}" class="text-skin-link hover:underline">
+        &larr; Back to /{{ board.slug }}/
+    </a>
 </div>
 
-<!-- Thread Container -->
-<div class="thread max-w-full">
+<div class="thread-container mb-24"> <!-- Margin bottom for floating form space -->
 
-    <!-- OP Post (No Background, just raw on the board bg) -->
-    <div class="post op-post mb-4" id="post-{{ thread.id }}">
-        <div class="post-details text-xs text-gray-500 mb-2">
-            {% if let Some(subject) = thread.subject %}
-            <span class="font-bold text-dvach-link text-sm">{{ subject }}</span>
-            {% endif %}
-            <span class="font-bold text-[#117743]">Anonymous</span>
-            <span>{{ thread.created_at.format("%d/%m/%y(%a)%H:%M:%S") }}</span>
-            <span class="cursor-pointer hover:text-red-600">No.{{ thread.id }}</span>
-        </div>
-        <div class="post-body pl-2">
-            <!-- Image would go here float-left -->
-            <blockquote class="whitespace-pre-wrap text-[15px]">{{ thread.content }}</blockquote>
+    <!-- OP Post -->
+    <div class="op-container mb-4">
+        <div class="flex flex-col sm:flex-row gap-3">
+            <div class="shrink-0">
+                <div class="w-[200px] h-[200px] bg-skin-surface border border-skin-border flex items-center justify-center text-xs text-skin-muted">
+                    OP Image
+                </div>
+            </div>
+            <div class="flex-grow">
+                <div class="text-xs text-skin-muted mb-2">
+                    {% if let Some(subject) = thread.subject %}
+                    <span class="font-bold text-skin-text text-base mr-2">{{ subject }}</span>
+                    {% endif %}
+                    <span class="font-bold text-green-600">Anonymous</span>
+                    <span>{{ thread.created_at.format("%Y/%m/%d(%a)%H:%M:%S") }}</span>
+                    <span class="text-skin-text">No.{{ thread.id }}</span>
+                </div>
+                <div class="text-base text-skin-text leading-relaxed whitespace-pre-wrap">
+                    {{ thread.content }}
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Replies -->
-    <div class="replies flex flex-col items-start gap-1">
+    <div class="flex flex-col gap-1 items-start">
         {% for post in posts %}
-        <div class="post reply-post table bg-dvach-post-bg border border-dvach-border rounded-sm p-2 min-w-[400px] mb-1" id="post-{{ post.id }}">
-
-            <div class="post-details text-xs text-gray-500 mb-1">
-                <span class="font-bold text-[#117743]">Anonymous</span>
-                <span>{{ post.created_at.format("%d/%m/%y(%a)%H:%M:%S") }}</span>
-                <span class="cursor-pointer hover:text-red-600">No.{{ post.id }}</span>
+        <div class="reply-container bg-skin-surface border border-skin-border rounded-r-lg rounded-bl-lg p-3 min-w-[300px] max-w-full sm:max-w-4xl" id="p{{ post.id }}">
+            <div class="text-xs text-skin-muted mb-2 pb-1 border-b border-skin-border/50 border-dashed flex justify-between">
+                <div>
+                    <span class="font-bold text-green-600">Anonymous</span>
+                    <span>{{ post.created_at.format("%d/%m/%y %H:%M:%S") }}</span>
+                    <a href="#p{{ post.id }}" class="hover:text-skin-accent">No.{{ post.id }}</a>
+                </div>
+                <div class="opacity-0 hover:opacity-100 transition-opacity">
+                    <!-- ID for clickable reply later -->
+                    <span class="cursor-pointer" onclick="replyTo({{ post.id }})">Reply</span>
+                </div>
             </div>
-
-            <blockquote class="post-message whitespace-pre-wrap text-[14px] text-[#333]">
-                {{ post.content }}
-            </blockquote>
+            <div class="text-sm text-skin-text whitespace-pre-wrap">{{ post.content }}</div>
         </div>
         {% endfor %}
     </div>
 
 </div>
 
-<hr class="border-gray-300 my-4">
-
-<!-- Reply Form (Floating or Static at bottom) -->
-<div class="flex justify-center mt-8">
-    <div class="bg-dvach-bg border border-dvach-orange p-2 rounded shadow-md w-full max-w-md">
-        <a id="bottom"></a>
-        <h3 class="text-sm font-bold text-dvach-orange mb-1 border-b border-gray-300 pb-1">Reply to Thread</h3>
-        <form action="/{{ board.slug }}/thread/{{ thread.id }}/reply" method="post" class="flex flex-col gap-2 text-sm">
-            <textarea name="content" rows="5" class="border border-gray-400 p-1 w-full bg-white focus:border-dvach-orange outline-none resize-y" placeholder="Comment" required></textarea>
+<!-- Static/Sticky Reply Form -->
+<div class="fixed bottom-0 left-0 right-0 p-2 sm:p-0 sm:relative sm:mt-8 sm:flex sm:justify-center bg-skin-base sm:bg-transparent border-t sm:border-0 border-skin-border z-40">
+    <div class="bg-skin-surface border border-skin-border p-3 rounded shadow-lg w-full sm:w-[500px]">
+        <div class="text-xs font-bold text-skin-accent mb-2 uppercase tracking-widest">Reply to Thread</div>
+        <form action="/{{ board.slug }}/thread/{{ thread.id }}/reply" method="post" class="flex flex-col gap-2">
+            <textarea id="reply-box" name="content" rows="4" class="w-full p-2 text-sm rounded border border-skin-border bg-skin-input focus:ring-1 focus:ring-skin-accent resize-y" placeholder="Write a reply..." required></textarea>
             <div class="flex justify-between items-center">
-                <span class="text-xs text-gray-400">Sage: [ ]</span>
-                <button type="submit" class="bg-dvach-dark text-white px-4 py-1 text-xs font-bold hover:bg-dvach-orange">Reply</button>
+                <label class="flex items-center gap-2 text-xs text-skin-muted cursor-pointer">
+                    <input type="checkbox" name="sage" class="rounded text-skin-accent focus:ring-0">
+                    Sage
+                </label>
+                <button type="submit" class="bg-skin-primary text-white px-4 py-1.5 rounded text-xs font-bold uppercase hover:bg-skin-primary-hover transition-colors">Reply</button>
             </div>
         </form>
     </div>
 </div>
+
+<script>
+    function replyTo(id) {
+        const box = document.getElementById('reply-box');
+        box.value += '>>' + id + '\n';
+        box.focus();
+        // On mobile, maybe scroll to bottom?
+    }
+</script>
 
 {% endblock %}

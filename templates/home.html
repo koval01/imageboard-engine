@@ -2,14 +2,41 @@
 
 {% block content %}
 <div class="flex flex-col items-center">
-    <h1 class="text-3xl font-bold mb-8 text-gray-800">Boards</h1>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-4xl">
-        {% for board in boards %}
-        <a href="/{{ board.slug }}" class="block p-6 bg-white border border-gray-300 rounded shadow hover:bg-orange-50 transition">
-            <h2 class="text-xl font-bold text-orange-600">/{{ board.slug }}/ - {{ board.name }}</h2>
-            <p class="text-gray-600 mt-2">{{ board.description }}</p>
-        </a>
-        {% endfor %}
+
+    <!-- Welcome Box -->
+    <div class="bg-skin-surface border border-skin-border rounded p-6 max-w-2xl w-full text-center mb-8 shadow-sm">
+        <h2 class="text-xl font-bold mb-2">Welcome to the Imageboard</h2>
+        <p class="text-skin-muted text-sm">Anonymous textboard with image attachment.</p>
+    </div>
+
+    <!-- Boards Grid -->
+    <div class="w-full max-w-4xl">
+        <h3 class="text-lg font-bold text-skin-text border-b border-skin-border pb-2 mb-4">Boards</h3>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for board in boards %}
+            <a href="/{{ board.slug }}" class="group block bg-skin-surface border border-skin-border rounded-lg p-4 hover:border-skin-accent transition-colors duration-200 shadow-sm hover:shadow-md">
+                <div class="flex justify-between items-center">
+                    <span class="text-2xl font-bold text-skin-accent group-hover:underline">/{{ board.slug }}/</span>
+                    <span class="text-xs bg-skin-base px-2 py-1 rounded border border-skin-border">83 posts</span> <!-- Dummy stat -->
+                </div>
+                <div class="mt-2 text-sm font-medium text-skin-text">{{ board.name }}</div>
+                <div class="text-xs text-skin-muted mt-1 truncate">{{ board.description }}</div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Recent Images (Placeholder for future) -->
+    <div class="w-full max-w-4xl mt-12">
+        <h3 class="text-lg font-bold text-skin-text border-b border-skin-border pb-2 mb-4">Recent Images</h3>
+        <div class="grid grid-cols-4 gap-2">
+            <!-- Placeholders -->
+            <div class="aspect-square bg-skin-surface rounded animate-pulse"></div>
+            <div class="aspect-square bg-skin-surface rounded animate-pulse"></div>
+            <div class="aspect-square bg-skin-surface rounded animate-pulse"></div>
+            <div class="aspect-square bg-skin-surface rounded animate-pulse"></div>
+        </div>
     </div>
 </div>
 {% endblock %}

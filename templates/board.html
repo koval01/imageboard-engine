@@ -3,66 +3,105 @@
 {% block content %}
 
 <!-- Board Header -->
-<div class="text-center mb-6">
-    <h2 class="text-2xl text-dvach-orange font-bold">/{{ board.slug }}/ - {{ board.name }}</h2>
-    <div class="text-gray-600 italic">{{ board.description }}</div>
+<div class="text-center mb-8">
+    <h2 class="text-3xl text-skin-accent font-bold tracking-tight">/{{ board.slug }}/ - {{ board.name }}</h2>
 </div>
 
-<!-- Posting Form (Center) -->
-<div class="flex justify-center mb-8">
-    <div class="bg-dvach-bg border border-dvach-orange/50 p-2 rounded w-full max-w-lg">
-        <form action="/{{ board.slug }}/submit" method="post" class="flex flex-col gap-1 text-sm">
-            <div class="flex gap-1">
-                <span class="bg-dvach-orange text-white px-2 py-1 text-xs font-bold w-24 text-center">Subject</span>
-                <input type="text" name="subject" class="border border-gray-400 p-1 w-full bg-white focus:border-dvach-orange outline-none">
+<!-- Collapsible Post Form -->
+<div class="flex justify-center mb-10">
+    <div class="w-full max-w-xl">
+        <details class="group bg-skin-surface border border-skin-border rounded shadow-sm open:shadow-lg transition-all duration-300">
+            <summary class="list-none flex items-center justify-center p-3 cursor-pointer font-bold text-skin-text hover:text-skin-accent select-none">
+                <span class="mr-2">[</span>
+                <span>Start a New Thread</span>
+                <span class="ml-2">]</span>
+            </summary>
+
+            <div class="p-4 border-t border-skin-border bg-skin-base/50">
+                <form action="/{{ board.slug }}/submit" method="post" class="flex flex-col gap-3">
+                    <div>
+                        <input type="text" name="subject" placeholder="Subject" class="w-full p-2 text-sm rounded focus:ring-2 focus:ring-skin-accent transition-shadow">
+                    </div>
+                    <div>
+                        <textarea name="content" rows="5" placeholder="Comment" class="w-full p-2 text-sm rounded focus:ring-2 focus:ring-skin-accent transition-shadow resize-y" required></textarea>
+                    </div>
+                    <!-- File Input Placeholder -->
+                    <div class="flex items-center gap-2">
+                        <input type="file" class="block w-full text-xs text-skin-muted file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-skin-header file:text-white hover:file:bg-skin-accent">
+                    </div>
+
+                    <button type="submit" class="self-end bg-skin-primary text-white px-6 py-2 rounded text-sm font-bold hover:bg-skin-primary-hover shadow-sm transition-colors">Post</button>
+                </form>
             </div>
-            <div class="flex gap-1">
-                <span class="bg-dvach-orange text-white px-2 py-1 text-xs font-bold w-24 text-center">Comment</span>
-                <textarea name="content" rows="4" class="border border-gray-400 p-1 w-full bg-white focus:border-dvach-orange outline-none" required></textarea>
-            </div>
-            <div class="flex justify-end mt-1">
-                <button type="submit" class="bg-dvach-dark text-white px-4 py-1 text-xs font-bold hover:bg-dvach-orange transition-colors">Post</button>
-            </div>
-        </form>
+        </details>
     </div>
 </div>
 
-<hr class="border-gray-300 mb-6">
+<hr class="border-skin-border mb-8">
 
-<!-- Threads -->
-<div class="flex flex-col gap-4">
-    {% for thread in threads %}
-    <div class="thread-container" id="thread-{{ thread.id }}">
+<!-- Thread List -->
+<div class="flex flex-col gap-8">
+    {% for thread_wp in threads %}
+    <div class="thread" id="thread-{{ thread_wp.thread.id }}">
 
         <!-- OP Post -->
-        <div class="post op-post mb-1">
-            <div class="post-details text-gray-500 mb-1">
-                {% if let Some(subject) = thread.subject %}
-                <span class="font-bold text-dvach-link text-sm">{{ subject }}</span>
-                {% endif %}
-                <span class="font-bold text-[#117743]">Anonymous</span>
-                <span class="text-gray-400">{{ thread.created_at.format("%d/%m/%y(%a)%H:%M:%S") }}</span>
-                <span>No.<a href="/{{ board.slug }}/thread/{{ thread.id }}" class="hover:text-dvach-orange">{{ thread.id }}</a></span>
-                <span class="text-xs">[<a href="/{{ board.slug }}/thread/{{ thread.id }}" class="text-dvach-link hover:underline">Reply</a>]</span>
+        <article class="flex flex-col sm:flex-row gap-3">
+            <!-- Image (Mock) -->
+            <div class="shrink-0">
+                <!-- <img src="..." class="w-full sm:w-[200px] h-auto object-cover border border-skin-border rounded-sm"> -->
+                <div class="w-[150px] h-[150px] bg-skin-surface border border-skin-border flex items-center justify-center text-xs text-skin-muted">
+                    No Image
+                </div>
             </div>
 
-            <div class="flex flex-row">
-                <!-- Image Placeholder (Until file upload is implemented) -->
-                <!-- <div class="float-left mr-4 mb-2">
-                    <img src="..." class="max-w-[200px] max-h-[200px] border border-gray-400">
-                </div> -->
+            <div class="flex-grow">
+                <!-- Meta Header -->
+                <div class="text-xs text-skin-muted mb-2">
+                    {% if let Some(subject) = thread_wp.thread.subject %}
+                    <span class="font-bold text-skin-text text-sm mr-2">{{ subject }}</span>
+                    {% endif %}
+                    <span class="font-bold text-green-600">Anonymous</span>
+                    <span class="mx-1"></span>
+                    <span>{{ thread_wp.thread.created_at.format("%Y/%m/%d(%a)%H:%M:%S") }}</span>
+                    <span class="mx-1"></span>
+                    <a href="/{{ board.slug }}/thread/{{ thread_wp.thread.id }}" class="text-skin-text hover:text-skin-accent">No.{{ thread_wp.thread.id }}</a>
+                    <span class="mx-2"></span>
+                    <a href="/{{ board.slug }}/thread/{{ thread_wp.thread.id }}" class="bg-skin-surface border border-skin-border px-1.5 rounded hover:border-skin-accent text-skin-text">[Reply]</a>
+                </div>
 
-                <blockquote class="post-message whitespace-pre-wrap ml-4 text-[14px]">
-                    {{ thread.content }}
-                </blockquote>
+                <!-- Body -->
+                <div class="text-sm text-skin-text leading-relaxed whitespace-pre-wrap font-sans">
+                    {{ thread_wp.thread.content }}
+                </div>
             </div>
+        </article>
+
+        <!-- Last Replies -->
+        <div class="mt-2 pl-2 sm:pl-12 flex flex-col gap-2">
+            {% for post in thread_wp.posts %}
+            {% if loop.index > (thread_wp.posts.len().saturating_sub(3)) %}
+            <div class="bg-skin-surface border border-skin-border rounded p-3 w-fit min-w-[300px] max-w-full text-sm">
+                <div class="text-xs text-skin-muted mb-1 pb-1 border-b border-skin-border/50 border-dashed">
+                    <span class="font-bold text-green-600">Anonymous</span>
+                    <span>{{ post.created_at.format("%d/%m/%y %H:%M") }}</span>
+                    <a href="#p{{ post.id }}" class="hover:text-skin-accent">No.{{ post.id }}</a>
+                </div>
+                <div class="text-skin-text whitespace-pre-wrap">{{ post.content }}</div>
+            </div>
+            {% endif %}
+            {% endfor %}
         </div>
-
-        <!-- In real 2ch, we only show last 3 posts here.
-             Since your logic passes limited data, we assume this view. -->
-
     </div>
-    <hr class="border-gray-300 clear-both my-4">
+    <hr class="border-skin-border/50 clear-both">
     {% endfor %}
 </div>
+
+<!-- Floating Action Button for Mobile Posting -->
+<div class="fixed bottom-6 right-6 md:hidden">
+    <a href="#" onclick="document.querySelector('details').open = true; window.scrollTo({top: 0, behavior: 'smooth'}); return false;"
+       class="flex items-center justify-center w-14 h-14 bg-skin-primary text-white rounded-full shadow-lg hover:bg-skin-primary-hover transition-transform active:scale-95">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+    </a>
+</div>
+
 {% endblock %}
