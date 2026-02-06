@@ -1,107 +1,134 @@
 use chrono::NaiveDateTime;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-use crate::serialization::{deserialize_checkbox, false_fn};
-
-#[derive(Debug, Deserialize)]
-pub struct RegisterUserSchema {
-    pub email: String,
-    pub password: String,
-    pub username: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct LoginUserSchema {
-    pub email: String,
-    pub password: String,
-}
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct TokenClaims {
-    pub sub: String,
-    pub iat: usize,
+pub struct SessionClaims {
+    pub sess: String,
+    pub ip: String,
+    pub ua: String,
     pub exp: usize,
+    pub iat: usize,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct TodoSchema {
-    pub title: String,
-    pub description: String,
+pub struct CreateThreadSchema {
+    pub subject: Option<String>,
+    pub content: String,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct TodoEditSchema {
-    pub title: String,
-    pub description: String,
-    #[serde(default = "false_fn")]
-    #[serde(deserialize_with = "deserialize_checkbox")]
-    pub status: bool,
+pub struct CreatePostSchema {
+    pub content: String,
 }
 
-pub mod users {
+pub mod boards {
     use super::*;
 
-    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize, Default)]
-    #[sea_orm(table_name = "users")]
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize)]
+    #[sea_orm(table_name = "boards")]
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
-        pub id: String,
-        #[sea_orm(unique)]
-        pub email: String,
-        pub password: String,
-        pub username: String,
+        pub slug: String,
+        pub name: String,
+        pub description: String,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {
-        #[sea_orm(has_many = "super::todos::Entity")]
-        Todos,
+        #[sea_orm(has_many = "super::threads::Entity")]
+        Threads,
     }
 
-    impl Related<todos::Entity> for Entity {
+    impl Related<super::threads::Entity> for Entity {
         fn to() -> RelationDef {
-            Relation::Todos.def()
+            Relation::Threads.def()
         }
     }
 
     impl ActiveModelBehavior for ActiveModel {}
 }
 
-pub mod todos {
+pub mod threads {
     use super::*;
 
-    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize, Default)]
-    #[sea_orm(table_name = "todos")]
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize)]
+    #[sea_orm(table_name = "threads")]
     pub struct Model {
         #[sea_orm(primary_key)]
-        pub id: i64,
-        pub created_by: String,
-        pub title: String,
-        pub description: String,
-        pub status: bool,
+        pub id: i32,
+        pub board_slug: String,
+        pub subject: Option<String>,
+        pub content: String,
+        pub session_id: String,
+        pub created_at: NaiveDateTime,
+        pub updated_at: NaiveDateTime,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {
+        #[sea_orm(
+            belongs_to = "super::boards::Entity",
+            from = "Column::BoardSlug",
+            to = "super::boards::Column::Slug",
+            on_update = "NoAction",
+            on_delete = "Cascade"
+        )]
+        Board,
+        #[sea_orm(has_many = "super::posts::Entity")]
+        Posts,
+    }
+
+    impl Related<super::boards::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::Board.def()
+        }
+    }
+
+    impl Related<super::posts::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::Posts.def()
+        }
+    }
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod posts {
+    use super::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize)]
+    #[sea_orm(table_name = "posts")]
+    pub struct Model {
+        #[sea_orm(primary_key)]
+        pub id: i32,
+        pub thread_id: i32,
+        pub content: String,
+        pub session_id: String,
         pub created_at: NaiveDateTime,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {
         #[sea_orm(
-            belongs_to = "super::users::Entity",
-            from = "Column::CreatedBy",
-            to = "super::users::Column::Id",
+            belongs_to = "super::threads::Entity",
+            from = "Column::ThreadId",
+            to = "super::threads::Column::Id",
             on_update = "NoAction",
-            on_delete = "NoAction"
+            on_delete = "Cascade"
         )]
-        User,
+        Thread,
     }
 
-    impl Related<users::Entity> for Entity {
+    impl Related<super::threads::Entity> for Entity {
         fn to() -> RelationDef {
-            Relation::User.def()
+            Relation::Thread.def()
         }
     }
 
     impl ActiveModelBehavior for ActiveModel {}
 }
 
-pub use todos::Model as Todo;
-pub use users::Model as User;
+pub use boards::Model as Board;
+pub use threads::Model as Thread;
+pub use posts::Model as Post;

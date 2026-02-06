@@ -1,0 +1,40 @@
+{% extends "layout/base.html" %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="/{{ board.slug }}" class="text-orange-600 hover:underline">&lt; Return to /{{ board.slug }}/</a>
+</div>
+
+<div class="bg-white p-4 border border-gray-300 rounded mb-8">
+    <div class="text-sm text-gray-500 mb-2">
+        {% if let Some(subject) = thread.subject %}
+        <span class="font-bold text-indigo-800">{{ subject }}</span>
+        {% endif %}
+        <span class="font-bold">Anonymous</span>
+        {{ thread.created_at.format("%Y-%m-%d %H:%M:%S") }}
+        No.{{ thread.id }}
+    </div>
+    <div class="text-gray-800 whitespace-pre-wrap ml-4 text-lg">{{ thread.content }}</div>
+</div>
+
+<div class="flex flex-col gap-1 ml-4 md:ml-8 mb-8">
+    {% for post in posts %}
+    <div class="bg-gray-100 p-3 border-b border-gray-200 rounded-r">
+        <div class="text-xs text-gray-500 mb-1">
+            <span class="font-bold">Anonymous</span>
+            {{ post.created_at.format("%Y-%m-%d %H:%M:%S") }}
+            No.{{ post.id }}
+        </div>
+        <div class="text-gray-800 whitespace-pre-wrap ml-2">{{ post.content }}</div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="bg-white p-4 border border-gray-300 rounded max-w-2xl mx-auto">
+    <h3 class="text-lg font-bold mb-2">Reply to Thread</h3>
+    <form action="/{{ board.slug }}/thread/{{ thread.id }}/reply" method="post" class="flex flex-col gap-2">
+        <textarea name="content" rows="4" placeholder="Comment" class="border p-2 rounded" required></textarea>
+        <button type="submit" class="bg-slate-800 text-white p-2 rounded hover:bg-slate-700">Reply</button>
+    </form>
+</div>
+{% endblock %}

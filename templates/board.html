@@ -1,0 +1,38 @@
+{% extends "layout/base.html" %}
+
+{% block content %}
+<div class="mb-4 text-center">
+    <h1 class="text-3xl font-bold text-orange-600">/{{ board.slug }}/ - {{ board.name }}</h1>
+    <p class="text-sm text-gray-500">{{ board.description }}</p>
+</div>
+
+<div class="bg-white p-4 border border-gray-300 rounded mb-8 max-w-2xl mx-auto">
+    <h3 class="text-lg font-bold mb-2 text-center">Start a New Thread</h3>
+    <form action="/{{ board.slug }}/submit" method="post" class="flex flex-col gap-2">
+        <input type="text" name="subject" placeholder="Subject" class="border p-2 rounded">
+        <textarea name="content" rows="4" placeholder="Comment" class="border p-2 rounded" required></textarea>
+        <button type="submit" class="bg-slate-800 text-white p-2 rounded hover:bg-slate-700">Post</button>
+    </form>
+</div>
+
+<hr class="border-gray-300 my-6">
+
+<div class="flex flex-col gap-6">
+    {% for thread in threads %}
+    <div class="bg-gray-200 p-1 rounded">
+        <div class="bg-white p-4">
+            <div class="text-sm text-gray-500 mb-2">
+                {% if let Some(subject) = thread.subject %}
+                <span class="font-bold text-indigo-800">{{ subject }}</span>
+                {% endif %}
+                <span class="font-bold">Anonymous</span>
+                {{ thread.created_at.format("%Y-%m-%d %H:%M:%S") }}
+                No.{{ thread.id }}
+                <a href="/{{ board.slug }}/thread/{{ thread.id }}" class="text-orange-600 hover:underline">[Reply]</a>
+            </div>
+            <div class="text-gray-800 whitespace-pre-wrap ml-4">{{ thread.content }}</div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

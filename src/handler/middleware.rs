@@ -1,104 +1,90 @@
 use std::sync::Arc;
 use axum::{
-    extract::{Request, State},
-    http::header,
+    extract::{ConnectInfo, Request, State},
+    http::HeaderMap,
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use axum_extra::extract::CookieJar;
-use jsonwebtoken::{decode, DecodingKey, Validation};
+use axum_extra::extract::cookie::{Cookie, CookieJar};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use std::net::SocketAddr;
 use tokio::sync::RwLock;
-use tower_sessions::Session;
+use uuid::Uuid;
+use time::Duration;
 
-use super::{set_flag_in_session, Error401Template, HtmlTemplate};
-use crate::{model::TokenClaims, service::get_user_by_id, AppState};
+use crate::{model::SessionClaims, security::{get_client_ip, get_user_agent}, AppState};
 
-pub async fn auth_middleware(
+#[derive(Clone)]
+pub struct CurrentSession {
+    pub id: String,
+}
+
+pub async fn session_middleware(
     cookie_jar: CookieJar,
-    session: Session,
     State(state): State<Arc<RwLock<AppState>>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     mut req: Request,
     next: Next,
 ) -> Result<Response, Response> {
-    let token_option = cookie_jar
-        .get("token")
-        .map(|cookie| cookie.value().to_string())
-        .or_else(|| {
-            req.headers()
-                .get(header::AUTHORIZATION)
-                .and_then(|auth_header| auth_header.to_str().ok())
-                .and_then(|auth_value| {
-                    if auth_value.starts_with("Bearer ") {
-                        Some(auth_value[7..].to_owned())
-                    } else {
-                        None
-                    }
-                })
-        });
+    let config = &state.read().await.config;
+    let jwt_secret = config.jwt_secret.as_bytes();
+    let current_ip = get_client_ip(&addr);
+    let current_ua = get_user_agent(&headers);
 
-    let token = if let Some(tk) = token_option {
-        tk
-    } else {
-        set_flag_in_session(&session, false).await;
-        return Err(HtmlTemplate(Error401Template {
-            title: "Error 401".to_string(),
-            reason: "You are not logged in, please provide token".to_string(),
-            is_error: true,
-            ..Default::default()
-        })
-            .into_response());
-    };
+    let mut session_id = String::new();
+    let mut is_new_session = true;
 
-    let claims = match decode::<TokenClaims>(
-        &token,
-        &DecodingKey::from_secret(state.read().await.config.jwt_secret.as_bytes()),
-        &Validation::default(),
-    ) {
-        Ok(clm) => clm.claims,
-        Err(_) => {
-            set_flag_in_session(&session, false).await;
-            return Err(HtmlTemplate(Error401Template {
-                title: "Error 401".to_string(),
-                reason: "Invalid token".to_string(),
-                is_error: true,
-                ..Default::default()
-            })
-                .into_response());
+    if let Some(cookie) = cookie_jar.get("session_id") {
+        let token = cookie.value();
+        let validation = Validation::default();
+
+        if let Ok(token_data) = decode::<SessionClaims>(
+            token,
+            &DecodingKey::from_secret(jwt_secret),
+            &validation,
+        ) {
+            let claims = token_data.claims;
+            if claims.ip == current_ip && claims.ua == current_ua {
+                session_id = claims.sess;
+                is_new_session = false;
+            }
         }
-    };
+    }
 
-    let user_id = &claims.sub;
-    let lock = state.read().await;
-    let pool = &lock.pool;
-    let result = get_user_by_id(user_id, pool).await;
-    drop(lock);
+    let response_jar = if is_new_session {
+        session_id = Uuid::new_v4().to_string();
+        let now = chrono::Utc::now();
+        let iat = now.timestamp() as usize;
+        let exp = (now + chrono::Duration::days(365)).timestamp() as usize;
 
-    if let Err(e) = result.clone() {
-        set_flag_in_session(&session, false).await;
-        return Err(HtmlTemplate(Error401Template {
-            title: "Error 401".to_string(),
-            reason: e,
-            is_error: true,
-            ..Default::default()
-        })
-            .into_response());
-    };
+        let claims = SessionClaims {
+            sess: session_id.clone(),
+            ip: current_ip,
+            ua: current_ua,
+            iat,
+            exp,
+        };
 
-    let user = if let Some(u) = result.unwrap() {
-        u
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(jwt_secret),
+        ).unwrap();
+
+        let cookie = Cookie::build(("session_id", token))
+            .path("/")
+            .max_age(Duration::days(365))
+            .http_only(true);
+
+        cookie_jar.add(cookie)
     } else {
-        set_flag_in_session(&session, false).await;
-        return Err(HtmlTemplate(Error401Template {
-            title: "Error 401".to_string(),
-            reason: "The user belonging to this token no longer exists".to_string(),
-            is_error: true,
-            ..Default::default()
-        })
-            .into_response());
+        cookie_jar
     };
 
-    set_flag_in_session(&session, true).await;
-    req.extensions_mut().insert(user);
+    req.extensions_mut().insert(CurrentSession { id: session_id });
 
-    Ok(next.run(req).await)
+    let response = next.run(req).await;
+
+    Ok((response_jar, response).into_response())
 }
