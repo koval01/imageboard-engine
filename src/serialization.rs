@@ -17,10 +17,3 @@ where
         ))),
     }
 }
-
-/* REFERENCES:
-https://stackoverflow.com/questions/70114905/how-to-deserialize-a-string-field-to-bool
-https://github.com/BurntSushi/rust-csv/issues/135
-
-https://github.com/IsiXhosa-click/isixhosa_click/blob/8c27ca67c6966e15e0f5bc2d5d468c2645bcf58e/server/src/serialization.rs
-*/

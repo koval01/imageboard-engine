@@ -25,14 +25,9 @@ use tower_sessions::Session;
 
 use crate::model::Todo;
 
-/* --------------------------------------- */
-/* ------------ region: Utils ------------ */
-/* --------------------------------------- */
-
 const FROM_PROTECTED_KEY: &str = "from_protected";
 const TZONE_KEY: &str = "time_zone";
 
-/// Handler to check the status of the app.
 pub async fn health_checker_handler() -> impl IntoResponse {
     const MESSAGE: &str =
         "Full stack Web App using Rust's Axum framework, Askama, HTMX, JWT & SQLITE3";
@@ -53,12 +48,10 @@ async fn set_flag_in_session(session: &Session, from_protected: bool) {
         .unwrap();
 }
 
-/// Set tzone in session.
 async fn set_tzone_in_session(session: &Session, tzone: String) {
     session.insert(TZONE_KEY, tzone).await.unwrap();
 }
 
-/// Format flash messages generated in redirects.
 fn get_messages(messages: Messages) -> (String, String) {
     let mut messages = messages
         .into_iter()
@@ -78,9 +71,6 @@ fn get_messages(messages: Messages) -> (String, String) {
     (messages_status, messages)
 }
 
-/// convert_datetime converts the datetime format from the
-/// database (UTC timestamp) to a string in RFC822Z format,
-/// taking the client's timezone (&str) and a datetime (NaiveDateTime).
 pub fn convert_datetime(tzone: &str, dt: NaiveDateTime) -> String {
     let tz = tzone.parse::<Tz>().unwrap_or(UTC);
 
@@ -95,14 +85,6 @@ pub fn convert_datetime(tzone: &str, dt: NaiveDateTime) -> String {
     format!("{}{}", first_part, last_part)
 }
 
-/* --------------------------------------- */
-/* ----------- enregion: Utils ----------- */
-/* --------------------------------------- */
-
-/* --------------------------------------- */
-/* ------ region: Template Rendering ----- */
-/* --------------------------------------- */
-
 /// A wrapper type that we'll use to encapsulate HTML parsed
 /// by askama into valid HTML for axum to serve.
 struct HtmlTemplate<T>(T);
@@ -114,11 +96,8 @@ where
     T: Template,
 {
     fn into_response(self) -> Response {
-        // Attempt to render the template with askama
         match self.0.render() {
-            // If we're able to successfully parse and aggregate the template, serve it
             Ok(html) => Html(html).into_response(),
-            // If we're not, return an error or some bit of fallback HTML
             Err(err) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to render template. Error: {}", err),
@@ -246,40 +225,3 @@ struct Error500Template {
     from_protected: bool,
     is_error: bool,
 }
-
-/* --------------------------------------- */
-/* ---- endregion: Template Rendering ---- */
-/* --------------------------------------- */
-
-/* IMPORTANT!! REGARDING IMPL INTORESPONSE. SEE:
-https://docs.rs/axum/latest/axum/response/index.html#regarding-impl-intoresponse
-*/
-
-/* IMPORTANT!! A MORE APPROPRIATE WAY TO HANDLE ERRORS. SEE:
-https://github.com/tokio-rs/axum/discussions/2446
-https://github.com/tokio-rs/axum/blob/main/examples/reqwest-response/src/main.rs
-https://docs.rs/axum/latest/axum/error_handling/index.html
-*/
-
-/* IMPORTANT!! IN AXUM, THE LAST EXTRACTOR OF A HANDLER CANNOT IMPLEMENT `FromRequestParts`. SEE:
-https://docs.rs/axum/latest/axum/extract/index.html#the-order-of-extractors
-https://docs.rs/axum/latest/axum/handler/trait.Handler.html#debugging-handler-type-errors
-https://docs.rs/axum-macros/latest/axum_macros/attr.debug_handler.html
-https://docs.rs/axum/latest/axum/extract/trait.FromRequestParts.html
-
-https://stackoverflow.com/questions/76307624/unexplained-trait-bound-no-longer-satisfied-when-modifying-axum-handler-body
-https://github.com/emarifer/axum-postgres-api/blob/main/src/handler.rs#L32-L71
-*/
-
-/* CAPITALIZE A STRING IN RUST:
-https://nick.groenen.me/notes/capitalize-a-string-in-rust/
-
-/// Capitalizes the first character in s.
-// fn capitalize(s: &str) -> String {
-//     let mut c = s.chars();
-//     match c.next() {
-//         None => String::new(),
-//         Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-//     }
-// }
-*/

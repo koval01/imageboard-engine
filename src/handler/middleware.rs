@@ -14,7 +14,6 @@ use tower_sessions::Session;
 use super::{set_flag_in_session, Error401Template, HtmlTemplate};
 use crate::{model::TokenClaims, service::get_user_by_id, AppState};
 
-/// Middleware to manage authorization.
 pub async fn auth_middleware(
     cookie_jar: CookieJar,
     session: Session,

@@ -1,4 +1,3 @@
-// src/main.rs
 mod config;
 mod db;
 mod handler;
@@ -31,11 +30,8 @@ async fn main() -> Result<()> {
     dotenv().ok();
 
     let config = Config::init();
-
-    // 1. Connect to database
     let pool = db::connect(&config.database_url).await?;
 
-    // 2. RUN MIGRATIONS AUTOMATICALLY
     Migrator::up(&pool, None).await?;
     println!("Database migrations applied successfully!");
 

@@ -25,19 +25,12 @@ use super::{
     HtmlTemplate, LoginTemplate, RegisterTemplate, FROM_PROTECTED_KEY,
 };
 
-/* --------------------------------------- */
-/* ------------ Auth Handlers ------------ */
-/* --------------------------------------- */
-
-/// Handler to serve the Home Page template.
 pub async fn home_handler(session: Session) -> impl IntoResponse {
     let from_protected: bool = session
         .get(FROM_PROTECTED_KEY)
         .await
         .unwrap()
         .unwrap_or_default();
-
-    // println!("FP - home page: {}", from_protected.0);
 
     HtmlTemplate(HomeTemplate {
         title: "Home".to_string(),
@@ -46,7 +39,6 @@ pub async fn home_handler(session: Session) -> impl IntoResponse {
     })
 }
 
-/// Handler to serve the Register Page template.
 pub async fn register_page_handler(session: Session, messages: Messages) -> impl IntoResponse {
     let from_protected: bool = session
         .get(FROM_PROTECTED_KEY)
@@ -65,14 +57,11 @@ pub async fn register_page_handler(session: Session, messages: Messages) -> impl
     })
 }
 
-/// Handle the `POST` request of the user register form.
 pub async fn register_user_handler(
     messages: Messages,
     State(state): State<Arc<RwLock<AppState>>>,
     Form(form_data): Form<RegisterUserSchema>,
 ) -> impl IntoResponse {
-    // println!("{:?}", form_data);
-
     let result = create_user(
         form_data.email,
         form_data.password,
@@ -206,10 +195,6 @@ pub async fn logout_handler(session: Session, messages: Messages) -> impl IntoRe
     (headers, Redirect::to("/login"))
 }
 
-/* --------------------------------------- */
-/* ----------- Eror 404 Handler ---------- */
-/* --------------------------------------- */
-
 /// Global Error 404 Handler (to handle unknown paths).
 pub async fn handler_404(session: Session) -> impl IntoResponse {
     let from_protected: bool = session
@@ -232,21 +217,3 @@ pub async fn handler_404(session: Session) -> impl IntoResponse {
         ..Default::default()
     })
 }
-
-/* INITIALIZE FIELDS WITH DEFAULT VALUES OF A STRUCTURE:
-https://stackoverflow.com/questions/19650265/is-there-a-faster-shorter-way-to-initialize-variables-in-a-rust-struct
-https://moneygrowsontrees.medium.com/how-default-values-and-optional-parameters-work-in-rust-d0a3972621bc
-*/
-
-/* REFERENCES:
-https://github.com/tokio-rs/axum/discussions/351
-https://stackoverflow.com/questions/77579968/cookie-passed-when-expected
-https://docs.rs/axum/latest/axum/response/struct.AppendHeaders.html
-
-https://github.com/maxcountryman/tower-sessions
-
-https://spacedimp.com/blog/using-rust-axum-postgresql-and-tokio-to-build-a-blog/
-
-How do I get last commit date from git repository?
-https://stackoverflow.com/questions/25563455/how-do-i-get-last-commit-date-from-git-repository
-*/

@@ -3,8 +3,6 @@ use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use std::time::Duration;
 
 pub async fn connect(pool_url: &str) -> Result<DatabaseConnection> {
-    // Check if the protocol is sqlite and append ?mode=rwc if not present
-    // This forces sqlx/sea-orm to create the file if it doesn't exist
     let url = if pool_url.starts_with("sqlite:") && !pool_url.contains("mode=rwc") {
         if pool_url.contains('?') {
             format!("{}&mode=rwc", pool_url)
