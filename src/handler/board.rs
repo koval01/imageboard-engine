@@ -1,8 +1,7 @@
 use std::sync::Arc;
 use axum::{
     extract::{Path, State, Extension, Multipart},
-    response::{IntoResponse, Redirect},
-    Form,
+    response::{IntoResponse, Redirect}
 };
 use sea_orm::{EntityTrait, QueryOrder, Set, ActiveModelTrait, ModelTrait, QueryFilter, ColumnTrait, QuerySelect};
 use tokio::sync::RwLock;
@@ -10,12 +9,11 @@ use askama::Template;
 use chrono::Utc;
 
 use crate::{
-    model::{boards, threads, posts, CreateThreadSchema, CreatePostSchema},
+    model::{boards, threads, posts, images},
     AppState,
     handler::middleware::CurrentSession,
     handler::HtmlTemplate,
-    service::storage::ProcessedImage,
-    model::images
+    service::storage::{ProcessedImage, StorageService},
 };
 
 struct ParsedForm {
@@ -52,17 +50,17 @@ struct ThreadTemplate {
 
 async fn parse_multipart_form(
     mut multipart: Multipart,
-    storage: &crate::service::storage::StorageService
+    storage: &StorageService
 ) -> Result<ParsedForm, String> {
     let mut subject = None;
     let mut content = String::new();
     let mut processed_images = Vec::new();
 
-    // Limits
     let max_file_size = 2 * 1024 * 1024; // 2 MB
     let max_files = 5;
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| e.to_string())? {
+    // Explicitly handle the error type to help inference
+    while let Some(field) = multipart.next_field().await.map_err(|e| e.body_text())? {
         let name = field.name().unwrap_or("").to_string();
 
         if name == "subject" {
@@ -74,21 +72,20 @@ async fn parse_multipart_form(
                 content = txt;
             }
         } else if name == "file" {
-            // Check file count limit
             if processed_images.len() >= max_files {
-                continue; // Skip extra files
+                continue;
             }
 
             let filename = field.file_name().unwrap_or("unknown.jpg").to_string();
-            // Check content type (simple check)
             let content_type = field.content_type().unwrap_or("").to_string();
+
             if !content_type.starts_with("image/") {
-                continue; // Skip non-images
+                continue;
             }
 
-            let data = field.bytes().await.map_err(|e| e.to_string())?;
+            // Explicit error mapping for bytes()
+            let data = field.bytes().await.map_err(|e| e.body_text())?;
 
-            // Check size limit
             if data.len() > max_file_size {
                 return Err(format!("File {} is too large (max 2MB)", filename));
             }
@@ -140,7 +137,7 @@ pub async fn view_board_handler(
 
             threads_with_posts.push(ThreadWithPosts {
                 thread: t,
-                posts: posts
+                posts
             });
         }
 

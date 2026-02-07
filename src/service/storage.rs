@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use aws_config::meta::region::RegionProviderChain;
+use aws_config::BehaviorVersion;
 use aws_sdk_s3::{config::Region, Client};
 use bytes::Bytes;
 use image::{imageops::FilterType, GenericImageView};
@@ -26,7 +27,8 @@ pub struct ProcessedImage {
 impl StorageService {
     pub async fn init() -> Self {
         let region_provider = RegionProviderChain::default_provider().or_else(Region::new("auto"));
-        let config = aws_config::from_env()
+
+        let config = aws_config::defaults(BehaviorVersion::latest())
             .region(region_provider)
             .endpoint_url(std::env::var("S3_ENDPOINT").expect("S3_ENDPOINT not set"))
             .load()
@@ -44,12 +46,10 @@ impl StorageService {
     }
 
     pub async fn upload_image(&self, file_bytes: Bytes, original_filename: String) -> Result<ProcessedImage> {
-        // Run CPU-intensive image processing in a blocking thread
         let (full_img_bytes, thumb_img_bytes, width, height) = tokio::task::spawn_blocking(move || {
             let img = image::load_from_memory(&file_bytes)?;
             let (w, h) = img.dimensions();
 
-            // 1. Process Main Image (Convert to WebP, restrict max size to 2048px width)
             let processed_img = if w > 2048 {
                 img.resize(2048, u32::MAX, FilterType::Lanczos3)
             } else {
@@ -59,7 +59,6 @@ impl StorageService {
             let mut main_buffer = Cursor::new(Vec::new());
             processed_img.write_to(&mut main_buffer, image::ImageOutputFormat::WebP)?;
 
-            // 2. Generate Thumbnail (Max 300px)
             let thumb_img = img.thumbnail(300, 300);
             let mut thumb_buffer = Cursor::new(Vec::new());
             thumb_img.write_to(&mut thumb_buffer, image::ImageOutputFormat::WebP)?;
@@ -72,7 +71,6 @@ impl StorageService {
         let key_main = format!("{}.webp", uuid);
         let key_thumb = format!("{}_thumb.webp", uuid);
 
-        // Upload Main
         self.client
             .put_object()
             .bucket(&self.bucket)
@@ -83,7 +81,6 @@ impl StorageService {
             .await
             .context("Failed to upload main image to S3")?;
 
-        // Upload Thumb
         self.client
             .put_object()
             .bucket(&self.bucket)

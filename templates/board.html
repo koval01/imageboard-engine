@@ -18,16 +18,20 @@
             </summary>
 
             <div class="p-4 border-t border-skin-border bg-skin-base/50">
-                <form action="/{{ board.slug }}/submit" method="post" class="flex flex-col gap-3">
+                <!-- Added enctype -->
+                <form action="/{{ board.slug }}/submit" method="post" enctype="multipart/form-data" class="flex flex-col gap-3">
                     <div>
                         <input type="text" name="subject" placeholder="Тема" class="w-full p-2 text-sm rounded focus:ring-2 focus:ring-skin-accent transition-shadow">
                     </div>
                     <div>
                         <textarea name="content" rows="5" placeholder="Коментар" class="w-full p-2 text-sm rounded focus:ring-2 focus:ring-skin-accent transition-shadow resize-y" required></textarea>
                     </div>
-                    <!-- File Input Placeholder -->
-                    <div class="flex items-center gap-2">
-                        <input type="file" class="block w-full text-xs text-skin-muted file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-skin-header file:text-white hover:file:bg-skin-accent">
+                    <!-- Updated File Input -->
+                    <div class="flex flex-col gap-1">
+                        <div class="flex items-center gap-2">
+                            <input type="file" name="file" multiple accept="image/*" class="block w-full text-xs text-skin-muted file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-skin-header file:text-white hover:file:bg-skin-accent">
+                        </div>
+                        <p class="text-[10px] text-skin-muted pl-1">Макс. 5 файлів, до 2МБ кожен.</p>
                     </div>
 
                     <button type="submit" class="self-end bg-skin-primary text-white px-6 py-2 rounded text-sm font-bold hover:bg-skin-primary-hover shadow-sm transition-colors">Надіслати</button>
@@ -41,54 +45,78 @@
 
 <!-- Thread List -->
 <div class="flex flex-col gap-8">
-    {% for thread_wp in threads %}
-    <div class="thread" id="thread-{{ thread_wp.thread.id }}">
+    {% for thread_item in threads %}
+    <div class="thread" id="thread-{{ thread_item.model.id }}">
 
         <!-- OP Post -->
         <article class="flex flex-col sm:flex-row gap-3">
-            <!-- Image (Mock) -->
-            <div class="shrink-0">
-                <!-- <img src="..." class="w-full sm:w-[200px] h-auto object-cover border border-skin-border rounded-sm"> -->
-                <div class="w-[150px] h-[150px] bg-skin-surface border border-skin-border flex items-center justify-center text-xs text-skin-muted">
-                    Без зображення
+            <!-- Images Column -->
+            {% if !thread_item.images.is_empty() %}
+            <div class="shrink-0 flex flex-wrap gap-2 sm:flex-col sm:gap-4 max-w-full sm:max-w-[200px]">
+                {% for img in thread_item.images %}
+                <div class="group">
+                    <div class="text-[10px] text-skin-muted truncate w-[150px] mb-0.5">
+                        <a href="{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
+                        <span>({{ (img.size / 1024)|round }}KB, {{ img.width }}x{{ img.height }})</span>
+                    </div>
+                    <a href="{{ img.url }}" target="_blank">
+                        <img src="{{ img.thumbnail_url }}" class="max-w-[150px] max-h-[150px] sm:max-w-[200px] sm:max-h-[200px] object-contain border border-skin-border rounded-sm hover:opacity-90 transition-opacity">
+                    </a>
                 </div>
+                {% endfor %}
             </div>
+            {% endif %}
 
             <div class="flex-grow">
                 <!-- Meta Header -->
                 <div class="text-xs text-skin-muted mb-2">
-                    {% if let Some(subject) = thread_wp.thread.subject %}
+                    {% if let Some(subject) = thread_item.model.subject %}
                     <span class="font-bold text-skin-text text-sm mr-2">{{ subject }}</span>
                     {% endif %}
                     <span class="font-bold text-green-600">Анонім</span>
                     <span class="mx-1"></span>
-                    <span>{{ thread_wp.thread.created_at.format("%d.%m.%Y %H:%M:%S") }}</span>
+                    <span>{{ thread_item.model.created_at.format("%d.%m.%Y %H:%M:%S") }}</span>
                     <span class="mx-1"></span>
-                    <a href="/{{ board.slug }}/thread/{{ thread_wp.thread.id }}" class="text-skin-text hover:text-skin-accent">№{{ thread_wp.thread.id }}</a>
+                    <a href="/{{ board.slug }}/thread/{{ thread_item.model.id }}" class="text-skin-text hover:text-skin-accent">№{{ thread_item.model.id }}</a>
                     <span class="mx-2"></span>
-                    <a href="/{{ board.slug }}/thread/{{ thread_wp.thread.id }}" class="bg-skin-surface border border-skin-border px-1.5 rounded hover:border-skin-accent text-skin-text">[Відповісти]</a>
+                    <a href="/{{ board.slug }}/thread/{{ thread_item.model.id }}" class="bg-skin-surface border border-skin-border px-1.5 rounded hover:border-skin-accent text-skin-text">[Відповісти]</a>
                 </div>
 
                 <!-- Body -->
                 <div class="text-sm text-skin-text leading-relaxed whitespace-pre-wrap font-sans">
-                    {{ thread_wp.thread.content }}
+                    {{ thread_item.model.content }}
                 </div>
             </div>
         </article>
 
         <!-- Last Replies -->
         <div class="mt-2 pl-2 sm:pl-12 flex flex-col gap-2">
-            {% for post in thread_wp.posts %}
-            {% if loop.index > (thread_wp.posts.len().saturating_sub(3)) %}
+            {% for post_item in thread_item.replies %}
             <div class="bg-skin-surface border border-skin-border rounded p-3 w-fit min-w-[300px] max-w-full text-sm">
                 <div class="text-xs text-skin-muted mb-1 pb-1 border-b border-skin-border/50 border-dashed">
                     <span class="font-bold text-green-600">Анонім</span>
-                    <span>{{ post.created_at.format("%d.%m.%Y %H:%M") }}</span>
-                    <a href="#p{{ post.id }}" class="hover:text-skin-accent">№{{ post.id }}</a>
+                    <span>{{ post_item.model.created_at.format("%d.%m.%Y %H:%M") }}</span>
+                    <a href="/{{ board.slug }}/thread/{{ thread_item.model.id }}#p{{ post_item.model.id }}" class="hover:text-skin-accent">№{{ post_item.model.id }}</a>
                 </div>
-                <div class="text-skin-text whitespace-pre-wrap">{{ post.content }}</div>
+
+                <!-- Reply Images -->
+                {% if !post_item.images.is_empty() %}
+                <div class="flex flex-wrap gap-2 mb-2">
+                    {% for img in post_item.images %}
+                    <div class="inline-block">
+                        <div class="text-[10px] text-skin-muted truncate w-[100px]">
+                            <a href="{{ img.url }}" target="_blank">{{ img.filename }}</a>
+                        </div>
+                        <a href="{{ img.url }}" target="_blank">
+                            <img src="{{ img.thumbnail_url }}" class="max-w-[100px] max-h-[100px] object-contain border border-skin-border">
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <div class="text-skin-text whitespace-pre-wrap">{{ post_item.model.content }}</div>
             </div>
-            {% endif %}
             {% endfor %}
         </div>
     </div>
@@ -96,7 +124,7 @@
     {% endfor %}
 </div>
 
-<!-- Floating Action Button for Mobile Posting -->
+<!-- Floating Action Button -->
 <div class="fixed bottom-6 right-6 md:hidden">
     <a href="#" onclick="document.querySelector('details').open = true; window.scrollTo({top: 0, behavior: 'smooth'}); return false;"
        class="flex items-center justify-center w-14 h-14 bg-skin-primary text-white rounded-full shadow-lg hover:bg-skin-primary-hover transition-transform active:scale-95">

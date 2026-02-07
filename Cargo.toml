@@ -14,7 +14,7 @@ debug = false
 [dependencies]
 anyhow = "1.0.101"
 askama = "0.15.4"
-axum = "0.8.8"
+axum = { version = "0.8.8", features = ["multipart"] }
 axum-extra = { version = "0.12.5", features = ["cookie"] }
 chrono = { version = "0.4.43", features = ["serde"] }
 dotenv = "0.15.0"
