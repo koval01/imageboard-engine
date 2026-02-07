@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, State, Extension, Multipart},
     response::{IntoResponse, Redirect}
 };
-use sea_orm::{EntityTrait, QueryOrder, Set, ActiveModelTrait, ModelTrait, QueryFilter, ColumnTrait, QuerySelect};
+use sea_orm::{EntityTrait, QueryOrder, Set, ActiveModelTrait, ModelTrait, QueryFilter, ColumnTrait, QuerySelect, LoaderTrait};
 use tokio::sync::RwLock;
 use askama::Template;
 use chrono::Utc;
@@ -27,6 +27,17 @@ struct ThreadWithPosts {
     posts: Vec<posts::Model>,
 }
 
+pub struct PostItem {
+    pub model: posts::Model,
+    pub images: Vec<images::Model>,
+}
+
+pub struct ThreadItem {
+    pub model: threads::Model,
+    pub images: Vec<images::Model>,
+    pub replies: Vec<PostItem>,
+}
+
 #[derive(Template)]
 #[template(path = "home.html")]
 struct HomeTemplate {
@@ -37,7 +48,7 @@ struct HomeTemplate {
 #[template(path = "board.html")]
 struct BoardTemplate {
     board: boards::Model,
-    threads: Vec<ThreadWithPosts>,
+    threads: Vec<ThreadItem>,
 }
 
 #[derive(Template)]
@@ -45,7 +56,8 @@ struct BoardTemplate {
 struct ThreadTemplate {
     board: boards::Model,
     thread: threads::Model,
-    posts: Vec<posts::Model>,
+    images: Vec<images::Model>, // OP Images
+    posts: Vec<PostItem>,       // Replies with images
 }
 
 async fn parse_multipart_form(
@@ -115,7 +127,7 @@ pub async fn view_board_handler(
     let board = boards::Entity::find_by_id(&slug).one(db).await.unwrap();
 
     if let Some(board) = board {
-        // Find threads
+        // 1. Fetch Threads
         let threads_raw = threads::Entity::find()
             .filter(threads::Column::BoardSlug.eq(&slug))
             .order_by_desc(threads::Column::UpdatedAt)
@@ -124,24 +136,44 @@ pub async fn view_board_handler(
             .await
             .unwrap();
 
-        // Populate posts for each thread (N+1 query mostly, optimizing later is fine)
-        let mut threads_with_posts = Vec::new();
-        for t in threads_raw {
-            // Get last 5 posts for preview
-            let posts = posts::Entity::find()
-                .filter(posts::Column::ThreadId.eq(t.id))
+        // 2. Load OP Images for these threads
+        let thread_images = threads_raw.load_many(images::Entity, db).await.unwrap();
+
+        let mut thread_items = Vec::new();
+
+        // 3. Loop threads to fetch preview posts
+        // Note: doing this in a loop is N+1, optimized approach uses window functions or separate aggregations
+        for (i, thread) in threads_raw.into_iter().enumerate() {
+            // Fetch last 3 posts
+            let posts_raw = posts::Entity::find()
+                .filter(posts::Column::ThreadId.eq(thread.id))
                 .order_by_asc(posts::Column::CreatedAt)
                 .all(db)
                 .await
                 .unwrap();
 
-            threads_with_posts.push(ThreadWithPosts {
-                thread: t,
-                posts
+            // Keep only last 3 for preview (in a real app, you'd limit in SQL, but sqlite is tricky with limit per group)
+            let preview_posts_raw = posts_raw.into_iter().rev().take(3).rev().collect::<Vec<_>>();
+
+            // Load images for these preview posts
+            let post_images = preview_posts_raw.load_many(images::Entity, db).await.unwrap();
+
+            let mut replies = Vec::new();
+            for (j, post) in preview_posts_raw.into_iter().enumerate() {
+                replies.push(PostItem {
+                    model: post,
+                    images: post_images[j].clone(),
+                });
+            }
+
+            thread_items.push(ThreadItem {
+                model: thread,
+                images: thread_images[i].clone(),
+                replies,
             });
         }
 
-        return HtmlTemplate(BoardTemplate { board, threads: threads_with_posts }).into_response();
+        return HtmlTemplate(BoardTemplate { board, threads: thread_items }).into_response();
     }
 
     Redirect::to("/").into_response()
@@ -157,13 +189,35 @@ pub async fn view_thread_handler(
     if let Some(board) = board {
         let thread = threads::Entity::find_by_id(thread_id).one(db).await.unwrap();
         if let Some(thread) = thread {
-            let posts = thread.find_related(posts::Entity).all(db).await.unwrap();
-            return HtmlTemplate(ThreadTemplate { board, thread, posts }).into_response();
+            // Load OP Images
+            let op_images = thread.find_related(images::Entity).all(db).await.unwrap();
+
+            // Load Posts
+            let posts_raw = thread.find_related(posts::Entity).all(db).await.unwrap();
+
+            // Load Post Images
+            let post_images_vec = posts_raw.load_many(images::Entity, db).await.unwrap();
+
+            let mut posts_with_images = Vec::new();
+            for (i, post) in posts_raw.into_iter().enumerate() {
+                posts_with_images.push(PostItem {
+                    model: post,
+                    images: post_images_vec[i].clone(),
+                });
+            }
+
+            return HtmlTemplate(ThreadTemplate {
+                board,
+                thread,
+                images: op_images,
+                posts: posts_with_images
+            }).into_response();
         }
     }
 
     Redirect::to(&format!("/{}", slug)).into_response()
 }
+
 
 pub async fn create_thread_handler(
     State(state): State<Arc<RwLock<AppState>>>,
