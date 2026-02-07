@@ -27,3 +27,8 @@ tokio = { version = "1.49.0", features = ["full"] }
 tower-http = { version = "0.6.8", features = ["fs", "trace"] }
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 uuid = { version = "1.20.0", features = ["serde", "v4"] }
+aws-config = "1.1.7"
+aws-sdk-s3 = "1.17.0"
+image = "0.24.9"
+futures = "0.3"
+bytes = "1.11.1"

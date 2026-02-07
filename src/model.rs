@@ -77,6 +77,8 @@ pub mod threads {
         Board,
         #[sea_orm(has_many = "super::posts::Entity")]
         Posts,
+        #[sea_orm(has_many = "super::images::Entity")]
+        Images,
     }
 
     impl Related<super::boards::Entity> for Entity {
@@ -88,6 +90,12 @@ pub mod threads {
     impl Related<super::posts::Entity> for Entity {
         fn to() -> RelationDef {
             Relation::Posts.def()
+        }
+    }
+
+    impl Related<super::images::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::Images.def()
         }
     }
 
@@ -118,11 +126,74 @@ pub mod posts {
             on_delete = "Cascade"
         )]
         Thread,
+        #[sea_orm(has_many = "super::images::Entity")]
+        Images,
     }
 
     impl Related<super::threads::Entity> for Entity {
         fn to() -> RelationDef {
             Relation::Thread.def()
+        }
+    }
+
+    impl Related<super::images::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::Images.def()
+        }
+    }
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod images {
+    use super::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize)]
+    #[sea_orm(table_name = "images")]
+    pub struct Model {
+        #[sea_orm(primary_key)]
+        pub id: i32,
+        pub thread_id: Option<i32>,
+        pub post_id: Option<i32>,
+        pub url: String,
+        pub thumbnail_url: String,
+        pub filename: String,
+        pub storage_key: String,
+        pub width: i32,
+        pub height: i32,
+        pub size: i64,
+        pub created_at: NaiveDateTime,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {
+        #[sea_orm(
+            belongs_to = "super::threads::Entity",
+            from = "Column::ThreadId",
+            to = "super::threads::Column::Id",
+            on_update = "NoAction",
+            on_delete = "Cascade"
+        )]
+        Thread,
+        #[sea_orm(
+            belongs_to = "super::posts::Entity",
+            from = "Column::PostId",
+            to = "super::posts::Column::Id",
+            on_update = "NoAction",
+            on_delete = "Cascade"
+        )]
+        Post,
+    }
+
+    impl Related<super::threads::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::Thread.def()
+        }
+    }
+
+    impl Related<super::posts::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::Post.def()
         }
     }
 
@@ -132,3 +203,4 @@ pub mod posts {
 pub use boards::Model as Board;
 pub use threads::Model as Thread;
 pub use posts::Model as Post;
+pub use images::Model as Image;
