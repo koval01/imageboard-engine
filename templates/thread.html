@@ -12,36 +12,36 @@
 <div class="thread-container mb-24">
 
     <!-- OP Post -->
-    <div class="op-container mb-4">
+    <div class="op-container mb-4 p-3 bg-skin-surface/50 border border-transparent rounded hover:border-skin-border transition-colors">
         <div class="flex flex-col sm:flex-row gap-3">
 
             <!-- OP Images -->
             {% if !images.is_empty() %}
             <div class="shrink-0 flex flex-wrap gap-2 sm:flex-col sm:gap-4 max-w-full sm:max-w-[200px]">
                 {% for img in images %}
-                <div class="group">
-                    <div class="text-[10px] text-skin-muted truncate w-[150px] mb-0.5">
-                        <a href="{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
-                        <span>({{ img.size / 1024 }}KB, {{ img.width }}x{{ img.height }})</span>
-                    </div>
-                    <a href="{{ img.url }}" target="_blank">
-                        <img src="{{ img.thumbnail_url }}" class="max-w-[200px] max-h-[200px] object-contain border border-skin-border rounded-sm hover:opacity-90">
+                <figure class="group flex flex-col shrink-0 max-w-[150px] sm:max-w-[200px]">
+                    <figcaption class="text-[10px] text-skin-muted truncate w-full mb-1" title="{{ img.filename }}">
+                        <a href="{{ img.url }}" target="_blank" class="hover:underline hover:text-skin-link">{{ img.filename }}</a>
+                        <span class="text-[9px] opacity-70">({{ img.size / 1024 }}KB, {{ img.width }}x{{ img.height }})</span>
+                    </figcaption>
+                    <a href="{{ img.url }}" target="_blank" class="block relative overflow-hidden rounded-sm border border-skin-border bg-black/5">
+                        <img src="{{ img.thumbnail_url }}" class="w-full h-auto max-h-[150px] sm:max-h-[200px] object-contain transition-opacity group-hover:opacity-80" alt="{{ img.filename }}">
                     </a>
-                </div>
+                </figure>
                 {% endfor %}
             </div>
             {% endif %}
 
-            <div class="flex-grow">
+            <div class="flex-grow min-w-0">
                 <div class="text-xs text-skin-muted mb-2">
                     {% if let Some(subject) = thread.subject %}
                     <span class="font-bold text-skin-text text-base mr-2">{{ subject }}</span>
                     {% endif %}
                     <span class="font-bold text-green-600">Анонім</span>
                     <span>{{ thread.created_at.format("%d.%m.%Y %H:%M:%S") }}</span>
-                    <span class="text-skin-text">№{{ thread.id }}</span>
+                    <span class="text-skin-text select-all cursor-pointer hover:text-skin-accent">№{{ thread.id }}</span>
                 </div>
-                <div class="text-base text-skin-text leading-relaxed whitespace-pre-wrap">
+                <div class="text-base text-skin-text leading-relaxed whitespace-pre-wrap break-words font-sans">
                     {{ thread.content }}
                 </div>
             </div>
@@ -51,36 +51,36 @@
     <!-- Replies -->
     <div class="flex flex-col gap-1 items-start">
         {% for post_item in posts %}
-        <div class="reply-container bg-skin-surface border border-skin-border rounded-r-lg rounded-bl-lg p-3 min-w-[300px] max-w-full sm:max-w-4xl" id="p{{ post_item.model.id }}">
+        <div class="reply-container bg-skin-surface border border-skin-border rounded-r-lg rounded-bl-lg p-3 min-w-[300px] max-w-full sm:max-w-4xl shadow-post" id="p{{ post_item.model.id }}">
             <div class="text-xs text-skin-muted mb-2 pb-1 border-b border-skin-border/50 border-dashed flex justify-between">
-                <div>
+                <div class="flex items-center gap-2">
                     <span class="font-bold text-green-600">Анонім</span>
                     <span>{{ post_item.model.created_at.format("%d.%m.%Y %H:%M:%S") }}</span>
-                    <a href="#p{{ post_item.model.id }}" class="hover:text-skin-accent">№{{ post_item.model.id }}</a>
+                    <a href="#p{{ post_item.model.id }}" class="hover:text-skin-accent hover:underline">№{{ post_item.model.id }}</a>
                 </div>
                 <div class="opacity-0 hover:opacity-100 transition-opacity">
-                    <span class="cursor-pointer" onclick="replyTo({{ post_item.model.id }})">Відповісти</span>
+                    <button class="text-[10px] uppercase font-bold text-skin-muted hover:text-skin-text" onclick="replyTo({{ post_item.model.id }})">Відповісти</button>
                 </div>
             </div>
 
             <!-- Post Images -->
             {% if !post_item.images.is_empty() %}
-            <div class="flex flex-wrap gap-3 mb-2">
+            <div class="flex flex-wrap gap-2 mb-2">
                 {% for img in post_item.images %}
-                <div class="inline-block">
-                    <div class="text-[10px] text-skin-muted truncate w-[120px] mb-0.5">
-                        <a href="{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
-                        <span>({{ img.size / 1024 }}KB)</span>
-                    </div>
-                    <a href="{{ img.url }}" target="_blank">
-                        <img src="{{ img.thumbnail_url }}" class="max-w-[150px] max-h-[150px] object-contain border border-skin-border">
+                <figure class="group flex flex-col shrink-0 max-w-[120px]">
+                    <figcaption class="text-[10px] text-skin-muted truncate w-full mb-0.5" title="{{ img.filename }}">
+                        <a href="{{ img.url }}" target="_blank" class="hover:underline hover:text-skin-link">{{ img.filename }}</a>
+                        <span class="text-[9px] opacity-70">({{ img.size / 1024 }}KB)</span>
+                    </figcaption>
+                    <a href="{{ img.url }}" target="_blank" class="block relative overflow-hidden rounded-sm border border-skin-border bg-black/5">
+                        <img src="{{ img.thumbnail_url }}" class="w-full h-auto max-h-[120px] object-contain transition-opacity group-hover:opacity-80" alt="{{ img.filename }}">
                     </a>
-                </div>
+                </figure>
                 {% endfor %}
             </div>
             {% endif %}
 
-            <div class="text-sm text-skin-text whitespace-pre-wrap">{{ post_item.model.content }}</div>
+            <div class="text-sm text-skin-text whitespace-pre-wrap break-words">{{ post_item.model.content }}</div>
         </div>
         {% endfor %}
     </div>
@@ -90,23 +90,32 @@
 <!-- Sticky Reply Form -->
 <div class="fixed bottom-0 left-0 right-0 p-2 sm:p-0 sm:relative sm:mt-8 sm:flex sm:justify-center bg-skin-base sm:bg-transparent border-t sm:border-0 border-skin-border z-40">
     <div class="bg-skin-surface border border-skin-border p-3 rounded shadow-lg w-full sm:w-[500px]">
-        <div class="text-xs font-bold text-skin-accent mb-2 uppercase tracking-widest">Відповісти в тред</div>
-        <!-- Added enctype -->
+        <div class="text-xs font-bold text-skin-accent mb-2 uppercase tracking-widest flex justify-between">
+            <span>Відповісти в тред</span>
+            <span class="text-[10px] text-skin-muted cursor-pointer" onclick="document.getElementById('reply-box').value = ''">Очистити</span>
+        </div>
+        <!-- Form -->
         <form action="/{{ board.slug }}/thread/{{ thread.id }}/reply" method="post" enctype="multipart/form-data" class="flex flex-col gap-2">
-            <textarea id="reply-box" name="content" rows="4" class="w-full p-2 text-sm rounded border border-skin-border bg-skin-input focus:ring-1 focus:ring-skin-accent resize-y" placeholder="Напишіть відповідь..." required></textarea>
+            <textarea id="reply-box" name="content" rows="4" class="w-full p-2 text-sm rounded border border-skin-border bg-skin-input focus:ring-1 focus:ring-skin-accent resize-y placeholder-skin-muted/50" placeholder="Напишіть відповідь..." required></textarea>
 
             <div class="flex justify-between items-center gap-2">
-                <!-- File Input -->
+                <!-- Custom File Input -->
                 <div class="flex-grow">
-                    <input type="file" name="file" multiple accept="image/*" class="w-full text-[10px] text-skin-muted file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:bg-skin-header file:text-white">
+                    <label class="flex items-center gap-2 w-full cursor-pointer bg-skin-input border border-skin-border rounded p-1.5 hover:border-skin-accent transition-colors group">
+                        <div class="bg-skin-header text-white text-[10px] font-bold px-2 py-1 rounded group-hover:bg-skin-accent transition-colors">
+                            ФАЙЛИ
+                        </div>
+                        <span id="reply-file-label" class="text-[10px] text-skin-muted truncate select-none">Макс. 5 (до 2МБ)</span>
+                        <input type="file" name="file" multiple accept="image/*" class="hidden" onchange="document.getElementById('reply-file-label').innerText = this.files.length > 0 ? this.files.length + ' файл(ів)' : 'Макс. 5 (до 2МБ)'">
+                    </label>
                 </div>
 
                 <div class="flex items-center gap-3 shrink-0">
-                    <label class="flex items-center gap-1 text-xs text-skin-muted cursor-pointer">
-                        <input type="checkbox" name="sage" class="rounded text-skin-accent focus:ring-0">
+                    <label class="flex items-center gap-1 text-xs text-skin-muted cursor-pointer hover:text-skin-text transition-colors">
+                        <input type="checkbox" name="sage" class="rounded text-skin-accent focus:ring-0 bg-skin-input border-skin-border">
                         Sage
                     </label>
-                    <button type="submit" class="bg-skin-primary text-white px-4 py-1.5 rounded text-xs font-bold uppercase hover:bg-skin-primary-hover transition-colors">Відповісти</button>
+                    <button type="submit" class="bg-skin-primary text-white px-4 py-1.5 rounded text-xs font-bold uppercase hover:bg-skin-primary-hover transition-colors shadow-sm">Відповісти</button>
                 </div>
             </div>
         </form>
@@ -116,8 +125,19 @@
 <script>
     function replyTo(id) {
         const box = document.getElementById('reply-box');
-        box.value += '>>' + id + '\n';
+        const text = box.value;
+        const ref = '>>' + id + '\n';
+
+        // Append or insert
+        if (text.length > 0 && text.slice(-1) !== '\n') {
+            box.value += '\n' + ref;
+        } else {
+            box.value += ref;
+        }
+
         box.focus();
+        // Scroll to bottom of textarea
+        box.scrollTop = box.scrollHeight;
     }
 </script>
 

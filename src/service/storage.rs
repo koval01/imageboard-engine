@@ -4,7 +4,7 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3::{config::Region, Client};
 use aws_credential_types::Credentials;
 use bytes::Bytes;
-use image::{imageops::FilterType, GenericImageView};
+use image::{imageops::FilterType, GenericImageView, ImageFormat};
 use std::io::Cursor;
 use uuid::Uuid;
 
@@ -29,6 +29,7 @@ impl StorageService {
     pub async fn init() -> Self {
         let region_provider = RegionProviderChain::default_provider().or_else(Region::new("auto"));
 
+        // Note: aws_credential_types crate usage implies it is added to Cargo.toml
         let credentials = Credentials::new(
             std::env::var("S3_ACCESS_KEY").expect("S3_ACCESS_KEY must be set"),
             std::env::var("S3_SECRET_KEY").expect("S3_SECRET_KEY must be set"),
@@ -67,11 +68,13 @@ impl StorageService {
             };
 
             let mut main_buffer = Cursor::new(Vec::new());
-            processed_img.write_to(&mut main_buffer, image::ImageOutputFormat::WebP)?;
+            // Changed ImageOutputFormat::WebP to ImageFormat::WebP
+            processed_img.write_to(&mut main_buffer, ImageFormat::WebP)?;
 
             let thumb_img = img.thumbnail(300, 300);
             let mut thumb_buffer = Cursor::new(Vec::new());
-            thumb_img.write_to(&mut thumb_buffer, image::ImageOutputFormat::WebP)?;
+            // Changed ImageOutputFormat::WebP to ImageFormat::WebP
+            thumb_img.write_to(&mut thumb_buffer, ImageFormat::WebP)?;
 
             Ok::<(Vec<u8>, Vec<u8>, u32, u32), anyhow::Error>((main_buffer.into_inner(), thumb_buffer.into_inner(), w, h))
         })

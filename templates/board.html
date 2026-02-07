@@ -3,50 +3,56 @@
 {% block content %}
 
 <!-- Board Header -->
-<div class="text-center mb-8">
-    <h2 class="text-3xl text-skin-accent font-bold tracking-tight">/{{ board.slug }}/ - {{ board.name }}</h2>
+<div class="text-center mb-8 pt-4">
+    <h2 class="text-3xl text-skin-accent font-bold tracking-tight">/{{ board.slug }}/ <span class="text-skin-text font-normal text-lg ml-2">{{ board.name }}</span></h2>
+    <p class="text-xs text-skin-muted mt-1">{{ board.description }}</p>
 </div>
 
 <!-- Collapsible Post Form -->
 <div class="flex justify-center mb-10">
     <div class="w-full max-w-xl">
         <details class="group bg-skin-surface border border-skin-border rounded shadow-sm open:shadow-lg transition-all duration-300">
-            <summary class="list-none flex items-center justify-center p-3 cursor-pointer font-bold text-skin-text hover:text-skin-accent select-none">
-                <span class="mr-2">[</span>
+            <summary class="list-none flex items-center justify-center p-3 cursor-pointer font-bold text-skin-text hover:text-skin-accent select-none transition-colors">
+                <span class="mr-2 text-skin-muted">[</span>
                 <span>Створити новий тред</span>
-                <span class="ml-2">]</span>
+                <span class="ml-2 text-skin-muted">]</span>
             </summary>
 
             <div class="p-4 border-t border-skin-border bg-skin-base/50">
-                <!-- Added enctype -->
                 <form action="/{{ board.slug }}/submit" method="post" enctype="multipart/form-data" class="flex flex-col gap-3">
-                    <div>
-                        <input type="text" name="subject" placeholder="Тема" class="w-full p-2 text-sm rounded focus:ring-2 focus:ring-skin-accent transition-shadow">
-                    </div>
-                    <div>
-                        <textarea name="content" rows="5" placeholder="Коментар" class="w-full p-2 text-sm rounded focus:ring-2 focus:ring-skin-accent transition-shadow resize-y" required></textarea>
-                    </div>
-                    <!-- Updated File Input -->
                     <div class="flex flex-col gap-1">
-                        <div class="flex items-center gap-2">
-                            <input type="file" name="file" multiple accept="image/*" class="block w-full text-xs text-skin-muted file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-skin-header file:text-white hover:file:bg-skin-accent">
-                        </div>
-                        <p class="text-[10px] text-skin-muted pl-1">Макс. 5 файлів, до 2МБ кожен.</p>
+                        <input type="text" name="subject" placeholder="Тема (опціонально)" class="w-full p-2 text-sm rounded border border-skin-border bg-skin-input focus:ring-1 focus:ring-skin-accent transition-shadow placeholder-skin-muted/50">
+                    </div>
+                    <div>
+                        <textarea name="content" rows="5" placeholder="Ваше повідомлення..." class="w-full p-2 text-sm rounded border border-skin-border bg-skin-input focus:ring-1 focus:ring-skin-accent transition-shadow resize-y placeholder-skin-muted/50" required></textarea>
                     </div>
 
-                    <button type="submit" class="self-end bg-skin-primary text-white px-6 py-2 rounded text-sm font-bold hover:bg-skin-primary-hover shadow-sm transition-colors">Надіслати</button>
+                    <div class="flex justify-between items-center gap-2 mt-1">
+                        <!-- Custom File Input -->
+                        <div class="flex-grow">
+                            <label class="flex items-center gap-2 w-full cursor-pointer bg-skin-input border border-skin-border rounded p-1.5 hover:border-skin-accent transition-colors group">
+                                <div class="bg-skin-header text-white text-[10px] font-bold px-2 py-1 rounded group-hover:bg-skin-accent transition-colors">
+                                    ФАЙЛИ
+                                </div>
+                                <span id="new-thread-file-label" class="text-[10px] text-skin-muted truncate select-none">Макс. 5 (до 2МБ)</span>
+                                <input type="file" name="file" multiple accept="image/*" class="hidden" onchange="document.getElementById('new-thread-file-label').innerText = this.files.length > 0 ? this.files.length + ' файл(ів)' : 'Макс. 5 (до 2МБ)'">
+                            </label>
+                        </div>
+
+                        <button type="submit" class="self-end bg-skin-primary text-white px-6 py-2 rounded text-sm font-bold hover:bg-skin-primary-hover shadow-sm transition-colors uppercase">Надіслати</button>
+                    </div>
                 </form>
             </div>
         </details>
     </div>
 </div>
 
-<hr class="border-skin-border mb-8">
+<hr class="border-skin-border mb-8 opacity-50">
 
 <!-- Thread List -->
-<div class="flex flex-col gap-8">
+<div class="flex flex-col gap-10">
     {% for thread_item in threads %}
-    <div class="thread" id="thread-{{ thread_item.model.id }}">
+    <div class="thread group/thread" id="thread-{{ thread_item.model.id }}">
 
         <!-- OP Post -->
         <article class="flex flex-col sm:flex-row gap-3">
@@ -54,20 +60,20 @@
             {% if !thread_item.images.is_empty() %}
             <div class="shrink-0 flex flex-wrap gap-2 sm:flex-col sm:gap-4 max-w-full sm:max-w-[200px]">
                 {% for img in thread_item.images %}
-                <div class="group">
-                    <div class="text-[10px] text-skin-muted truncate w-[150px] mb-0.5">
-                        <a href="{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
-                        <span>({{ img.size / 1024 }}KB, {{ img.width }}x{{ img.height }})</span>
-                    </div>
-                    <a href="{{ img.url }}" target="_blank">
-                        <img src="{{ img.thumbnail_url }}" class="max-w-[150px] max-h-[150px] sm:max-w-[200px] sm:max-h-[200px] object-contain border border-skin-border rounded-sm hover:opacity-90 transition-opacity">
+                <figure class="group flex flex-col shrink-0 max-w-[150px] sm:max-w-[200px]">
+                    <figcaption class="text-[10px] text-skin-muted truncate w-full mb-1" title="{{ img.filename }}">
+                        <a href="{{ img.url }}" target="_blank" class="hover:underline hover:text-skin-link">{{ img.filename }}</a>
+                        <span class="text-[9px] opacity-70">({{ img.size / 1024 }}KB, {{ img.width }}x{{ img.height }})</span>
+                    </figcaption>
+                    <a href="{{ img.url }}" target="_blank" class="block relative overflow-hidden rounded-sm border border-skin-border bg-black/5">
+                        <img src="{{ img.thumbnail_url }}" class="w-full h-auto max-h-[150px] sm:max-h-[200px] object-contain transition-opacity group-hover:opacity-80" alt="{{ img.filename }}">
                     </a>
-                </div>
+                </figure>
                 {% endfor %}
             </div>
             {% endif %}
 
-            <div class="flex-grow">
+            <div class="flex-grow min-w-0">
                 <!-- Meta Header -->
                 <div class="text-xs text-skin-muted mb-2">
                     {% if let Some(subject) = thread_item.model.subject %}
@@ -77,55 +83,60 @@
                     <span class="mx-1"></span>
                     <span>{{ thread_item.model.created_at.format("%d.%m.%Y %H:%M:%S") }}</span>
                     <span class="mx-1"></span>
-                    <a href="/{{ board.slug }}/thread/{{ thread_item.model.id }}" class="text-skin-text hover:text-skin-accent">№{{ thread_item.model.id }}</a>
+                    <a href="/{{ board.slug }}/thread/{{ thread_item.model.id }}" class="text-skin-text hover:text-skin-accent hover:underline">№{{ thread_item.model.id }}</a>
                     <span class="mx-2"></span>
-                    <a href="/{{ board.slug }}/thread/{{ thread_item.model.id }}" class="bg-skin-surface border border-skin-border px-1.5 rounded hover:border-skin-accent text-skin-text">[Відповісти]</a>
+                    <a href="/{{ board.slug }}/thread/{{ thread_item.model.id }}" class="bg-skin-surface border border-skin-border px-1.5 rounded hover:border-skin-accent text-skin-text transition-colors">[Відповісти]</a>
                 </div>
 
                 <!-- Body -->
-                <div class="text-sm text-skin-text leading-relaxed whitespace-pre-wrap font-sans">
+                <div class="text-sm text-skin-text leading-relaxed whitespace-pre-wrap break-words font-sans">
                     {{ thread_item.model.content }}
                 </div>
             </div>
         </article>
 
         <!-- Last Replies -->
-        <div class="mt-2 pl-2 sm:pl-12 flex flex-col gap-2">
+        {% if !thread_item.replies.is_empty() %}
+        <div class="mt-3 pl-2 sm:pl-12 flex flex-col gap-2">
+            <div class="text-[10px] text-skin-muted italic mb-1">
+                Останні відповіді:
+            </div>
             {% for post_item in thread_item.replies %}
-            <div class="bg-skin-surface border border-skin-border rounded p-3 w-fit min-w-[300px] max-w-full text-sm">
-                <div class="text-xs text-skin-muted mb-1 pb-1 border-b border-skin-border/50 border-dashed">
+            <div class="bg-skin-surface border border-skin-border rounded-r rounded-bl p-3 w-fit min-w-[300px] max-w-full text-sm shadow-sm hover:border-skin-accent/50 transition-colors">
+                <div class="text-xs text-skin-muted mb-2 pb-1 border-b border-skin-border/50 border-dashed flex gap-2">
                     <span class="font-bold text-green-600">Анонім</span>
                     <span>{{ post_item.model.created_at.format("%d.%m.%Y %H:%M") }}</span>
-                    <a href="/{{ board.slug }}/thread/{{ thread_item.model.id }}#p{{ post_item.model.id }}" class="hover:text-skin-accent">№{{ post_item.model.id }}</a>
+                    <a href="/{{ board.slug }}/thread/{{ thread_item.model.id }}#p{{ post_item.model.id }}" class="hover:text-skin-accent hover:underline">№{{ post_item.model.id }}</a>
                 </div>
 
                 <!-- Reply Images -->
                 {% if !post_item.images.is_empty() %}
                 <div class="flex flex-wrap gap-2 mb-2">
                     {% for img in post_item.images %}
-                    <div class="inline-block">
-                        <div class="text-[10px] text-skin-muted truncate w-[100px]">
-                            <a href="{{ img.url }}" target="_blank">{{ img.filename }}</a>
-                        </div>
-                        <a href="{{ img.url }}" target="_blank">
-                            <img src="{{ img.thumbnail_url }}" class="max-w-[100px] max-h-[100px] object-contain border border-skin-border">
+                    <figure class="group flex flex-col shrink-0 max-w-[100px]">
+                        <figcaption class="text-[9px] text-skin-muted truncate w-full mb-0.5">
+                            <a href="{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
+                        </figcaption>
+                        <a href="{{ img.url }}" target="_blank" class="block relative overflow-hidden rounded-sm border border-skin-border bg-black/5">
+                            <img src="{{ img.thumbnail_url }}" class="w-full h-auto max-h-[100px] object-contain transition-opacity group-hover:opacity-80" alt="{{ img.filename }}">
                         </a>
-                    </div>
+                    </figure>
                     {% endfor %}
                 </div>
                 {% endif %}
 
-                <div class="text-skin-text whitespace-pre-wrap">{{ post_item.model.content }}</div>
+                <div class="text-skin-text whitespace-pre-wrap break-words">{{ post_item.model.content }}</div>
             </div>
             {% endfor %}
         </div>
+        {% endif %}
     </div>
-    <hr class="border-skin-border/50 clear-both">
+    <hr class="border-skin-border/30 clear-both">
     {% endfor %}
 </div>
 
-<!-- Floating Action Button -->
-<div class="fixed bottom-6 right-6 md:hidden">
+<!-- Floating Action Button (Mobile) -->
+<div class="fixed bottom-6 right-6 md:hidden z-50">
     <a href="#" onclick="document.querySelector('details').open = true; window.scrollTo({top: 0, behavior: 'smooth'}); return false;"
        class="flex items-center justify-center w-14 h-14 bg-skin-primary text-white rounded-full shadow-lg hover:bg-skin-primary-hover transition-transform active:scale-95">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
