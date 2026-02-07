@@ -13,7 +13,7 @@ use crate::{
     AppState,
     handler::middleware::CurrentSession,
     handler::HtmlTemplate,
-    service::storage::{ProcessedImage, StorageService},
+    service::{ProcessedImage, StorageService},
 };
 
 struct ParsedForm {

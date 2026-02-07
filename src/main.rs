@@ -14,7 +14,7 @@ use config::Config;
 use dotenv::dotenv;
 
 use migrator::Migrator;
-use service::storage::StorageService;
+use service::StorageService;
 
 use sea_orm::DatabaseConnection;
 use sea_orm_migration::MigratorTrait;

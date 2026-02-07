@@ -199,8 +199,3 @@ pub mod images {
 
     impl ActiveModelBehavior for ActiveModel {}
 }
-
-pub use boards::Model as Board;
-pub use threads::Model as Thread;
-pub use posts::Model as Post;
-pub use images::Model as Image;

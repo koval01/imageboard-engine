@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use aws_config::meta::region::RegionProviderChain;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::{config::Region, Client};
+use aws_credential_types::Credentials;
 use bytes::Bytes;
 use image::{imageops::FilterType, GenericImageView};
 use std::io::Cursor;
@@ -28,9 +29,18 @@ impl StorageService {
     pub async fn init() -> Self {
         let region_provider = RegionProviderChain::default_provider().or_else(Region::new("auto"));
 
+        let credentials = Credentials::new(
+            std::env::var("S3_ACCESS_KEY").expect("S3_ACCESS_KEY must be set"),
+            std::env::var("S3_SECRET_KEY").expect("S3_SECRET_KEY must be set"),
+            None,
+            None,
+            "Static"
+        );
+
         let config = aws_config::defaults(BehaviorVersion::latest())
             .region(region_provider)
             .endpoint_url(std::env::var("S3_ENDPOINT").expect("S3_ENDPOINT not set"))
+            .credentials_provider(credentials)
             .load()
             .await;
 
