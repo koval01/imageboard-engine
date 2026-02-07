@@ -22,7 +22,7 @@
                 <div class="group">
                     <div class="text-[10px] text-skin-muted truncate w-[150px] mb-0.5">
                         <a href="{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
-                        <span>({{ (img.size / 1024)|round }}KB, {{ img.width }}x{{ img.height }})</span>
+                        <span>({{ img.size / 1024 }}KB, {{ img.width }}x{{ img.height }})</span>
                     </div>
                     <a href="{{ img.url }}" target="_blank">
                         <img src="{{ img.thumbnail_url }}" class="max-w-[200px] max-h-[200px] object-contain border border-skin-border rounded-sm hover:opacity-90">
@@ -70,7 +70,7 @@
                 <div class="inline-block">
                     <div class="text-[10px] text-skin-muted truncate w-[120px] mb-0.5">
                         <a href="{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
-                        <span>({{ (img.size / 1024)|round }}KB)</span>
+                        <span>({{ img.size / 1024 }}KB)</span>
                     </div>
                     <a href="{{ img.url }}" target="_blank">
                         <img src="{{ img.thumbnail_url }}" class="max-w-[150px] max-h-[150px] object-contain border border-skin-border">
