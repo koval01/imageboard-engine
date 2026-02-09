@@ -3,119 +3,154 @@
 {% block content %}
 
 <!-- Navigation -->
-<div class="py-2 border-b border-skin-border mb-4 text-sm font-bold">
-    <a href="/{{ board.slug }}" class="text-skin-link hover:underline">
-        &larr; Назад до /{{ board.slug }}/
-    </a>
-</div>
-
-<!-- Encrypted Data Blob -->
-<script type="text/json" id="__KR_DATA">{{ payload }}</script>
-
-<div class="thread-container mb-24">
-
-    <!-- OP Post (Static Text, Images via JS to prevent scraping) -->
-    <div class="op-container mb-4 p-3 bg-skin-surface/50 border border-transparent rounded hover:border-skin-border transition-colors">
-        <div class="flex flex-col sm:flex-row gap-3">
-
-            <!-- OP Images Container (Populated by JS if present in payload) -->
-            <!-- Note: Current JS implementation focuses on reply lists, OP images might need specific JS handling or are rendered as part of hydration if updated -->
-
-            <div class="flex-grow min-w-0">
-                <div class="text-xs text-skin-muted mb-2">
-                    {% if let Some(subject) = thread.subject %}
-                    <span class="font-bold text-skin-text text-base mr-2">{{ subject }}</span>
-                    {% endif %}
-                    {% if let Some(cc) = thread.country_code %}
-                    <span class="fi fi-{{ cc|lower }} mr-1" title="{{ cc }}"></span>
-                    {% endif %}
-                    <span class="font-bold text-green-600">Анонім</span>
-                    <span>{{ thread.created_at.format("%d.%m.%Y %H:%M:%S") }}</span>
-                    <span class="text-skin-text select-all cursor-pointer hover:text-skin-accent">№{{ thread.id }}</span>
-                </div>
-                <div class="text-base text-skin-text leading-relaxed whitespace-pre-wrap break-words font-sans">
-                    {{ thread.content }}
-                </div>
-            </div>
+<div class="container max-w-7xl mx-auto px-2">
+    <div class="py-2 border-b border-skin-border mb-4 text-sm font-bold flex justify-between items-center">
+        <a href="/{{ board.slug }}" class="text-skin-link hover:underline flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+            Назад до /{{ board.slug }}/
+        </a>
+        <div class="flex items-center gap-2">
+            <span class="loading loading-spinner loading-xs text-skin-accent htmx-indicator" id="poll-indicator"></span>
+            <span class="text-[10px] text-skin-muted uppercase tracking-widest font-mono">Live Sync</span>
         </div>
     </div>
 
-    <!-- Replies Container (Client-Side Rendering) -->
-    <div id="thread-container" class="flex flex-col gap-1 items-start opacity-0 transition-opacity duration-700">
-        <!-- Loading State -->
-        <div class="w-full text-center py-10">
-            <span class="loading loading-spinner loading-lg text-skin-accent"></span>
-            <p class="text-xs font-mono text-skin-muted mt-2">SYNC_BLOCKCHAIN_NODES...</p>
-        </div>
-    </div>
+    <!--
+        Main Thread Wrapper
+        hx-get: Refreshes THIS element (and everything inside it) from the server.
+        hx-select: Grabs only this element from the response to replace itself.
+        hx-trigger: Polls every 15s.
+    -->
+    <div id="thread-wrapper"
+         hx-get="/{{ board.slug }}/thread/{{ thread.id }}"
+         hx-select="#thread-wrapper"
+         hx-trigger="every 15s"
+         hx-swap="outerHTML"
+         hx-indicator="#poll-indicator">
 
-</div>
+        <!-- Encrypted Payload -->
+        <script type="text/json" id="__KR_DATA">{{ payload }}</script>
 
-<!-- Sticky Reply Form (Protected by Anti-Bot Token) -->
-<div class="fixed bottom-0 left-0 right-0 p-2 sm:p-0 sm:relative sm:mt-8 sm:flex sm:justify-center bg-skin-base sm:bg-transparent border-t sm:border-0 border-skin-border z-40">
-    <div class="bg-skin-surface border border-skin-border p-3 rounded shadow-lg w-full sm:w-[500px]">
-        <div class="text-xs font-bold text-skin-accent mb-2 uppercase tracking-widest flex justify-between">
-            <span>Відповісти в тред</span>
-            <span class="text-[10px] text-skin-muted cursor-pointer" onclick="document.getElementById('reply-box').value = ''">Очистити</span>
-        </div>
+        <div class="thread-container mb-32 max-w-5xl mx-auto">
 
-        <!-- Converted to HTMX for token interception -->
-        <form hx-post="/{{ board.slug }}/thread/{{ thread.id }}/reply"
-              hx-encoding="multipart/form-data"
-              hx-target="body"
-              hx-indicator="#reply-spinner"
-              class="flex flex-col gap-2">
-
-            <textarea id="reply-box" name="content" rows="4" class="w-full p-2 text-sm rounded border border-skin-border bg-skin-input focus:ring-1 focus:ring-skin-accent resize-y placeholder-skin-muted/50" placeholder="Напишіть відповідь..." required></textarea>
-
-            <div class="flex justify-between items-center gap-2">
-                <!-- Custom File Input -->
-                <div class="flex-grow">
-                    <label class="flex items-center gap-2 w-full cursor-pointer bg-skin-input border border-skin-border rounded p-1.5 hover:border-skin-accent transition-colors group">
-                        <div class="bg-skin-header text-white text-[10px] font-bold px-2 py-1 rounded group-hover:bg-skin-accent transition-colors">
-                            ФАЙЛИ
+            <!-- OP Post -->
+            <div class="bg-skin-surface border border-skin-border rounded-lg p-4 sm:p-6 mb-6 shadow-sm">
+                <div class="flex flex-col gap-4">
+                    <!-- Metadata -->
+                    <div class="flex flex-wrap items-center justify-between border-b border-skin-border/50 pb-2">
+                        <div class="text-sm text-skin-muted flex items-center gap-2">
+                            {% if let Some(subject) = thread.subject %}
+                            <span class="font-bold text-skin-text text-base">{{ subject }}</span>
+                            {% endif %}
+                            {% if let Some(cc) = thread.country_code %}
+                            <span class="fi fi-{{ cc|lower }} rounded-sm shadow-sm" title="{{ cc }}"></span>
+                            {% endif %}
+                            <span class="font-bold text-green-700">Анонім</span>
+                            <span class="opacity-70">{{ thread.created_at.format("%d.%m.%Y %H:%M") }}</span>
                         </div>
-                        <span id="reply-file-label" class="text-[10px] text-skin-muted truncate select-none">Макс. 5 (до 2МБ)</span>
-                        <input type="file" name="file" multiple accept="image/*" class="hidden" onchange="document.getElementById('reply-file-label').innerText = this.files.length > 0 ? this.files.length + ' файл(ів)' : 'Макс. 5 (до 2МБ)'">
-                    </label>
-                </div>
+                        <div class="flex items-center gap-2 text-xs">
+                            <span class="font-mono text-skin-text select-all cursor-pointer hover:bg-skin-base px-1 rounded">№{{ thread.id }}</span>
+                            <button onclick="replyTo({{ thread.id }})" class="text-skin-link font-bold hover:underline">[ВІДПОВІСТИ]</button>
+                        </div>
+                    </div>
 
-                <div class="flex items-center gap-3 shrink-0">
-                    <label class="flex items-center gap-1 text-xs text-skin-muted cursor-pointer hover:text-skin-text transition-colors">
-                        <input type="checkbox" name="sage" class="rounded text-skin-accent focus:ring-0 bg-skin-input border-skin-border">
-                        Sage
-                    </label>
-                    <button type="submit" class="flex items-center gap-2 bg-skin-primary text-white px-4 py-1.5 rounded text-xs font-bold uppercase hover:bg-skin-primary-hover transition-colors shadow-sm disabled:opacity-50">
-                        <span>Відповісти</span>
-                        <span id="reply-spinner" class="htmx-indicator loading loading-spinner loading-xs"></span>
-                    </button>
+                    <!-- OP Images (Hydrated by JS) -->
+                    <div id="op-images-container" class="hidden"></div>
+
+                    <!-- OP Content -->
+                    <div class="text-base text-skin-text leading-relaxed whitespace-pre-wrap break-words font-sans">
+                        {{ thread.content }}
+                    </div>
                 </div>
             </div>
-        </form>
+
+            <!-- Replies (Hydrated by JS) -->
+            <div id="thread-container" class="flex flex-col gap-2 opacity-0 transition-opacity duration-500">
+                <!-- Initial Loader -->
+                <div class="w-full text-center py-10">
+                    <span class="loading loading-dots loading-lg text-skin-accent"></span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Configuration for Re-Hydration -->
+        <script>
+            window.__kr_config = {
+                mode: 'thread',
+                targetId: 'thread-container',
+                cdn: '{{ cdn_url }}',
+                boardSlug: '{{ board.slug }}'
+            };
+            // Run immediately on load
+            window.__kr_hydrate(window.__kr_config);
+        </script>
     </div>
 </div>
 
-<!-- Initialization -->
-<script src="/assets/js/core.min.js"></script>
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-        window.__kr_hydrate({
-            mode: 'thread',
-            targetId: 'thread-container',
-            cdn: '{{ cdn_url }}',
-            boardSlug: '{{ board.slug }}'
-        });
-    });
+<!-- Sticky Reply Form -->
+<div class="fixed bottom-0 left-0 right-0 p-0 z-40">
+    <!-- Collapse Toggle -->
+    <div class="flex justify-center">
+        <div class="bg-skin-surface border-t border-l border-r border-skin-border rounded-t-lg px-4 py-1 cursor-pointer text-[10px] font-bold text-skin-muted uppercase hover:text-skin-accent shadow-lg"
+             onclick="document.getElementById('reply-panel').classList.toggle('translate-y-full')">
+            Відкрити/Закрити форму
+        </div>
+    </div>
 
+    <!-- Form Panel -->
+    <div id="reply-panel" class="bg-skin-surface border-t border-skin-border shadow-[0_-5px_20px_rgba(0,0,0,0.1)] transition-transform duration-300 transform translate-y-0">
+        <div class="container max-w-3xl mx-auto p-3">
+            <form hx-post="/{{ board.slug }}/thread/{{ thread.id }}/reply"
+                  hx-encoding="multipart/form-data"
+                  hx-target="body"
+                  hx-swap="innerHTML"
+                  hx-indicator="#reply-spinner"
+                  class="flex gap-3">
+
+                <div class="grow flex flex-col gap-2">
+                    <textarea id="reply-box" name="content" rows="3" class="w-full p-2 text-sm rounded border border-skin-border bg-skin-input focus:ring-1 focus:ring-skin-accent placeholder-skin-muted/50 resize-none" placeholder="Напишіть відповідь... (Shift+Enter для нового рядка)" required></textarea>
+
+                    <div class="flex justify-between items-center">
+                        <!-- File Input -->
+                        <label class="flex items-center gap-2 cursor-pointer opacity-70 hover:opacity-100 transition-opacity">
+                            <svg class="w-5 h-5 text-skin-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                            <span id="reply-file-label" class="text-xs text-skin-muted">Прикріпити файли</span>
+                            <input type="file" name="file" multiple accept="image/*" class="hidden" onchange="document.getElementById('reply-file-label').innerText = this.files.length > 0 ? this.files.length + ' файл(ів)' : 'Прикріпити файли'">
+                        </label>
+
+                        <div class="flex items-center gap-3">
+                            <label class="flex items-center gap-1 text-xs text-skin-muted cursor-pointer select-none">
+                                <input type="checkbox" name="sage" class="rounded text-skin-red focus:ring-0 bg-skin-input border-skin-border w-3 h-3">
+                                SAGE
+                            </label>
+                            <button type="submit" class="bg-skin-primary text-white px-6 py-1.5 rounded text-sm font-bold shadow-sm hover:bg-skin-primary-hover transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2">
+                                <span>ВІДПОВІСТИ</span>
+                                <span id="reply-spinner" class="htmx-indicator loading loading-spinner loading-xs"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
     function replyTo(id) {
+        const panel = document.getElementById('reply-panel');
         const box = document.getElementById('reply-box');
-        const text = box.value;
+
+        // Ensure panel is open
+        panel.classList.remove('translate-y-full');
+
         const ref = '>>' + id + '\n';
-        if (text.length > 0 && text.slice(-1) !== '\n') {
+        if (box.value.length > 0 && box.value.slice(-1) !== '\n') {
             box.value += '\n' + ref;
         } else {
             box.value += ref;
         }
+
         box.focus();
         box.scrollTop = box.scrollHeight;
     }
