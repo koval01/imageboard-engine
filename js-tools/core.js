@@ -1,4 +1,3 @@
-// assets/js/core_v1.js
 (function () {
     // --- Configuration ---
     // The "salt" used for the XOR logic.
@@ -7,9 +6,9 @@
 
     // --- Helpers ---
 
-    // 1. Get the Session Key (JWT) from cookies
+    // 1. Get the Session Key (UUID) from cookies
     function getSessionKey() {
-        const name = "session_id=";
+        const name = "client_key=";
         const decodedCookie = decodeURIComponent(document.cookie);
         const ca = decodedCookie.split(';');
         for (let i = 0; i < ca.length; i++) {
@@ -30,7 +29,7 @@
         if (!payloadBase64) return null;
         try {
             const key = getSessionKey();
-            if (!key) throw new Error("No key");
+            if (!key) throw new Error("No key found in cookies");
 
             const binaryString = atob(payloadBase64);
             const len = binaryString.length;
@@ -86,7 +85,7 @@
         const container = document.getElementById(config.targetId);
 
         if (!data || !container) {
-            container.innerHTML = `<div class="text-skin-red font-mono text-center">DECRYPTION FAILURE</div>`;
+            container.innerHTML = `<div class="text-skin-red font-mono text-center text-xs p-4">Будь ласка увімкніть cookies та JavaScript.</div>`;
             return;
         }
 
@@ -133,12 +132,19 @@
                         ${images.map(i => Gen.img(i, config.cdn)).join('')}
                     </div>` : '';
 
-                // Generate replies HTML (Simplified for preview)
+                // Generate replies HTML
                 let repliesHtml = '';
                 if(replies.length > 0) {
                     repliesHtml = `<div class="mt-3 pl-2 sm:pl-12 flex flex-col gap-2"><div class="text-[10px] text-skin-muted italic mb-1">Останні відповіді:</div>`;
                     replies.forEach(r => {
                         const rp = r.model;
+                        const replyImages = r.images || [];
+                        // Small preview for reply images
+                        const replyImgHtml = replyImages.length ?
+                            `<div class="flex flex-wrap gap-1 mb-1">${replyImages.map(i =>
+                                `<a href="${config.cdn}/${i.url}" target="_blank"><img src="${config.cdn}/${i.thumbnail_url}" class="w-16 h-16 object-cover rounded border border-skin-border"></a>`
+                            ).join('')}</div>` : '';
+
                         repliesHtml += `
                         <div class="bg-skin-surface border border-skin-border rounded-r rounded-bl p-3 w-fit min-w-[300px] max-w-full text-sm shadow-sm hover:border-skin-accent/50 transition-colors">
                             <div class="text-xs text-skin-muted mb-2 pb-1 border-b border-skin-border/50 border-dashed flex gap-2">
@@ -147,6 +153,7 @@
                                 <span>${Gen.date(rp.created_at)}</span>
                                 <a href="/${t.board_slug}/thread/${t.id}#p${rp.id}" class="hover:text-skin-accent hover:underline">№${rp.id}</a>
                             </div>
+                            ${replyImgHtml}
                             <div class="text-skin-text whitespace-pre-wrap break-words">${rp.content}</div>
                         </div>`;
                     });
