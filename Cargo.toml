@@ -12,25 +12,24 @@ strip = true
 debug = false
 
 [dependencies]
-anyhow = "1.0.101"
-askama = "0.15.4"
-axum = { version = "0.8.8", features = ["multipart"] }
-axum-extra = { version = "0.12.5", features = ["cookie"] }
-chrono = { version = "0.4.43", features = ["serde"] }
-dotenv = "0.15.0"
-jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
-serde = { version = "1.0.228", features = ["derive"] }
-sea-orm = { version = "1.1.19", features = [ "sqlx-sqlite", "runtime-tokio-native-tls", "macros", "with-chrono", "with-uuid" ] }
-sea-orm-migration = "1.1.19"
-time = "0.3.47"
-tokio = { version = "1.49.0", features = ["full"] }
-tower-http = { version = "0.6.8", features = ["fs", "trace"] }
-tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
-uuid = { version = "1.20.0", features = ["serde", "v4"] }
-aws-config = "1.1.7"
-aws-sdk-s3 = "1.17.0"
-aws-credential-types = "1.2.0"
-image = "0.25.9"
+anyhow = "1.0"
+askama = "0.15"
+axum = { version = "0.8", features = ["multipart"] }
+axum-extra = { version = "0.12", features = ["cookie"] }
+chrono = { version = "0.4", features = ["serde"] }
+dotenv = "0.15"
+jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
+serde = { version = "1.0", features = ["derive"] }
+sea-orm = { version = "1.1", features = [ "sqlx-sqlite", "runtime-tokio-native-tls", "macros", "with-chrono", "with-uuid" ] }
+sea-orm-migration = "1.1"
+time = "0.3"
+tokio = { version = "1.49", features = ["full"] }
+tower-http = { version = "0.6", features = ["fs", "trace"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.20", features = ["serde", "v4"] }
+aws-config = "1.8"
+aws-sdk-s3 = "1.122"
+aws-credential-types = "1.2"
+image = "0.25"
 webp = "0.3"
-futures = "0.3"
-bytes = "1.11.1"
+bytes = "1.11"
