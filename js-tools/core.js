@@ -34,15 +34,22 @@
             const binaryString = atob(payloadBase64);
             const len = binaryString.length;
             const keyLen = key.length;
-            let result = "";
+
+            // FIX: Use Uint8Array to handle UTF-8 bytes correctly
+            const bytes = new Uint8Array(len);
 
             for (let i = 0; i < len; i++) {
                 const byte = binaryString.charCodeAt(i);
                 const keyByte = key.charCodeAt(i % keyLen);
                 // Rolling XOR Reversal
                 const charCode = byte ^ keyByte ^ (i % MAGIC_OFFSET);
-                result += String.fromCharCode(charCode);
+                bytes[i] = charCode;
             }
+
+            // FIX: Decode the byte array as UTF-8
+            const decoder = new TextDecoder('utf-8');
+            const result = decoder.decode(bytes);
+
             return JSON.parse(result);
         } catch (e) {
             console.error("KR_ERR: 0x01", e); // Obscure error log
