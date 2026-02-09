@@ -9,35 +9,23 @@
     </a>
 </div>
 
+<!-- Encrypted Data Blob -->
+<script type="text/json" id="__KR_DATA">{{ payload }}</script>
+
 <div class="thread-container mb-24">
 
-    <!-- OP Post -->
+    <!-- OP Post (Static Text, Images via JS to prevent scraping) -->
     <div class="op-container mb-4 p-3 bg-skin-surface/50 border border-transparent rounded hover:border-skin-border transition-colors">
         <div class="flex flex-col sm:flex-row gap-3">
 
-            <!-- OP Images -->
-            {% if !images.is_empty() %}
-            <div class="shrink-0 flex flex-wrap gap-2 sm:flex-col sm:gap-4 max-w-full sm:max-w-[200px]">
-                {% for img in images %}
-                <figure class="group flex flex-col shrink-0 max-w-[150px] sm:max-w-[200px]">
-                    <figcaption class="text-[10px] text-skin-muted truncate w-full mb-1" title="{{ img.filename }}">
-                        <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline hover:text-skin-link">{{ img.filename }}</a>
-                        <span class="text-[9px] opacity-70">({{ img.size / 1024 }}KB, {{ img.width }}x{{ img.height }})</span>
-                    </figcaption>
-                    <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="block relative overflow-hidden rounded-sm border border-skin-border bg-black/5">
-                        <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="w-full h-auto max-h-[150px] sm:max-h-[200px] object-contain transition-opacity group-hover:opacity-80" alt="{{ img.filename }}">
-                    </a>
-                </figure>
-                {% endfor %}
-            </div>
-            {% endif %}
+            <!-- OP Images Container (Populated by JS if present in payload) -->
+            <!-- Note: Current JS implementation focuses on reply lists, OP images might need specific JS handling or are rendered as part of hydration if updated -->
 
             <div class="flex-grow min-w-0">
                 <div class="text-xs text-skin-muted mb-2">
                     {% if let Some(subject) = thread.subject %}
                     <span class="font-bold text-skin-text text-base mr-2">{{ subject }}</span>
                     {% endif %}
-                    <!-- Flag Display -->
                     {% if let Some(cc) = thread.country_code %}
                     <span class="fi fi-{{ cc|lower }} mr-1" title="{{ cc }}"></span>
                     {% endif %}
@@ -52,58 +40,32 @@
         </div>
     </div>
 
-    <!-- Replies -->
-    <div class="flex flex-col gap-1 items-start">
-        {% for post_item in posts %}
-        <div class="reply-container bg-skin-surface border border-skin-border rounded-r-lg rounded-bl-lg p-3 min-w-[300px] max-w-full sm:max-w-4xl shadow-post" id="p{{ post_item.model.id }}">
-            <div class="text-xs text-skin-muted mb-2 pb-1 border-b border-skin-border/50 border-dashed flex justify-between">
-                <div class="flex items-center gap-2">
-                    <!-- Flag Display -->
-                    {% if let Some(cc) = post_item.model.country_code %}
-                    <span class="fi fi-{{ cc|lower }}" title="{{ cc }}"></span>
-                    {% endif %}
-                    <span class="font-bold text-green-600">Анонім</span>
-                    <span>{{ post_item.model.created_at.format("%d.%m.%Y %H:%M:%S") }}</span>
-                    <a href="#p{{ post_item.model.id }}" class="hover:text-skin-accent hover:underline">№{{ post_item.model.id }}</a>
-                </div>
-                <div class="opacity-0 hover:opacity-100 transition-opacity">
-                    <button class="text-[10px] uppercase font-bold text-skin-muted hover:text-skin-text" onclick="replyTo({{ post_item.model.id }})">Відповісти</button>
-                </div>
-            </div>
-
-            <!-- Post Images -->
-            {% if !post_item.images.is_empty() %}
-            <div class="flex flex-wrap gap-2 mb-2">
-                {% for img in post_item.images %}
-                <figure class="group flex flex-col shrink-0 max-w-[120px]">
-                    <figcaption class="text-[10px] text-skin-muted truncate w-full mb-0.5" title="{{ img.filename }}">
-                        <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline hover:text-skin-link">{{ img.filename }}</a>
-                        <span class="text-[9px] opacity-70">({{ img.size / 1024 }}KB)</span>
-                    </figcaption>
-                    <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="block relative overflow-hidden rounded-sm border border-skin-border bg-black/5">
-                        <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="w-full h-auto max-h-[120px] object-contain transition-opacity group-hover:opacity-80" alt="{{ img.filename }}">
-                    </a>
-                </figure>
-                {% endfor %}
-            </div>
-            {% endif %}
-
-            <div class="text-sm text-skin-text whitespace-pre-wrap break-words">{{ post_item.model.content }}</div>
+    <!-- Replies Container (Client-Side Rendering) -->
+    <div id="thread-container" class="flex flex-col gap-1 items-start opacity-0 transition-opacity duration-700">
+        <!-- Loading State -->
+        <div class="w-full text-center py-10">
+            <span class="loading loading-spinner loading-lg text-skin-accent"></span>
+            <p class="text-xs font-mono text-skin-muted mt-2">SYNC_BLOCKCHAIN_NODES...</p>
         </div>
-        {% endfor %}
     </div>
 
 </div>
 
-<!-- Sticky Reply Form -->
+<!-- Sticky Reply Form (Protected by Anti-Bot Token) -->
 <div class="fixed bottom-0 left-0 right-0 p-2 sm:p-0 sm:relative sm:mt-8 sm:flex sm:justify-center bg-skin-base sm:bg-transparent border-t sm:border-0 border-skin-border z-40">
     <div class="bg-skin-surface border border-skin-border p-3 rounded shadow-lg w-full sm:w-[500px]">
         <div class="text-xs font-bold text-skin-accent mb-2 uppercase tracking-widest flex justify-between">
             <span>Відповісти в тред</span>
             <span class="text-[10px] text-skin-muted cursor-pointer" onclick="document.getElementById('reply-box').value = ''">Очистити</span>
         </div>
-        <!-- Form -->
-        <form action="/{{ board.slug }}/thread/{{ thread.id }}/reply" method="post" enctype="multipart/form-data" class="flex flex-col gap-2">
+
+        <!-- Converted to HTMX for token interception -->
+        <form hx-post="/{{ board.slug }}/thread/{{ thread.id }}/reply"
+              hx-encoding="multipart/form-data"
+              hx-target="body"
+              hx-indicator="#reply-spinner"
+              class="flex flex-col gap-2">
+
             <textarea id="reply-box" name="content" rows="4" class="w-full p-2 text-sm rounded border border-skin-border bg-skin-input focus:ring-1 focus:ring-skin-accent resize-y placeholder-skin-muted/50" placeholder="Напишіть відповідь..." required></textarea>
 
             <div class="flex justify-between items-center gap-2">
@@ -123,28 +85,38 @@
                         <input type="checkbox" name="sage" class="rounded text-skin-accent focus:ring-0 bg-skin-input border-skin-border">
                         Sage
                     </label>
-                    <button type="submit" class="bg-skin-primary text-white px-4 py-1.5 rounded text-xs font-bold uppercase hover:bg-skin-primary-hover transition-colors shadow-sm">Відповісти</button>
+                    <button type="submit" class="flex items-center gap-2 bg-skin-primary text-white px-4 py-1.5 rounded text-xs font-bold uppercase hover:bg-skin-primary-hover transition-colors shadow-sm disabled:opacity-50">
+                        <span>Відповісти</span>
+                        <span id="reply-spinner" class="htmx-indicator loading loading-spinner loading-xs"></span>
+                    </button>
                 </div>
             </div>
         </form>
     </div>
 </div>
 
+<!-- Initialization -->
+<script src="/assets/js/core.min.js"></script>
 <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        window.__kr_hydrate({
+            mode: 'thread',
+            targetId: 'thread-container',
+            cdn: '{{ cdn_url }}',
+            boardSlug: '{{ board.slug }}'
+        });
+    });
+
     function replyTo(id) {
         const box = document.getElementById('reply-box');
         const text = box.value;
         const ref = '>>' + id + '\n';
-
-        // Append or insert
         if (text.length > 0 && text.slice(-1) !== '\n') {
             box.value += '\n' + ref;
         } else {
             box.value += ref;
         }
-
         box.focus();
-        // Scroll to bottom of textarea
         box.scrollTop = box.scrollHeight;
     }
 </script>
