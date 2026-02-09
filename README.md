@@ -1,6 +1,6 @@
 <div align="center">
   
-<h1 align="center">ebala.ch</h1>
+<h1 align="center">kryivka.org</h1>
 
 <hr />
 </div>

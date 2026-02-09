@@ -2,7 +2,8 @@ use std::sync::Arc;
 use std::net::SocketAddr;
 use axum::{
     extract::{Path, State, Extension, Multipart, ConnectInfo},
-    response::{IntoResponse, Redirect}
+    response::{IntoResponse, Redirect},
+    http::HeaderMap,
 };
 use sea_orm::{EntityTrait, QueryOrder, Set, ActiveModelTrait, ModelTrait, QueryFilter, ColumnTrait, QuerySelect, LoaderTrait};
 use tokio::sync::RwLock;
@@ -225,14 +226,15 @@ pub async fn create_thread_handler(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(slug): Path<String>,
     multipart: Multipart,
 ) -> impl IntoResponse {
     let state_read = state.read().await;
 
     // Resolve Country
-    let ip = get_client_ip(&addr);
-    let country_code = resolve_country_code(&ip, &state_read.ip_cache).await;
+    let ip = get_client_ip(&headers, &addr);
+    let country_code = resolve_country_code(ip, &state_read.ip_cache).await;
 
     let parsed = match parse_multipart_form(multipart, &state_read.storage).await {
         Ok(p) => p,
@@ -286,14 +288,15 @@ pub async fn reply_handler(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path((slug, thread_id)): Path<(String, i32)>,
     multipart: Multipart,
 ) -> impl IntoResponse {
     let state_read = state.read().await;
 
     // Resolve Country
-    let ip = get_client_ip(&addr);
-    let country_code = resolve_country_code(&ip, &state_read.ip_cache).await;
+    let ip = get_client_ip(&headers, &addr);
+    let country_code = resolve_country_code(ip, &state_read.ip_cache).await;
 
     let parsed = match parse_multipart_form(multipart, &state_read.storage).await {
         Ok(p) => p,

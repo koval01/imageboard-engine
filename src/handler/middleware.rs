@@ -29,7 +29,7 @@ pub async fn session_middleware(
 ) -> Result<Response, Response> {
     let config = &state.read().await.config;
     let jwt_secret = config.jwt_secret.as_bytes();
-    let current_ip = get_client_ip(&addr);
+    let current_ip = get_client_ip(&headers, &addr);
     let current_ua = get_user_agent(&headers);
 
     let mut session_id = String::new();
