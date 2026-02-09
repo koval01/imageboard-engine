@@ -1,5 +1,5 @@
 /target
-tailwind/node_modules
+js-tools/node_modules
 
 assets/css/main.css
 

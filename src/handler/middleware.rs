@@ -1,13 +1,16 @@
 use std::sync::Arc;
 use axum::{
     extract::{ConnectInfo, Request, State},
-    http::HeaderMap,
+    http::{HeaderMap, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
+    Json
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use serde_json::json;
 use std::net::SocketAddr;
+use base64::Engine;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 use time::Duration;
@@ -87,4 +90,42 @@ pub async fn session_middleware(
     let response = next.run(req).await;
 
     Ok((response_jar, response).into_response())
+}
+
+pub async fn bot_guard_middleware(
+    State(_): State<Arc<RwLock<AppState>>>,
+    req: Request,
+    next: Next,
+) -> Result<Response, Response> {
+    // 1. Only check POST requests
+    if req.method() == axum::http::Method::POST {
+        let headers = req.headers();
+
+        // 2. Look for X-K-Proof header
+        let proof = headers.get("X-K-Proof")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+
+        // 3. Get Session ID from extensions (set by session_middleware)
+        let session_id = if let Some(sess) = req.extensions().get::<CurrentSession>() {
+            sess.id.clone()
+        } else {
+            return Err((StatusCode::FORBIDDEN, "No Session").into_response());
+        };
+
+        // 4. Validate Logic:
+        // For simplicity, let's require the client to reverse the session ID string
+        // and base64 encode it. In production, use SHA256(session_id + "salt").
+        let expected_raw: String = session_id.chars().rev().collect();
+        let expected = base64::engine::general_purpose::STANDARD.encode(expected_raw);
+
+        if proof != expected {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({ "error": "Bot detected. JavaScript required." }))
+            ).into_response());
+        }
+    }
+
+    Ok(next.run(req).await)
 }

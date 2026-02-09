@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "watch-css": "npx tailwindcss -i base.css -o ../assets/css/main.css --watch",
-    "build-css-prod": "npx tailwindcss -i base.css -o ../assets/css/main.css --minify"
+    "build-css-prod": "npx tailwindcss -i base.css -o ../assets/css/main.css --minify",
+    "build-js": "node obfuscate.js",
+    "build-all": "npm run build-css-prod && npm run build-js"
   },
   "keywords": [],
   "author": "emarifer",
@@ -13,6 +15,7 @@
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.19",
     "daisyui": "^4.10.2",
+    "javascript-obfuscator": "^5.3.0",
     "tailwindcss": "^3.4.3"
   }
 }

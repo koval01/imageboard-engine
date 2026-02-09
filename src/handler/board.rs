@@ -15,7 +15,7 @@ use crate::{
     AppState,
     handler::middleware::CurrentSession,
     handler::HtmlTemplate,
-    service::{ProcessedImage, StorageService, resolve_country_code},
+    service::{ProcessedImage, StorageService, Obfuscator, resolve_country_code},
     security::get_client_ip,
 };
 
@@ -25,11 +25,13 @@ struct ParsedForm {
     images: Vec<ProcessedImage>,
 }
 
+#[derive(serde::Serialize)]
 pub struct PostItem {
     pub model: posts::Model,
     pub images: Vec<images::Model>,
 }
 
+#[derive(serde::Serialize)]
 pub struct ThreadItem {
     pub model: threads::Model,
     pub images: Vec<images::Model>,
@@ -64,7 +66,7 @@ struct RulesTemplate {}
 #[template(path = "board.html")]
 struct BoardTemplate {
     board: boards::Model,
-    threads: Vec<ThreadItem>,
+    payload: String,
     cdn_url: String,
 }
 
@@ -73,8 +75,7 @@ struct BoardTemplate {
 struct ThreadTemplate {
     board: boards::Model,
     thread: threads::Model,
-    images: Vec<images::Model>, // OP Images
-    posts: Vec<PostItem>,       // Replies with images
+    payload: String,
     cdn_url: String,
 }
 
@@ -200,6 +201,7 @@ pub async fn rules_handler() -> impl IntoResponse {
 pub async fn view_board_handler(
     State(state): State<Arc<RwLock<AppState>>>,
     Path(slug): Path<String>,
+    Extension(session): Extension<CurrentSession>
 ) -> impl IntoResponse {
     let state = state.read().await;
     let db = &state.pool;
@@ -245,8 +247,10 @@ pub async fn view_board_handler(
             });
         }
 
+        let payload = Obfuscator::pack(&thread_items, &session.id);
+
         return HtmlTemplate(BoardTemplate {
-            board, threads: thread_items, cdn_url
+            board, payload, cdn_url
         }).into_response();
     }
 
@@ -256,6 +260,7 @@ pub async fn view_board_handler(
 pub async fn view_thread_handler(
     State(state): State<Arc<RwLock<AppState>>>,
     Path((slug, thread_id)): Path<(String, i32)>,
+    Extension(session): Extension<CurrentSession>
 ) -> impl IntoResponse {
     let state = state.read().await;
     let db = &state.pool;
@@ -278,11 +283,23 @@ pub async fn view_thread_handler(
                 });
             }
 
+            #[derive(serde::Serialize)]
+            struct ThreadPayload {
+                images: Vec<images::Model>,
+                posts: Vec<PostItem>
+            }
+
+            let data = ThreadPayload {
+                images: op_images,
+                posts: posts_with_images
+            };
+
+            let payload = Obfuscator::pack(&data, &session.id);
+
             return HtmlTemplate(ThreadTemplate {
                 board,
                 thread,
-                images: op_images,
-                posts: posts_with_images,
+                payload,
                 cdn_url
             }).into_response();
         }
