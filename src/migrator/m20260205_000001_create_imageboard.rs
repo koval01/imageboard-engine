@@ -65,6 +65,7 @@ impl MigrationTrait for Migration {
             .into_table(Boards::Table)
             .columns([Boards::Slug, Boards::Name, Boards::Description])
             .values_panic(["m".into(), "Маячня".into(), "Все підряд без правил".into()])
+            .values_panic(["pol".into(), "Політика".into(), "Тут знаходяться ті самі дивани".into()])
             .values_panic(["tech".into(), "Технології".into(), "Комп'ютери, софт та залізо".into()])
             .values_panic(["a".into(), "Аніме".into(), "Японська анімація та культура".into()])
             .values_panic(["sex".into(), "Секс".into(), "Ми шануємо дрочунів".into()])

@@ -85,3 +85,7 @@ input:focus, textarea:focus, select:focus {
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
+
+.swal2-container {
+    backdrop-filter: blur(16px);
+}
