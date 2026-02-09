@@ -1,27 +1,22 @@
 (function () {
-    // --- Configuration ---
+    // --- Constants ---
     const MAGIC_OFFSET = 255;
 
     // --- Helpers ---
 
+    // Robust Cookie Reader (Fixes 403 Error)
     function getSessionKey() {
-        const name = "client_key=";
-        const decodedCookie = decodeURIComponent(document.cookie);
-        const ca = decodedCookie.split(';');
-        for (let i = 0; i < ca.length; i++) {
-            let c = ca[i];
-            while (c.charAt(0) === ' ') c = c.substring(1);
-            if (c.indexOf(name) === 0) return c.substring(name.length, c.length);
-        }
-        return "";
+        const match = document.cookie.match(new RegExp('(^| )client_key=([^;]+)'));
+        if (match) return decodeURIComponent(match[2]);
+        return null;
     }
 
-    // Decryptor with UTF-8 Support
+    // Decryptor (UTF-8 Compatible)
     function unpackData(payloadBase64) {
         if (!payloadBase64) return null;
         try {
             const key = getSessionKey();
-            if (!key) throw new Error("No key found in cookies");
+            if (!key) throw new Error("No session key found. Please enable cookies.");
 
             const binaryString = atob(payloadBase64);
             const len = binaryString.length;
@@ -37,178 +32,230 @@
             const decoder = new TextDecoder('utf-8');
             return JSON.parse(decoder.decode(bytes));
         } catch (e) {
-            console.error("KR_ERR: 0x01", e);
+            console.error("KR_ERR: Data unpack failed.", e);
             return null;
         }
     }
 
-    // HTML Generators
-    const Gen = {
-        // Improved Image Grid Layout
-        imgGrid: (images, cdn) => {
-            if (!images || images.length === 0) return '';
-            const isSingle = images.length === 1;
+    // --- UI Generators ---
 
-            let html = `<div class="flex flex-wrap gap-2 mb-3">`;
-            images.forEach(img => {
-                html += `
-                <figure class="group relative flex flex-col shrink-0">
-                    <div class="text-[10px] text-skin-muted mb-0.5 flex gap-1 items-center">
-                        <a href="${cdn}/${img.url}" target="_blank" class="hover:underline hover:text-skin-link font-medium truncate max-w-[120px]">${img.filename}</a>
-                        <span class="opacity-70">(${Math.round(img.size / 1024)}KB, ${img.width}x${img.height})</span>
+    const UI = {
+        // Smart Grid: Fixes vertical stacking and sliding issues
+        images: (images, cdn) => {
+            if (!images || images.length === 0) return '';
+
+            // 1. Single Image (Large Preview)
+            if (images.length === 1) {
+                const i = images[0];
+                return `
+                <div class="mb-2">
+                    <div class="text-[10px] text-skin-muted mb-1 flex items-center gap-1">
+                        <a href="${cdn}/${i.url}" target="_blank" class="hover:underline hover:text-skin-accent truncate max-w-[200px] font-bold">${i.filename}</a>
+                        <span class="opacity-70">(${Math.round(i.size / 1024)}KB, ${i.width}x${i.height})</span>
                     </div>
-                    <a href="${cdn}/${img.url}" target="_blank" class="block border border-skin-border bg-black/5 rounded-sm overflow-hidden">
-                        <img src="${cdn}/${img.thumbnail_url}" 
-                             class="${isSingle ? 'max-w-[250px] max-h-[250px]' : 'w-24 h-24'} object-cover hover:opacity-90 transition-opacity" 
-                             alt="${img.filename}" loading="lazy">
+                    <a href="${cdn}/${i.url}" onclick="return openLightbox(this.href)" class="block w-fit">
+                        <img src="${cdn}/${i.thumbnail_url}" class="rounded border border-skin-border max-h-[300px] w-auto object-contain hover:opacity-90 transition-opacity" loading="lazy">
                     </a>
-                </figure>`;
-            });
-            html += `</div>`;
-            return html;
+                </div>`;
+            }
+
+            // 2. Multiple Images (Strict Grid)
+            // Uses CSS Grid to force items into neat rows/cols, preventing "sliding"
+            const gridHtml = images.map(i => `
+                <a href="${cdn}/${i.url}" onclick="return openLightbox(this.href)" class="relative group aspect-square bg-black/5 rounded border border-skin-border overflow-hidden">
+                    <img src="${cdn}/${i.thumbnail_url}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" loading="lazy">
+                    <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
+                    <span class="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                        ${Math.round(i.size/1024)}KB
+                    </span>
+                </a>
+            `).join('');
+
+            return `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mb-2 max-w-xl">${gridHtml}</div>`;
         },
-        flag: (cc) => cc ? `<span class="fi fi-${cc.toLowerCase()} shadow-sm rounded-sm" title="${cc}"></span>` : '',
-        date: (ts) => {
-            const d = new Date(ts + "Z");
-            return `<span class="opacity-80">${d.toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>`;
+
+        meta: (p, isOp) => {
+            const d = new Date(p.created_at + "Z");
+            const dateStr = d.toLocaleString('uk-UA', {
+                day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit'
+            });
+
+            const flag = p.country_code
+                ? `<span class="fi fi-${p.country_code.toLowerCase()} rounded-[2px] shadow-sm" title="${p.country_code}"></span>`
+                : '';
+
+            return `
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-skin-muted mb-2 border-b border-skin-border/30 pb-1">
+                <div class="flex items-center gap-2">
+                    ${flag}
+                    <span class="font-bold text-[#15803d]">Анонім</span>
+                    <span class="opacity-70">${dateStr}</span>
+                </div>
+                <div class="flex items-center gap-2 ml-auto sm:ml-0">
+                    <a href="#p${p.id}" class="hover:text-skin-accent hover:underline cursor-pointer font-mono" onclick="replyTo(${p.id})">№${p.id}</a>
+                    ${!isOp ? `<span class="cursor-pointer hover:text-skin-text opacity-50 hover:opacity-100 transition-opacity select-none" onclick="replyTo(${p.id})">[Відп]</span>` : ''}
+                </div>
+            </div>`;
+        },
+
+        content: (text) => {
+            if (!text) return '';
+            const escaped = text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+
+            const processed = escaped.split('\n').map(line => {
+                if (line.trim().startsWith('&gt;')) {
+                    return `<span class="text-[#789922]">${line}</span>`; // Greentext
+                }
+                return line;
+            }).join('<br>');
+
+            return `<div class="text-[13px] sm:text-sm text-skin-text leading-relaxed whitespace-pre-wrap break-words font-sans">${processed}</div>`;
         }
     };
 
-    // --- Hydration Logic ---
+    // --- Main Rendering Logic ---
 
     window.__kr_hydrate = function (config) {
         const payloadEl = document.getElementById('__KR_DATA');
         if (!payloadEl) return;
 
-        const raw = payloadEl.textContent;
-        const data = unpackData(raw);
+        const data = unpackData(payloadEl.textContent);
+        if (!data) return;
 
-        // 1. Handle OP Images (Thread Mode)
-        if (config.mode === 'thread' && data.images) {
-            const opContainer = document.getElementById('op-images-container');
-            if (opContainer) {
-                opContainer.innerHTML = Gen.imgGrid(data.images, config.cdn);
-                opContainer.classList.remove('hidden');
+        // 1. Thread Mode
+        if (config.mode === 'thread') {
+            // A. OP Images (Fix for "Not displayed")
+            // We target a specific DIV in the OP post to inject images
+            const opImagesContainer = document.getElementById('op-images-anchor');
+            if (opImagesContainer && data.images) {
+                opImagesContainer.innerHTML = UI.images(data.images, config.cdn);
+                opImagesContainer.classList.remove('hidden');
+            }
+
+            // B. Replies
+            const container = document.getElementById(config.targetId);
+            if (container && data.posts) {
+                container.innerHTML = data.posts.map(item => {
+                    const p = item.model;
+                    return `
+                    <div class="flex gap-2 group mb-2" id="p${p.id}">
+                        <div class="shrink-0 text-[10px] text-skin-muted/40 pt-3 select-none w-6 text-center">&gt;&gt;</div>
+                        <div class="grow bg-skin-surface border border-skin-border rounded p-3 shadow-sm hover:border-skin-accent/30 transition-colors max-w-full overflow-hidden">
+                            ${UI.meta(p, false)}
+                            ${UI.images(item.images, config.cdn)}
+                            ${UI.content(p.content)}
+                        </div>
+                    </div>`;
+                }).join('');
+                container.classList.remove('opacity-0');
             }
         }
 
-        const container = document.getElementById(config.targetId);
-        if (!container) return;
+        // 2. Board Mode
+        else if (config.mode === 'board') {
+            const container = document.getElementById(config.targetId);
+            if (!container) return;
 
-        // If no data, show error
-        if (!data) {
-            container.innerHTML = `<div class="p-4 text-center text-skin-red font-mono text-xs">NO_SIGNAL</div>`;
+            container.innerHTML = data.map(item => {
+                const t = item.model;
+
+                // Mini-replies
+                let repliesHtml = '';
+                if (item.replies && item.replies.length > 0) {
+                    repliesHtml = `<div class="mt-3 space-y-2 pl-2 sm:pl-4 border-l-2 border-skin-border/40">` +
+                        item.replies.map(r => `
+                            <div class="text-xs text-skin-muted bg-skin-base/50 p-2 rounded flex gap-2 items-start">
+                                <span class="shrink-0 opacity-50 pt-0.5">>></span>
+                                <div class="min-w-0">
+                                    <div class="flex gap-2 mb-1 text-[10px] opacity-70">
+                                        <span>${UI.meta(r.model, false).replace(/<div.*?>|<\/div>/g, '')}</span> 
+                                    </div>
+                                    <div class="truncate line-clamp-2">${r.model.content}</div>
+                                </div>
+                            </div>
+                        `).join('') + `</div>`;
+                }
+
+                return `
+                <div class="bg-skin-surface border border-skin-border rounded-lg p-4 mb-6 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="flex flex-col sm:flex-row gap-4">
+                        <div class="shrink-0 max-w-full sm:max-w-[180px]">
+                            ${UI.images(item.images, config.cdn)}
+                        </div>
+                        <div class="grow min-w-0">
+                            <div class="text-xs text-skin-muted mb-2 flex flex-wrap items-center gap-2">
+                                <a href="/${t.board_slug}/thread/${t.id}" class="font-bold text-skin-accent text-sm hover:underline">/${t.board_slug}/${t.id}</a>
+                                <span class="font-bold text-[#15803d]">Анонім</span>
+                                <a href="/${t.board_slug}/thread/${t.id}" class="bg-skin-primary/10 text-skin-primary px-2 py-0.5 rounded text-[10px] font-bold hover:bg-skin-primary hover:text-white transition-colors">ВІДПОВІСТИ</a>
+                            </div>
+                            <h3 class="font-bold text-skin-text text-base mb-1 break-words">${t.subject || ''}</h3>
+                            ${UI.content(t.content)}
+                            ${repliesHtml}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+
+            container.classList.remove('opacity-0');
+        }
+    };
+
+    // --- Anti-Bot Protection (Fix for 403) ---
+    // Reverses Session Key and Base64 encodes it.
+    document.body.addEventListener('htmx:configRequest', (evt) => {
+        // Only run for POST requests (forms)
+        if (evt.detail.verb !== 'post') return;
+
+        const key = getSessionKey();
+
+        if (!key) {
+            console.warn("KR_WARN: No client_key cookie found. Form submission might fail.");
             return;
         }
 
-        let html = '';
-
-        // 2. Thread View (Replies)
-        if (config.mode === 'thread' && data.posts) {
-            if (data.posts.length === 0) {
-                html = `<div class="text-skin-muted text-center italic text-sm py-10">Тред порожній. Будьте першим!</div>`;
-            } else {
-                data.posts.forEach(item => {
-                    const p = item.model;
-                    html += `
-                    <div class="flex gap-0 group/post" id="p${p.id}">
-                        <div class="w-6 sm:w-8 shrink-0 flex flex-col items-center pt-2 opacity-50 text-[10px] text-skin-muted font-mono select-none">
-                            <span>&gt;&gt;</span>
-                        </div>
-                        <div class="grow bg-skin-surface border border-skin-border rounded mb-3 p-3 shadow-sm hover:border-skin-accent/30 transition-colors">
-                            <div class="flex justify-between items-start border-b border-skin-border/40 pb-2 mb-2">
-                                <div class="text-xs text-skin-muted flex flex-wrap items-center gap-2">
-                                    ${Gen.flag(p.country_code)}
-                                    <span class="font-bold text-skin-text">Анонім</span>
-                                    ${Gen.date(p.created_at)}
-                                    <a href="#p${p.id}" class="hover:text-skin-accent hover:underline cursor-pointer" onclick="replyTo(${p.id})">№${p.id}</a>
-                                </div>
-                                <button class="text-[10px] uppercase font-bold text-skin-muted opacity-0 group-hover/post:opacity-100 transition-opacity hover:text-skin-accent" onclick="replyTo(${p.id})">Відповісти</button>
-                            </div>
-                            
-                            ${Gen.imgGrid(item.images, config.cdn)}
-                            
-                            <div class="text-sm text-skin-text whitespace-pre-wrap break-words leading-relaxed font-sans">${p.content}</div>
-                        </div>
-                    </div>`;
-                });
-            }
-        }
-
-        // 3. Board View
-        else if (config.mode === 'board' && Array.isArray(data)) {
-            data.forEach(item => {
-                const t = item.model;
-
-                // Replies Preview
-                let repliesHtml = '';
-                if (item.replies && item.replies.length > 0) {
-                    repliesHtml = `<div class="mt-3 ml-2 sm:ml-6 space-y-2 border-l-2 border-skin-border/30 pl-3">`;
-                    item.replies.forEach(r => {
-                        const rp = r.model;
-                        repliesHtml += `
-                        <div class="bg-skin-base/50 border border-skin-border/50 rounded p-2 text-sm flex gap-3">
-                            <div class="shrink-0 flex flex-col gap-1">
-                                <div class="text-[10px] text-skin-muted whitespace-nowrap">${Gen.date(rp.created_at)}</div>
-                                <a href="/${t.board_slug}/thread/${t.id}#p${rp.id}" class="text-[10px] hover:underline text-skin-link">>>${rp.id}</a>
-                            </div>
-                            <div class="grow min-w-0">
-                                ${Gen.imgGrid(r.images, config.cdn)}
-                                <div class="truncate text-skin-muted">${rp.content}</div>
-                            </div>
-                        </div>`;
-                    });
-                    repliesHtml += `</div>`;
-                }
-
-                html += `
-                <div class="relative pl-3 hover:bg-skin-surface transition-colors p-4 rounded-lg border border-transparent hover:border-skin-border">
-                    <div class="absolute left-0 top-0 bottom-0 w-1 bg-skin-border/30 rounded-l"></div>
-                    <article class="flex flex-col sm:flex-row gap-4">
-                        ${item.images.length ? `<div class="shrink-0">${Gen.imgGrid(item.images, config.cdn)}</div>` : ''}
-                        <div class="grow min-w-0">
-                            <div class="text-xs text-skin-muted mb-1 flex flex-wrap gap-2 items-center">
-                                ${t.subject ? `<span class="font-bold text-skin-text text-sm">${t.subject}</span>` : ''}
-                                ${Gen.flag(t.country_code)}
-                                <span class="text-skin-green font-bold">Анонім</span>
-                                ${Gen.date(t.created_at)}
-                                <a href="/${t.board_slug}/thread/${t.id}" class="text-skin-text bg-skin-base border border-skin-border px-1 rounded text-[10px] hover:border-skin-accent transition-colors">№${t.id}</a>
-                                <a href="/${t.board_slug}/thread/${t.id}" class="text-[10px] font-bold text-skin-link hover:underline">[ВІДПОВІСТИ]</a>
-                            </div>
-                            <div class="text-sm text-skin-text leading-relaxed whitespace-pre-wrap break-words max-h-40 overflow-hidden relative">
-                                ${t.content}
-                            </div>
-                        </div>
-                    </article>
-                    ${repliesHtml}
-                </div>
-                <hr class="border-skin-border/30 my-4 last:hidden">`;
-            });
-        }
-
-        // Inject & Animate
-        container.innerHTML = html;
-        container.classList.remove('opacity-0');
-    };
-
-    // --- Anti-Bot & Re-Hydration ---
-
-    document.body.addEventListener('htmx:configRequest', function (evt) {
-        if (evt.detail.verb === 'post') {
-            const key = getSessionKey();
-            if (!key) return;
+        // Algo: Reverse Key -> Base64
+        try {
             const reversed = key.split('').reverse().join('');
             const proof = btoa(reversed);
             evt.detail.headers['X-K-Proof'] = proof;
+        } catch (e) {
+            console.error("KR_ERR: Proof generation failed", e);
         }
     });
 
-    // Re-hydrate when HTMX swaps content (e.g., polling or reply)
-    document.body.addEventListener('htmx:afterSwap', function(evt) {
-        // Re-run hydration if the swap included the data script
+    // --- Auto-Refresh Handling ---
+    // When HTMX swaps the content (polling or reply), we must re-hydrate the new data.
+    document.body.addEventListener('htmx:afterSwap', (evt) => {
+        // Ensure the config exists
         if (window.__kr_config) {
             window.__kr_hydrate(window.__kr_config);
         }
+    });
+
+    // --- Lightbox (Full Screen Image Viewer) ---
+    window.openLightbox = function(url) {
+        const lb = document.getElementById('lightbox');
+        const img = document.getElementById('lightbox-img');
+        if(!lb || !img) return true; // Fallback to normal link
+
+        img.src = url;
+        lb.classList.remove('hidden');
+        document.body.style.overflow = 'hidden'; // Lock scroll
+        return false;
+    };
+
+    window.closeLightbox = function() {
+        const lb = document.getElementById('lightbox');
+        lb.classList.add('hidden');
+        document.getElementById('lightbox-img').src = '';
+        document.body.style.overflow = '';
+    };
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') window.closeLightbox();
     });
 
 })();
