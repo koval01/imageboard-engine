@@ -196,7 +196,7 @@
             const reversed = key.split('').reverse().join('');
             const proof = btoa(reversed);
 
-            evt.detail.headers['X-Kryivka-Proof'] = proof;
+            evt.detail.headers['X-K-Proof'] = proof;
         }
     });
 
