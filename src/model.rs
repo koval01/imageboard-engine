@@ -61,6 +61,7 @@ pub mod threads {
         pub subject: Option<String>,
         pub content: String,
         pub session_id: String,
+        pub country_code: Option<String>,
         pub created_at: NaiveDateTime,
         pub updated_at: NaiveDateTime,
     }
@@ -113,6 +114,7 @@ pub mod posts {
         pub thread_id: i32,
         pub content: String,
         pub session_id: String,
+        pub country_code: Option<String>,
         pub created_at: NaiveDateTime,
     }
 

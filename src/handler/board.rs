@@ -1,6 +1,7 @@
 use std::sync::Arc;
+use std::net::SocketAddr;
 use axum::{
-    extract::{Path, State, Extension, Multipart},
+    extract::{Path, State, Extension, Multipart, ConnectInfo},
     response::{IntoResponse, Redirect}
 };
 use sea_orm::{EntityTrait, QueryOrder, Set, ActiveModelTrait, ModelTrait, QueryFilter, ColumnTrait, QuerySelect, LoaderTrait};
@@ -13,7 +14,8 @@ use crate::{
     AppState,
     handler::middleware::CurrentSession,
     handler::HtmlTemplate,
-    service::{ProcessedImage, StorageService},
+    service::{ProcessedImage, StorageService, resolve_country_code},
+    security::get_client_ip,
 };
 
 struct ParsedForm {
@@ -222,10 +224,16 @@ pub async fn view_thread_handler(
 pub async fn create_thread_handler(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(slug): Path<String>,
-    multipart: Multipart, // Changed from Form
+    multipart: Multipart,
 ) -> impl IntoResponse {
     let state_read = state.read().await;
+
+    // Resolve Country
+    let ip = get_client_ip(&addr);
+    let country_code = resolve_country_code(&ip, &state_read.ip_cache).await;
+
     let parsed = match parse_multipart_form(multipart, &state_read.storage).await {
         Ok(p) => p,
         Err(e) => return HtmlTemplate(crate::handler::ErrorTemplate { message: e }).into_response(),
@@ -243,6 +251,7 @@ pub async fn create_thread_handler(
         subject: Set(parsed.subject),
         content: Set(parsed.content),
         session_id: Set(session.id),
+        country_code: Set(Some(country_code)),
         created_at: Set(Utc::now().naive_utc()),
         updated_at: Set(Utc::now().naive_utc()),
         ..Default::default()
@@ -276,10 +285,16 @@ pub async fn create_thread_handler(
 pub async fn reply_handler(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path((slug, thread_id)): Path<(String, i32)>,
-    multipart: Multipart, // Changed from Form
+    multipart: Multipart,
 ) -> impl IntoResponse {
     let state_read = state.read().await;
+
+    // Resolve Country
+    let ip = get_client_ip(&addr);
+    let country_code = resolve_country_code(&ip, &state_read.ip_cache).await;
+
     let parsed = match parse_multipart_form(multipart, &state_read.storage).await {
         Ok(p) => p,
         Err(e) => return HtmlTemplate(crate::handler::ErrorTemplate { message: e }).into_response(),
@@ -296,6 +311,7 @@ pub async fn reply_handler(
         thread_id: Set(thread_id),
         content: Set(parsed.content),
         session_id: Set(session.id),
+        country_code: Set(Some(country_code)),
         created_at: Set(Utc::now().naive_utc()),
         ..Default::default()
     };

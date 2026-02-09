@@ -79,6 +79,10 @@
                     {% if let Some(subject) = thread_item.model.subject %}
                     <span class="font-bold text-skin-text text-sm mr-2">{{ subject }}</span>
                     {% endif %}
+                    <!-- Flag Display -->
+                    {% if let Some(cc) = thread_item.model.country_code %}
+                    <span class="fi fi-{{ cc|lower }} mr-1" title="{{ cc }}"></span>
+                    {% endif %}
                     <span class="font-bold text-green-600">Анонім</span>
                     <span class="mx-1"></span>
                     <span>{{ thread_item.model.created_at.format("%d.%m.%Y %H:%M:%S") }}</span>
@@ -104,6 +108,10 @@
             {% for post_item in thread_item.replies %}
             <div class="bg-skin-surface border border-skin-border rounded-r rounded-bl p-3 w-fit min-w-[300px] max-w-full text-sm shadow-sm hover:border-skin-accent/50 transition-colors">
                 <div class="text-xs text-skin-muted mb-2 pb-1 border-b border-skin-border/50 border-dashed flex gap-2">
+                    <!-- Flag Display -->
+                    {% if let Some(cc) = post_item.model.country_code %}
+                    <span class="fi fi-{{ cc|lower }}" title="{{ cc }}"></span>
+                    {% endif %}
                     <span class="font-bold text-green-600">Анонім</span>
                     <span>{{ post_item.model.created_at.format("%d.%m.%Y %H:%M") }}</span>
                     <a href="/{{ board.slug }}/thread/{{ thread_item.model.id }}#p{{ post_item.model.id }}" class="hover:text-skin-accent hover:underline">№{{ post_item.model.id }}</a>
