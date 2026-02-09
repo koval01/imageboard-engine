@@ -11,7 +11,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{
     handler::{
-        board::{home_handler, view_board_handler, view_thread_handler, create_thread_handler, reply_handler},
+        board::{home_handler, view_board_handler, view_thread_handler, create_thread_handler, reply_handler, about_handler, rules_handler},
         middleware::session_middleware,
     },
     AppState,
@@ -29,6 +29,8 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
 
     let app = Router::new()
         .route("/", get(home_handler))
+        .route("/about", get(about_handler))
+        .route("/rules", get(rules_handler))
         .route("/{slug}", get(view_board_handler))
         .route("/{slug}/submit", post(create_thread_handler))
         .route("/{slug}/thread/{id}", get(view_thread_handler))
@@ -38,6 +40,7 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
         .layer(TraceLayer::new_for_http())
         .with_state(app_state);
 
+    println!("Server running on http://0.0.0.0:{}", port);
     axum::serve(address, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;
 
     Ok(())

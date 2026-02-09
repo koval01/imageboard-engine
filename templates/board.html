@@ -62,11 +62,11 @@
                 {% for img in thread_item.images %}
                 <figure class="group flex flex-col shrink-0 max-w-[150px] sm:max-w-[200px]">
                     <figcaption class="text-[10px] text-skin-muted truncate w-full mb-1" title="{{ img.filename }}">
-                        <a href="{{ img.url }}" target="_blank" class="hover:underline hover:text-skin-link">{{ img.filename }}</a>
+                        <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline hover:text-skin-link">{{ img.filename }}</a>
                         <span class="text-[9px] opacity-70">({{ img.size / 1024 }}KB, {{ img.width }}x{{ img.height }})</span>
                     </figcaption>
-                    <a href="{{ img.url }}" target="_blank" class="block relative overflow-hidden rounded-sm border border-skin-border bg-black/5">
-                        <img src="{{ img.thumbnail_url }}" class="w-full h-auto max-h-[150px] sm:max-h-[200px] object-contain transition-opacity group-hover:opacity-80" alt="{{ img.filename }}">
+                    <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="block relative overflow-hidden rounded-sm border border-skin-border bg-black/5">
+                        <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="w-full h-auto max-h-[150px] sm:max-h-[200px] object-contain transition-opacity group-hover:opacity-80" alt="{{ img.filename }}">
                     </a>
                 </figure>
                 {% endfor %}
@@ -123,10 +123,10 @@
                     {% for img in post_item.images %}
                     <figure class="group flex flex-col shrink-0 max-w-[100px]">
                         <figcaption class="text-[9px] text-skin-muted truncate w-full mb-0.5">
-                            <a href="{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
+                            <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
                         </figcaption>
-                        <a href="{{ img.url }}" target="_blank" class="block relative overflow-hidden rounded-sm border border-skin-border bg-black/5">
-                            <img src="{{ img.thumbnail_url }}" class="w-full h-auto max-h-[100px] object-contain transition-opacity group-hover:opacity-80" alt="{{ img.filename }}">
+                        <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="block relative overflow-hidden rounded-sm border border-skin-border bg-black/5">
+                            <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="w-full h-auto max-h-[100px] object-contain transition-opacity group-hover:opacity-80" alt="{{ img.filename }}">
                         </a>
                     </figure>
                     {% endfor %}

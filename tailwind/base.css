@@ -3,42 +3,43 @@
 @tailwind utilities;
 
 @layer base {
-    /* Classic Light Theme (Makaba inspired) */
+    /* Theme: "Warm Shelter" (Neutral, Clean, Modern) */
     :root {
-        --color-bg-base: #eeeeee;
-        --color-bg-surface: #dddddd;
-        --color-bg-header: #282a2e;
+        /* Light Mode */
+        --color-bg-base: #faf9f6;    /* Off-white, like paper */
+        --color-bg-surface: #ffffff;  /* Pure white */
+        --color-bg-header: #27272a;   /* Dark Zinc */
         --color-bg-input: #ffffff;
 
-        --color-text-base: #222222;
-        --color-text-muted: #707070;
-        --color-text-accent: #ff9933;
-        --color-text-link: #ff6600;
-        --color-text-green: #789922;
-        --color-text-red: #d00;
+        --color-text-base: #3f3f46;   /* Zinc-700 - Softer than black */
+        --color-text-muted: #71717a;  /* Zinc-500 */
+        --color-text-accent: #d97706; /* Amber-600 - Warm accent */
+        --color-text-link: #ea580c;   /* Orange-600 */
+        --color-text-green: #15803d;  /* Green-700 */
+        --color-text-red: #be123c;    /* Rose-700 */
 
-        --color-border: #b7c5d9;
-        --color-primary: #ff9933;
-        --color-primary-hover: #e68a00;
+        --color-border: #e4e4e7;      /* Zinc-200 */
+        --color-primary: #d97706;     /* Amber-600 */
+        --color-primary-hover: #b45309;
     }
 
-    /* Dark Theme (Modern) */
+    /* Dark Mode */
     [data-theme="dark"] {
-        --color-bg-base: #1b1b1b;
-        --color-bg-surface: #282828;
-        --color-bg-header: #111111;
-        --color-bg-input: #333333;
+        --color-bg-base: #18181b;     /* Zinc-950 */
+        --color-bg-surface: #27272a;  /* Zinc-800 */
+        --color-bg-header: #09090b;   /* Black */
+        --color-bg-input: #3f3f46;    /* Zinc-700 */
 
-        --color-text-base: #e0e0e0;
-        --color-text-muted: #888888;
-        --color-text-accent: #ffaa44;
-        --color-text-link: #ff8833;
-        --color-text-green: #9acd32;
-        --color-text-red: #ff4444;
+        --color-text-base: #e4e4e7;   /* Zinc-200 */
+        --color-text-muted: #a1a1aa;  /* Zinc-400 */
+        --color-text-accent: #fbbf24; /* Amber-400 */
+        --color-text-link: #fb923c;   /* Orange-400 */
+        --color-text-green: #a3e635;  /* Lime-400 */
+        --color-text-red: #f87171;    /* Red-400 */
 
-        --color-border: #444444;
-        --color-primary: #ff8833;
-        --color-primary-hover: #ff6600;
+        --color-border: #3f3f46;      /* Zinc-700 */
+        --color-primary: #f59e0b;     /* Amber-500 */
+        --color-primary-hover: #d97706;
     }
 }
 
@@ -64,14 +65,23 @@ body {
     text-decoration: underline;
 }
 
-/* Styling the DaisyUI/Tailwind components with vars */
-input, textarea {
+/* Form Elements Styling */
+input, textarea, select {
     background-color: var(--color-bg-input);
     border: 1px solid var(--color-border);
     color: var(--color-text-base);
 }
 
-input:focus, textarea:focus {
+input:focus, textarea:focus, select:focus {
     outline: 2px solid var(--color-text-accent);
     border-color: transparent;
+}
+
+/* Scrollbar Utility */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }

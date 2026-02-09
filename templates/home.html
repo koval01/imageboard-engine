@@ -1,42 +1,85 @@
 {% extends "layout/base.html" %}
 
 {% block content %}
-<div class="flex flex-col items-center">
+<div class="flex flex-col items-center gap-10">
 
-    <!-- Welcome Box -->
-    <div class="bg-skin-surface border border-skin-border rounded p-6 max-w-2xl w-full text-center mb-8 shadow-sm">
-        <h2 class="text-xl font-bold mb-2">Ласкаво просимо на kryivka.org</h2>
-        <p class="text-skin-muted text-sm">Анонімна дошка для ефективної деградації.</p>
+    <!-- Header Logo Area -->
+    <div class="w-full text-center py-8">
+        <h1 class="text-5xl font-black tracking-tight text-skin-primary mb-2 drop-shadow-sm">Kryivka.org</h1>
+        <p class="text-skin-muted text-sm uppercase tracking-widest font-medium">Вільна територія</p>
     </div>
 
-    <!-- Boards Grid -->
-    <div class="w-full max-w-4xl">
-        <h3 class="text-lg font-bold text-skin-text border-b border-skin-border pb-2 mb-4">Дошки</h3>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {% for board in boards %}
-            <a href="/{{ board.slug }}" class="group block bg-skin-surface border border-skin-border rounded-lg p-4 hover:border-skin-accent transition-colors duration-200 shadow-sm hover:shadow-md">
-                <div class="flex justify-between items-center">
-                    <span class="text-2xl font-bold text-skin-accent group-hover:underline">/{{ board.slug }}/</span>
-                    <span class="text-xs bg-skin-base px-2 py-1 rounded border border-skin-border">1488 постів</span> <!-- Dummy stat -->
+    <!-- Boards Statistics Grid -->
+    <div class="w-full max-w-5xl">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {% for stat in boards %}
+            <a href="/{{ stat.model.slug }}" class="group relative bg-skin-surface border border-skin-border rounded-lg p-5 hover:border-skin-accent transition-all duration-200 hover:shadow-md flex flex-col justify-between h-32">
+                <div>
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="text-2xl font-bold text-skin-accent group-hover:underline">/{{ stat.model.slug }}/</span>
+                        <span class="text-xs font-mono bg-skin-base px-2 py-1 rounded border border-skin-border text-skin-muted">
+                            {{ stat.post_count }}
+                        </span>
+                    </div>
+                    <h3 class="text-lg font-medium text-skin-text leading-tight">{{ stat.model.name }}</h3>
                 </div>
-                <div class="mt-2 text-sm font-medium text-skin-text">{{ board.name }}</div>
-                <div class="text-xs text-skin-muted mt-1 truncate">{{ board.description }}</div>
+                <p class="text-xs text-skin-muted truncate opacity-80">{{ stat.model.description }}</p>
             </a>
             {% endfor %}
         </div>
     </div>
 
-    <!-- Recent Images (Placeholder for future) -->
-    <div class="w-full max-w-4xl mt-12">
-        <h3 class="text-lg font-bold text-skin-text border-b border-skin-border pb-2 mb-4">Останні зображення</h3>
-        <div class="grid grid-cols-4 gap-2">
-            <!-- Placeholders -->
-            <div class="aspect-square bg-skin-surface rounded animate-pulse"></div>
-            <div class="aspect-square bg-skin-surface rounded animate-pulse"></div>
-            <div class="aspect-square bg-skin-surface rounded animate-pulse"></div>
-            <div class="aspect-square bg-skin-surface rounded animate-pulse"></div>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 w-full max-w-6xl mt-4">
+
+        <!-- Recent Images -->
+        <div class="lg:col-span-2">
+            <h3 class="text-lg font-bold text-skin-text border-b border-skin-border pb-3 mb-5 flex items-center gap-2">
+                <span class="text-skin-accent">●</span> Останні зображення
+            </h3>
+
+            {% if recent_images.is_empty() %}
+            <div class="text-center p-12 text-skin-muted bg-skin-surface rounded-lg border border-skin-border border-dashed">
+                Зображень поки немає...
+            </div>
+            {% else %}
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {% for img in recent_images %}
+                <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="block group relative aspect-square bg-skin-base overflow-hidden rounded-md border border-skin-border hover:border-skin-accent transition-colors">
+                    <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" alt="{{ img.filename }}" loading="lazy" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 opacity-95 group-hover:opacity-100">
+                </a>
+                {% endfor %}
+            </div>
+            {% endif %}
         </div>
+
+        <!-- Recent Threads -->
+        <div class="lg:col-span-1">
+            <h3 class="text-lg font-bold text-skin-text border-b border-skin-border pb-3 mb-5 flex items-center gap-2">
+                <span class="text-skin-primary">●</span> Активні треди
+            </h3>
+
+            <div class="flex flex-col gap-3">
+                {% for thread in recent_threads %}
+                <div class="bg-skin-surface border border-skin-border p-3 rounded-lg hover:border-skin-accent/50 transition-colors shadow-sm">
+                    <div class="flex justify-between items-center mb-1 text-[10px] font-mono font-bold text-skin-muted">
+                        <a href="/{{ thread.board_slug }}" class="hover:text-skin-accent">/{{ thread.board_slug }}/</a>
+                        <span>{{ thread.updated_at.format("%d.%m %H:%M") }}</span>
+                    </div>
+                    <a href="/{{ thread.board_slug }}/thread/{{ thread.id }}" class="block font-bold text-skin-link hover:underline text-sm mb-1 line-clamp-1">
+                        {% if let Some(subject) = thread.subject %}
+                        {{ subject }}
+                        {% else %}
+                        Без теми
+                        {% endif %}
+                    </a>
+                    <div class="text-xs text-skin-text line-clamp-2 leading-relaxed opacity-80 break-words">
+                        {{ thread.content }}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
     </div>
 </div>
 {% endblock %}

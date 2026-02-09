@@ -4,6 +4,7 @@ pub struct Config {
     pub jwt_secret: String,
     pub jwt_expires_in: String,
     pub jwt_maxage: i32,
+    pub cdn_url: String,
 }
 
 impl Config {
@@ -16,6 +17,8 @@ impl Config {
                 .expect("JWT_MAXAGE must be set")
                 .parse::<i32>()
                 .unwrap(),
+            // Load the CDN URL here
+            cdn_url: std::env::var("S3_PUBLIC_URL").expect("S3_PUBLIC_URL must be set"),
         }
     }
 }

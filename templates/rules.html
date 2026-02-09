@@ -1,0 +1,57 @@
+{% extends "layout/base.html" %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto py-10">
+  <div class="bg-skin-surface border border-skin-border p-8 rounded-lg shadow-sm">
+    <h1 class="text-3xl font-bold text-skin-red mb-8 border-b border-skin-border pb-4 flex items-center gap-3">
+      <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+      Правила
+    </h1>
+
+    <div class="space-y-8 text-skin-text">
+
+      <section>
+        <h2 class="text-xl font-bold text-skin-text mb-3">0. Загальні положення</h2>
+        <p class="text-sm opacity-80 leading-relaxed">
+          Цей сайт є приватною власністю. Доступ до нього є привілеєм, а не правом. Адміністрація залишає за собою право відмовити в доступі будь-кому без пояснення причин. Контент створюється користувачами, адміністрація не несе відповідальності за зміст повідомлень.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-skin-text mb-3">1. Глобальні заборони (Бан)</h2>
+        <div class="bg-skin-base p-4 rounded-md border-l-4 border-skin-red">
+          <ul class="list-disc pl-5 text-sm space-y-2">
+            <li><strong>ЦП (Дитяча порнографія)</strong>: Будь-які матеріали, що зображують неповнолітніх у сексуальному контексті. Перманентний бан.</li>
+            <li><strong>Заклики до насильства</strong>: Прямі погрози, заклики до тероризму або фізичної розправи.</li>
+            <li><strong>Вайп та Спам</strong>: Масове створення беззмістовних тредів, реклама, флоод однотипними картинками.</li>
+            <li><strong>Шкідливе ПЗ</strong>: Посилання на віруси, експлойти, фішинг.</li>
+            <li><strong>Порушення законодавства України</strong>: Матеріали, що прямо порушують кримінальний кодекс.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-skin-text mb-3">2. Правила розділів</h2>
+        <div class="space-y-4 text-sm">
+          <div>
+            <h3 class="font-bold text-skin-accent">/b/ - Маячня</h3>
+            <p>Правила мінімальні. Дозволено все, що не заборонено глобальними правилами. Але пам'ятайте: анонімність не звільняє від відповідальності.</p>
+          </div>
+          <div>
+            <h3 class="font-bold text-skin-accent">/tech/ - Технології</h3>
+            <p>Тільки тематичне спілкування. Офтоп, політичні дискусії та тролінг будуть видалятися.</p>
+          </div>
+          <div>
+            <h3 class="font-bold text-skin-accent">/a/ - Аніме</h3>
+            <p>Обговорення японської культури. Спойлери мають бути приховані.</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="text-center text-xs text-skin-muted mt-8 pt-4 border-t border-skin-border">
+        Незнання правил не звільняє від відповідальності.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

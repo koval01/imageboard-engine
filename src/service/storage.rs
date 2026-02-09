@@ -10,8 +10,7 @@ use webp::Encoder;
 
 pub struct StorageService {
     client: Client,
-    bucket: String,
-    public_url: String,
+    bucket: String
 }
 
 #[derive(Debug)]
@@ -52,12 +51,10 @@ impl StorageService {
 
         let client = Client::new(&config);
         let bucket = std::env::var("S3_BUCKET_NAME").expect("S3_BUCKET_NAME not set");
-        let public_url = std::env::var("S3_PUBLIC_URL").expect("S3_PUBLIC_URL not set");
 
         Self {
             client,
             bucket,
-            public_url,
         }
     }
 
@@ -136,8 +133,8 @@ impl StorageService {
             .context("Failed to upload thumbnail to S3")?;
 
         Ok(ProcessedImage {
-            url: format!("{}/{}", self.public_url, key_main),
-            thumbnail_url: format!("{}/{}", self.public_url, key_thumb),
+            url: key_main.clone(),
+            thumbnail_url: key_thumb,
             storage_key: key_main,
             filename: original_filename,
             width: width as i32,
