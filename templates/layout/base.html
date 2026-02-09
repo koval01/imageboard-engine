@@ -10,10 +10,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.0.0/css/flag-icons.min.css" />
     <link rel="stylesheet" href="/assets/css/sweetalert2.min.css">
+
+    <!-- Core Libraries -->
     <script src="/assets/js/htmx.min.js"></script>
     <script src="/assets/js/sweetalert2.min.js"></script>
+    <!-- Main Logic (Anti-Bot + Hydration) -->
+    <script src="/assets/js/core.min.js" defer></script>
 
-    <!-- Theme Logic -->
     <script>
         (function() {
             function getTheme() {
@@ -31,7 +34,6 @@
 <!-- Navbar -->
 <nav class="bg-skin-header text-gray-300 text-xs shadow-sm sticky top-0 z-50 border-b border-skin-border/10">
     <div class="container mx-auto px-2 h-10 flex items-center justify-between">
-        <!-- Left: Boards -->
         <div class="flex items-center overflow-x-auto whitespace-nowrap scrollbar-hide mask-fade mr-2">
             <a href="/" class="font-bold text-white mr-3 hover:text-skin-accent transition tracking-wide">KRYIVKA</a>
             <span class="text-gray-600 mr-1">[</span>
@@ -45,12 +47,9 @@
             <span class="text-gray-600 ml-1">]</span>
         </div>
 
-        <!-- Right: Theme Toggle -->
         <div class="flex items-center gap-3 shrink-0">
             <button id="theme-toggle" class="hover:text-skin-accent focus:outline-none transition-colors" title="Перемикач теми">
-                <!-- Sun Icon -->
                 <svg id="icon-light" class="w-4 h-4 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                <!-- Moon Icon -->
                 <svg id="icon-dark" class="w-4 h-4 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
             </button>
         </div>
@@ -74,9 +73,7 @@
     </div>
 </footer>
 
-<!-- Scripts -->
 <script>
-    // Theme Switcher Logic
     const themeToggle = document.getElementById('theme-toggle');
     const iconLight = document.getElementById('icon-light');
     const iconDark = document.getElementById('icon-dark');
@@ -102,23 +99,18 @@
         updateIcons(newTheme);
     });
 
-    // Disclaimer Logic
     document.addEventListener('DOMContentLoaded', () => {
         const hasAccepted = localStorage.getItem('kryivka_disclaimer_accepted');
-
         if (!hasAccepted) {
             Swal.fire({
                 title: 'Ласкаво просимо',
                 html: `
                     <div class="text-left text-sm space-y-3">
-                        <p>Ви заходите на <strong>Kryivka.org</strong> — анонімний простір для вільного спілкування.</p>
-                        <p>Зверніть увагу:</p>
+                        <p>Ви заходите на <strong>Kryivka.org</strong> — анонімний простір.</p>
                         <ul class="list-disc pl-5 opacity-80">
                             <li>Контент створюється користувачами.</li>
-                            <li>Адміністрація не несе відповідальності за думки авторів.</li>
-                            <li>Може містити матеріали, не призначені для дітей (18+).</li>
+                            <li>Може містити матеріали 18+.</li>
                         </ul>
-                        <p class="font-medium text-center mt-4">Ви погоджуєтесь з правилами?</p>
                     </div>
                 `,
                 icon: 'info',
@@ -129,7 +121,6 @@
                 cancelButtonColor: '#71717a',
                 background: 'var(--color-bg-surface)',
                 color: 'var(--color-text-base)',
-                backdrop: `rgba(0,0,0,0.8)`,
                 allowOutsideClick: false,
                 allowEscapeKey: false
             }).then((result) => {

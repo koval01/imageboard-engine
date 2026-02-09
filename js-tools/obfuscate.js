@@ -14,14 +14,13 @@ const obfuscationResult = JavaScriptObfuscator.obfuscate(sourceCode, {
     controlFlowFlattening: true,
     controlFlowFlatteningThreshold: 0.75,
     deadCodeInjection: false,
-    deadCodeInjectionThreshold: 0.0,
-    debugProtection: false, // Set true if you want to annoy devtools users
-    disableConsoleOutput: true,
+    debugProtection: false,
+    disableConsoleOutput: false, // Changed to false so we can see errors
     identifierNamesGenerator: 'hexadecimal',
     log: false,
     numbersToExpressions: true,
     renameGlobals: false,
-    selfDefending: true, // This makes the code break if formatted/beautified
+    selfDefending: true,
     simplify: true,
     splitStrings: true,
     splitStringsChunkLength: 10,
@@ -29,7 +28,17 @@ const obfuscationResult = JavaScriptObfuscator.obfuscate(sourceCode, {
     stringArrayEncoding: ['base64'],
     stringArrayThreshold: 0.75,
     target: 'browser',
-    unicodeEscapeSequence: false
+    unicodeEscapeSequence: false,
+    // CRITICAL FIX: Reserve these strings so they aren't broken
+    reservedStrings: [
+        'htmx:configRequest',
+        'htmx:afterSwap',
+        'X-K-Proof',
+        'client_key',
+        'post',
+        '__kr_hydrate',
+        '__kr_config'
+    ]
 });
 
 fs.writeFileSync(outputFile, obfuscationResult.getObfuscatedCode());

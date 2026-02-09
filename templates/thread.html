@@ -3,10 +3,10 @@
 {% block content %}
 
 <!-- Navigation -->
-<div class="container max-w-5xl mx-auto px-0 sm:px-2">
-    <div class="py-2 border-b border-skin-border mb-4 text-sm font-bold flex justify-between items-center px-2 sm:px-0">
+<div class="container max-w-5xl mx-auto px-2">
+    <div class="py-2 border-b border-skin-border mb-4 text-sm font-bold flex justify-between items-center">
         <a href="/{{ board.slug }}" class="text-skin-link hover:underline flex items-center gap-1">
-            &larr; Дошка /{{ board.slug }}/
+            &larr; /{{ board.slug }}/
         </a>
         <div class="flex items-center gap-2 text-[10px] uppercase font-mono text-skin-muted">
             <span class="htmx-indicator text-skin-accent" id="poll-ind">●</span>
@@ -14,10 +14,7 @@
         </div>
     </div>
 
-    <!--
-        THREAD WRAPPER
-        Polling swaps this entire div.
-    -->
+    <!-- MAIN POLL WRAPPER -->
     <div id="thread-poll-wrapper"
          hx-get="/{{ board.slug }}/thread/{{ thread.id }}"
          hx-trigger="every 15s"
@@ -25,8 +22,10 @@
          hx-swap="outerHTML"
          hx-indicator="#poll-ind">
 
-        <!-- Encrypted Payload & Config -->
+        <!-- Encrypted Data -->
         <script type="text/json" id="__KR_DATA">{{ payload }}</script>
+
+        <!-- Init Hydration (Core.js is now loaded via Base) -->
         <script>
             window.__kr_config = {
                 mode: 'thread',
@@ -39,9 +38,8 @@
 
         <div class="thread-container mb-32">
 
-            <!-- OP POST -->
-            <div class="bg-skin-surface border-b border-skin-border sm:border sm:rounded-lg p-4 sm:p-6 mb-6 shadow-sm">
-
+            <!-- OP Post -->
+            <div class="bg-skin-surface border border-skin-border rounded-lg p-4 sm:p-6 mb-6 shadow-sm">
                 <!-- OP Header -->
                 <div class="flex flex-wrap justify-between items-start border-b border-skin-border/50 pb-2 mb-3">
                     <div class="text-sm text-skin-muted flex flex-wrap items-center gap-3">
@@ -50,19 +48,20 @@
                         {% endif %}
                         <div class="flex items-center gap-1">
                             {% if let Some(cc) = thread.country_code %}
-                            <span class="fi fi-{{ cc|lower }} rounded-[2px] shadow-sm"></span>
+                            <span class="fi fi-{{ cc|lower }} rounded-sm shadow-sm"></span>
                             {% endif %}
                             <span class="font-bold text-[#15803d]">Анонім</span>
                         </div>
                         <span class="opacity-70 text-xs">{{ thread.created_at.format("%d.%m.%Y %H:%M") }}</span>
                     </div>
-                    <div class="text-xs flex items-center gap-2">
-                        <span class="font-mono text-skin-text select-all">№{{ thread.id }}</span>
+                    <div class="text-xs">
+                        <span class="font-mono text-skin-text select-all mr-2">№{{ thread.id }}</span>
+                        <button onclick="replyTo({{ thread.id }})" class="text-skin-link font-bold hover:underline">[ВІДПОВІСТИ]</button>
                     </div>
                 </div>
 
-                <!-- OP IMAGES CONTAINER (Required for JS) -->
-                <div id="op-images-anchor" style="display: none;"></div>
+                <!-- OP Images Anchor (Critical for JS) -->
+                <div id="op-images-anchor" class="hidden"></div>
 
                 <!-- OP Content -->
                 <div class="text-sm sm:text-base text-skin-text leading-relaxed whitespace-pre-wrap break-words font-sans">
@@ -70,17 +69,14 @@
                 </div>
             </div>
 
-            <!-- REPLIES CONTAINER -->
-            <div id="replies-container" class="flex flex-col gap-2 min-h-[100px] opacity-0 transition-opacity duration-300 px-2 sm:px-0">
+            <!-- Replies Container -->
+            <div id="replies-container" class="flex flex-col gap-1 min-h-[100px] opacity-0 transition-opacity duration-300">
                 <div class="text-center py-8 text-skin-muted text-xs font-mono">LOADING...</div>
             </div>
 
         </div>
     </div>
 </div>
-
-<!-- Sticky Footer Spacer -->
-<div class="h-32"></div>
 
 <!-- Reply Form -->
 <div class="fixed bottom-0 left-0 right-0 z-40 px-2 sm:px-0 pointer-events-none">
