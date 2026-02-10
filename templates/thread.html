@@ -155,7 +155,8 @@
         </button>
 
         <div id="reply-panel" class="w-full bg-skin-surface border-t border-skin-border shadow-[0_-5px_30px_rgba(0,0,0,0.15)] p-3 transition-transform duration-300 transform translate-y-0 sm:rounded-t-lg">
-            <form hx-post="/{{ board.slug }}/thread/{{ thread.id }}/reply"
+            <form id="reply-form"
+                  hx-post="/{{ board.slug }}/thread/{{ thread.id }}/reply"
                   hx-encoding="multipart/form-data"
                   hx-target="#thread-poll-wrapper"
                   hx-select="#thread-poll-wrapper"
@@ -204,7 +205,37 @@
         box.value += (box.value.length > 0 && box.value.slice(-1) !== '\n') ? '\n' + ref : ref;
         box.focus();
         box.scrollTop = box.scrollHeight;
+        // Trigger save immediately
+        box.dispatchEvent(new Event('input'));
     }
+
+    // --- Draft Saving Logic ---
+    document.addEventListener('DOMContentLoaded', () => {
+        const replyBox = document.getElementById('reply-box');
+        const replyForm = document.getElementById('reply-form');
+
+        // Generate a unique key for this specific thread URL
+        const storageKey = 'kryivka_draft_' + window.location.pathname;
+
+        // 1. Restore draft if exists
+        const savedDraft = localStorage.getItem(storageKey);
+        if (savedDraft) {
+            replyBox.value = savedDraft;
+        }
+
+        // 2. Save draft on typing
+        replyBox.addEventListener('input', (e) => {
+            localStorage.setItem(storageKey, e.target.value);
+        });
+
+        // 3. Clear draft ONLY on successful submission
+        replyForm.addEventListener('htmx:afterRequest', (evt) => {
+            if(evt.detail.successful) {
+                localStorage.removeItem(storageKey);
+                replyBox.value = '';
+            }
+        });
+    });
 
     // HTMX Error Handling
     document.body.addEventListener('htmx:responseError', function(evt) {
