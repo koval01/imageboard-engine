@@ -16,7 +16,7 @@ const obfuscationResult = JavaScriptObfuscator.obfuscate(sourceCode, {
     deadCodeInjection: false,
     debugProtection: false,
     disableConsoleOutput: false, // Changed to false so we can see errors
-    identifierNamesGenerator: 'hexadecimal',
+    identifierNamesGenerator: 'mangled-shuffled',
     log: false,
     numbersToExpressions: true,
     renameGlobals: false,
