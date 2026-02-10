@@ -25,10 +25,10 @@ pub struct ProcessedImage {
 }
 
 // Configuration constants
-const MAX_WIDTH: u32 = 1280;
-const MAX_HEIGHT: u32 = 1280;
-const IMAGE_QUALITY: f32 = 77.0;
-const THUMB_QUALITY: f32 = 48.0;
+const MAX_WIDTH: u32 = 2000;
+const MAX_HEIGHT: u32 = 2000;
+const IMAGE_QUALITY: f32 = 72.0;
+const THUMB_QUALITY: f32 = 55.0;
 
 impl StorageService {
     pub async fn init() -> Self {
@@ -89,7 +89,7 @@ impl StorageService {
 
             // 3. Thumbnail Logic
             // .thumbnail() is faster than .resize() for downscaling and handles aspect ratio
-            let thumb_img = img.thumbnail(300, 300);
+            let thumb_img = img.thumbnail(384, 384);
 
             let thumb_encoder = Encoder::from_image(&thumb_img)
                 .map_err(|e| anyhow!("Thumbnail WebP encoding failed: {:?}", e))?;
