@@ -5,7 +5,7 @@ use axum::{
     response::{IntoResponse, Redirect},
     http::HeaderMap,
 };
-use sea_orm::{EntityTrait, QueryOrder, Set, ActiveModelTrait, ModelTrait, QueryFilter, ColumnTrait, QuerySelect, LoaderTrait, PaginatorTrait, RelationTrait};
+use sea_orm::{EntityTrait, QueryOrder, Set, ActiveModelTrait, ModelTrait, QueryFilter, ColumnTrait, QuerySelect, LoaderTrait, PaginatorTrait, RelationTrait, DatabaseConnection};
 use tokio::sync::RwLock;
 use askama::Template;
 use chrono::Utc;
@@ -82,7 +82,8 @@ struct ThreadTemplate {
 
 async fn parse_multipart_form(
     mut multipart: Multipart,
-    storage: &StorageService
+    storage: &StorageService,
+    db: &DatabaseConnection,
 ) -> Result<ParsedForm, String> {
     let mut subject = None;
     let mut content = String::new();
@@ -121,7 +122,8 @@ async fn parse_multipart_form(
             }
 
             if !data.is_empty() {
-                match storage.upload_image(data, filename).await {
+                // Pass DB to upload_image
+                match storage.upload_image(data, filename, db).await {
                     Ok(img) => processed_images.push(img),
                     Err(e) => return Err(format!("Upload failed: {}", e)),
                 }
@@ -131,6 +133,7 @@ async fn parse_multipart_form(
 
     Ok(ParsedForm { subject, content, images: processed_images })
 }
+
 
 // --- HANDLERS ---
 
@@ -306,8 +309,10 @@ pub async fn create_thread_handler(
     let state_read = state.read().await;
     let ip = get_client_ip(&headers, &addr);
     let country_code = resolve_country_code(ip, &state_read.ip_cache).await;
+    let db = &state_read.pool; // Extract db reference
 
-    let parsed = match parse_multipart_form(multipart, &state_read.storage).await {
+    // Pass db to parse_multipart_form
+    let parsed = match parse_multipart_form(multipart, &state_read.storage, db).await {
         Ok(p) => p,
         Err(e) => return HtmlTemplate(crate::handler::ErrorTemplate { message: e }).into_response(),
     };
@@ -316,8 +321,7 @@ pub async fn create_thread_handler(
         return Redirect::to(&format!("/{}", slug)).into_response();
     }
 
-    let db = &state_read.pool;
-
+    // Insert Thread
     let new_thread = threads::ActiveModel {
         board_slug: Set(slug.clone()),
         subject: Set(parsed.subject),
@@ -339,6 +343,7 @@ pub async fn create_thread_handler(
                 thumbnail_url: Set(img.thumbnail_url),
                 filename: Set(img.filename),
                 storage_key: Set(img.storage_key),
+                hash: Set(img.hash), // Save Hash
                 width: Set(img.width),
                 height: Set(img.height),
                 size: Set(img.size),
@@ -364,8 +369,10 @@ pub async fn reply_handler(
     let state_read = state.read().await;
     let ip = get_client_ip(&headers, &addr);
     let country_code = resolve_country_code(ip, &state_read.ip_cache).await;
+    let db = &state_read.pool; // Extract db reference
 
-    let parsed = match parse_multipart_form(multipart, &state_read.storage).await {
+    // Pass db to parse_multipart_form
+    let parsed = match parse_multipart_form(multipart, &state_read.storage, db).await {
         Ok(p) => p,
         Err(e) => return HtmlTemplate(crate::handler::ErrorTemplate { message: e }).into_response(),
     };
@@ -373,8 +380,6 @@ pub async fn reply_handler(
     if parsed.content.trim().is_empty() && parsed.images.is_empty() {
         return Redirect::to(&format!("/{}/thread/{}", slug, thread_id)).into_response();
     }
-
-    let db = &state_read.pool;
 
     let new_post = posts::ActiveModel {
         thread_id: Set(thread_id),
@@ -393,6 +398,7 @@ pub async fn reply_handler(
                 thumbnail_url: Set(img.thumbnail_url),
                 filename: Set(img.filename),
                 storage_key: Set(img.storage_key),
+                hash: Set(img.hash), // Save Hash
                 width: Set(img.width),
                 height: Set(img.height),
                 size: Set(img.size),

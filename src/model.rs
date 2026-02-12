@@ -161,6 +161,7 @@ pub mod images {
         pub thumbnail_url: String,
         pub filename: String,
         pub storage_key: String,
+        pub hash: String,
         pub width: i32,
         pub height: i32,
         pub size: i64,

@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use config::Config;
+use config::{Config, StorageType};
 use dotenv;
 
 use migrator::Migrator;
@@ -23,6 +23,11 @@ use sea_orm_migration::MigratorTrait;
 
 use tokio::sync::RwLock;
 use moka::future::Cache;
+
+// New imports for media server
+use axum::Router;
+use tower_http::{services::ServeDir, trace::TraceLayer};
+use tower_http::cors::CorsLayer;
 
 pub struct AppState {
     pub pool: DatabaseConnection,
@@ -40,12 +45,31 @@ async fn main() -> Result<()> {
 
     Migrator::up(&pool, None).await?;
 
-    let storage = StorageService::init().await;
+    let storage = StorageService::init(&config).await;
 
     let ip_cache = Cache::builder()
         .max_capacity(10_000)
         .time_to_live(Duration::from_secs(60 * 60 * 24))
         .build();
+
+    // Check if we need to spawn the media server
+    if config.storage_type == StorageType::Local {
+        let media_path = config.media_path.clone();
+        let media_port = config.media_port;
+
+        tokio::spawn(async move {
+            let app = Router::new()
+                .nest_service("/", ServeDir::new(media_path))
+                .layer(TraceLayer::new_for_http())
+                .layer(CorsLayer::permissive()); // Allow access from main app
+
+            let addr = format!("0.0.0.0:{}", media_port);
+            println!("Media Server running on http://{}", addr);
+
+            let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+            axum::serve(listener, app).await.unwrap();
+        });
+    }
 
     let app_state = Arc::new(RwLock::new(AppState {
         pool,
