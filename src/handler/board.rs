@@ -398,7 +398,7 @@ pub async fn reply_handler(
                 thumbnail_url: Set(img.thumbnail_url),
                 filename: Set(img.filename),
                 storage_key: Set(img.storage_key),
-                hash: Set(img.hash), // Save Hash
+                hash: Set(img.hash),
                 width: Set(img.width),
                 height: Set(img.height),
                 size: Set(img.size),
