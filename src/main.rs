@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use config::Config;
-use dotenv::dotenv;
+use dotenv;
 
 use migrator::Migrator;
 use service::StorageService;

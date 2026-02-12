@@ -7,7 +7,7 @@ use axum::{
 };
 use tokio::sync::RwLock;
 use tower_http::{services::ServeDir, trace::TraceLayer};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, fmt};
 
 use crate::{
     handler::{
@@ -19,8 +19,20 @@ use crate::{
 
 pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "debug".into()))
-        .with(tracing_subscriber::fmt::layer())
+        .with(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| {
+                    #[cfg(debug_assertions)]
+                    {
+                        "debug".into() // debug in dev
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        "error".into()
+                    }
+                }),
+        )
+        .with(fmt::layer())
         .init();
 
     let assets_path = std::env::current_dir()?;
