@@ -67,11 +67,11 @@ impl MigrationTrait for Migration {
 
         // Seed Default Admin
         // Password: "ChangeThisPasswordImmediately!"
-        // SHA256 Hash: 5e917d230b561df0996d9e03d5267e7c0934eb872049d5885732959639739500
+        // SHA256 Hash: a871036047681927683b9612d7c5fd403c7ac2dcb3e8c863cface537ad5b3903
         let insert = Query::insert()
             .into_table(Admins::Table)
             .columns([Admins::Username, Admins::ServiceKey, Admins::Role])
-            .values_panic(["root".into(), "5e917d230b561df0996d9e03d5267e7c0934eb872049d5885732959639739500".into(), 3.into()])
+            .values_panic(["root".into(), "a871036047681927683b9612d7c5fd403c7ac2dcb3e8c863cface537ad5b3903".into(), 3.into()])
             .to_owned();
 
         manager.exec_stmt(insert).await
