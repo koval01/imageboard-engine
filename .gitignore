@@ -6,3 +6,4 @@ assets/css/main.css
 # Ignore SQLite files
 sqlite.*
 # .env
+.env.local

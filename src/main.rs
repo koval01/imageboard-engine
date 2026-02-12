@@ -7,6 +7,7 @@ mod route;
 mod security;
 mod service;
 
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -32,7 +33,7 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    dotenv().ok();
+    dotenv::from_path(Path::new(".env.local")).ok();
 
     let config = Config::init();
     let pool = db::connect(&config.database_url).await?;
