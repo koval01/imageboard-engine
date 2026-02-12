@@ -5,7 +5,7 @@
   {% if let Some(e) = error %}
   <div class="text-red-500 mb-4">{{ e }}</div>
   {% endif %}
-  <form method="POST" action="/admin/login">
+  <form hx-post="/admin/login" hx-target="body">
     <input type="password" name="key" placeholder="Service Key" class="w-full p-2 border mb-4 rounded bg-skin-input">
     <button type="submit" class="w-full bg-skin-primary text-white p-2 rounded font-bold">Login</button>
   </form>
