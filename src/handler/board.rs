@@ -15,7 +15,7 @@ use crate::{
     AppState,
     handler::middleware::CurrentSession,
     handler::HtmlTemplate,
-    service::{ProcessedImage, StorageService, Obfuscator, resolve_country_code},
+    service::{ProcessedImage, StorageService, resolve_country_code},
     security::get_client_ip,
 };
 
@@ -247,7 +247,7 @@ pub async fn view_board_handler(
             });
         }
 
-        let payload = Obfuscator::pack(&thread_items, &session.id);
+        let payload = serde_json::to_string(&thread_items).unwrap_or_default();
 
         return HtmlTemplate(BoardTemplate {
             board, payload, cdn_url
@@ -294,7 +294,7 @@ pub async fn view_thread_handler(
                 posts: posts_with_images
             };
 
-            let payload = Obfuscator::pack(&data, &session.id);
+            let payload = serde_json::to_string(&data).unwrap_or_default();
 
             return HtmlTemplate(ThreadTemplate {
                 board,

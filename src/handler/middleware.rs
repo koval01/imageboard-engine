@@ -14,6 +14,7 @@ use base64::Engine;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 use time::Duration;
+use sha2::{Sha256, Digest};
 
 use crate::{model::SessionClaims, security::{get_client_ip, get_user_agent}, AppState};
 
@@ -119,27 +120,31 @@ pub async fn bot_guard_middleware(
     if req.method() == axum::http::Method::POST {
         let headers = req.headers();
 
-        // 2. Look for X-K-Proof header
-        let proof = headers.get("X-K-Proof")
+        // 2. Get the PoW Nonce sent by JS
+        let nonce = headers.get("X-PoW-Nonce")
             .and_then(|h| h.to_str().ok())
             .unwrap_or("");
 
-        // 3. Get Session ID from extensions (set by session_middleware)
+        // 3. Get Session ID (client_key)
         let session_id = if let Some(sess) = req.extensions().get::<CurrentSession>() {
             sess.id.clone()
         } else {
             return Err((StatusCode::FORBIDDEN, "No Session").into_response());
         };
 
-        // 4. Validate Logic:
-        // Reverse String -> Base64
-        let expected_raw: String = session_id.chars().rev().collect();
-        let expected = base64::engine::general_purpose::STANDARD.encode(expected_raw);
+        // 4. Verify Proof of Work
+        // Difficulty: Hash must start with "0000" (approx 65k iterations, ~200ms for user, expensive for bot)
+        // Format: SHA256(session_id + nonce)
+        let input = format!("{}{}", session_id, nonce);
+        let mut hasher = Sha256::new();
+        hasher.update(input.as_bytes());
+        let result = hasher.finalize();
 
-        if proof != expected {
+        // Check if first 2 bytes are 0 (0x00, 0x00) -> equivalent to hex "0000..."
+        if result[0] != 0 || result[1] != 0 {
             return Err((
                 StatusCode::FORBIDDEN,
-                Json(json!({ "error": "Security error" }))
+                Json(json!({ "error": "Invalid Proof of Work. Please enable JavaScript." }))
             ).into_response());
         }
     }

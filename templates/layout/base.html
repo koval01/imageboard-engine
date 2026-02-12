@@ -8,26 +8,14 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.0.0/css/flag-icons.min.css" />
+    <link rel="stylesheet" href="/assets/css/flag-icons.min.css" />
     <link rel="stylesheet" href="/assets/css/sweetalert2.min.css">
 
     <!-- Core Libraries -->
     <script src="/assets/js/htmx.min.js"></script>
     <script src="/assets/js/sweetalert2.min.js"></script>
-    <!-- Main Logic (Anti-Bot + Hydration) -->
+    <!-- Main Logic -->
     <script src="/assets/js/core.min.js" defer></script>
-
-    <script>
-        (function() {
-            function getTheme() {
-                if (localStorage.getItem('theme')) {
-                    return localStorage.getItem('theme');
-                }
-                return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-            }
-            document.documentElement.setAttribute('data-theme', getTheme());
-        })();
-    </script>
 </head>
 <body class="antialiased min-h-screen flex flex-col font-sans bg-skin-base text-skin-text">
 
@@ -73,65 +61,5 @@
     </div>
 </footer>
 
-<script>
-    const themeToggle = document.getElementById('theme-toggle');
-    const iconLight = document.getElementById('icon-light');
-    const iconDark = document.getElementById('icon-dark');
-    const html = document.documentElement;
-
-    function updateIcons(theme) {
-        if (theme === 'dark') {
-            iconLight.classList.remove('hidden');
-            iconDark.classList.add('hidden');
-        } else {
-            iconLight.classList.add('hidden');
-            iconDark.classList.remove('hidden');
-        }
-    }
-
-    updateIcons(html.getAttribute('data-theme'));
-
-    themeToggle.addEventListener('click', () => {
-        const currentTheme = html.getAttribute('data-theme');
-        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        html.setAttribute('data-theme', newTheme);
-        localStorage.setItem('theme', newTheme);
-        updateIcons(newTheme);
-    });
-
-    document.addEventListener('DOMContentLoaded', () => {
-        const hasAccepted = localStorage.getItem('kryivka_disclaimer_accepted');
-        if (!hasAccepted) {
-            Swal.fire({
-                title: 'Ласкаво просимо',
-                html: `
-                    <div class="text-left text-sm space-y-3">
-                        <p>Ви заходите на <strong>Kryivka.org</strong> — анонімний простір.</p>
-                        <ul class="list-disc pl-5 opacity-80">
-                            <li>Контент створюється користувачами.</li>
-                            <li>Може містити матеріали 18+.</li>
-                        </ul>
-                    </div>
-                `,
-                icon: 'info',
-                showCancelButton: true,
-                confirmButtonText: 'Вхід',
-                cancelButtonText: 'Вихід',
-                confirmButtonColor: 'var(--color-primary)',
-                cancelButtonColor: '#71717a',
-                background: 'var(--color-bg-surface)',
-                color: 'var(--color-text-base)',
-                allowOutsideClick: false,
-                allowEscapeKey: false
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    localStorage.setItem('kryivka_disclaimer_accepted', 'true');
-                } else {
-                    window.location.href = "https://google.com";
-                }
-            });
-        }
-    });
-</script>
 </body>
 </html>

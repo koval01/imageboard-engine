@@ -89,3 +89,16 @@ input:focus, textarea:focus, select:focus {
 .swal2-container {
     backdrop-filter: blur(16px);
 }
+
+/* Timer Animation */
+.timer-anim {
+    stroke-dasharray: 56.5;
+    stroke-dashoffset: 0;
+    animation: burnout 15s linear infinite;
+    transform-origin: center;
+}
+
+@keyframes burnout {
+    from { stroke-dashoffset: 0; }
+    to { stroke-dashoffset: 56.5; }
+}
