@@ -25,13 +25,13 @@ struct ParsedForm {
     images: Vec<ProcessedImage>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone)]
 pub struct PostItem {
     pub model: posts::Model,
     pub images: Vec<images::Model>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone)]
 pub struct ThreadItem {
     pub model: threads::Model,
     pub images: Vec<images::Model>,
@@ -66,7 +66,7 @@ struct RulesTemplate {}
 #[template(path = "board.html")]
 struct BoardTemplate {
     board: boards::Model,
-    payload: String,
+    threads: Vec<ThreadItem>, // Passed directly
     cdn_url: String,
 }
 
@@ -75,7 +75,8 @@ struct BoardTemplate {
 struct ThreadTemplate {
     board: boards::Model,
     thread: threads::Model,
-    payload: String,
+    op_images: Vec<images::Model>,
+    replies: Vec<PostItem>, // Passed directly
     cdn_url: String,
 }
 
@@ -138,21 +139,16 @@ pub async fn home_handler(State(state): State<Arc<RwLock<AppState>>>) -> impl In
     let db = &state.pool;
     let cdn_url = state.config.cdn_url.clone();
 
-    // 1. Fetch all boards
     let boards_models = boards::Entity::find().all(db).await.unwrap_or_default();
 
-    // 2. Calculate post counts (Threads + Posts in board)
     let mut boards_stats = Vec::new();
     for board in boards_models {
-        // Count threads in this board
         let thread_count = threads::Entity::find()
             .filter(threads::Column::BoardSlug.eq(&board.slug))
             .count(db)
             .await
             .unwrap_or(0);
 
-        // Count posts in threads belonging to this board
-        // Join Posts -> Threads where Threads.board_slug = board.slug
         let post_count = posts::Entity::find()
             .join(sea_orm::JoinType::InnerJoin, posts::Relation::Thread.def())
             .filter(threads::Column::BoardSlug.eq(&board.slug))
@@ -166,7 +162,6 @@ pub async fn home_handler(State(state): State<Arc<RwLock<AppState>>>) -> impl In
         });
     }
 
-    // 3. Fetch Recent Images (Across all boards)
     let recent_images = images::Entity::find()
         .order_by_desc(images::Column::CreatedAt)
         .limit(12)
@@ -174,7 +169,6 @@ pub async fn home_handler(State(state): State<Arc<RwLock<AppState>>>) -> impl In
         .await
         .unwrap_or_default();
 
-    // 4. Fetch Recent Threads (Bumped or Created)
     let recent_threads = threads::Entity::find()
         .order_by_desc(threads::Column::UpdatedAt)
         .limit(10)
@@ -201,7 +195,6 @@ pub async fn rules_handler() -> impl IntoResponse {
 pub async fn view_board_handler(
     State(state): State<Arc<RwLock<AppState>>>,
     Path(slug): Path<String>,
-    Extension(session): Extension<CurrentSession>
 ) -> impl IntoResponse {
     let state = state.read().await;
     let db = &state.pool;
@@ -229,6 +222,7 @@ pub async fn view_board_handler(
                 .await
                 .unwrap();
 
+            // Preview last 3 posts
             let preview_posts_raw = posts_raw.into_iter().rev().take(3).rev().collect::<Vec<_>>();
             let post_images = preview_posts_raw.load_many(images::Entity, db).await.unwrap();
 
@@ -247,10 +241,10 @@ pub async fn view_board_handler(
             });
         }
 
-        let payload = serde_json::to_string(&thread_items).unwrap_or_default();
-
         return HtmlTemplate(BoardTemplate {
-            board, payload, cdn_url
+            board,
+            threads: thread_items, // No JSON, direct struct
+            cdn_url
         }).into_response();
     }
 
@@ -260,7 +254,6 @@ pub async fn view_board_handler(
 pub async fn view_thread_handler(
     State(state): State<Arc<RwLock<AppState>>>,
     Path((slug, thread_id)): Path<(String, i32)>,
-    Extension(session): Extension<CurrentSession>
 ) -> impl IntoResponse {
     let state = state.read().await;
     let db = &state.pool;
@@ -272,7 +265,13 @@ pub async fn view_thread_handler(
         let thread = threads::Entity::find_by_id(thread_id).one(db).await.unwrap();
         if let Some(thread) = thread {
             let op_images = thread.find_related(images::Entity).all(db).await.unwrap();
-            let posts_raw = thread.find_related(posts::Entity).all(db).await.unwrap();
+
+            let posts_raw = thread.find_related(posts::Entity)
+                .order_by_asc(posts::Column::CreatedAt)
+                .all(db)
+                .await
+                .unwrap();
+
             let post_images_vec = posts_raw.load_many(images::Entity, db).await.unwrap();
 
             let mut posts_with_images = Vec::new();
@@ -283,23 +282,11 @@ pub async fn view_thread_handler(
                 });
             }
 
-            #[derive(serde::Serialize)]
-            struct ThreadPayload {
-                images: Vec<images::Model>,
-                posts: Vec<PostItem>
-            }
-
-            let data = ThreadPayload {
-                images: op_images,
-                posts: posts_with_images
-            };
-
-            let payload = serde_json::to_string(&data).unwrap_or_default();
-
             return HtmlTemplate(ThreadTemplate {
                 board,
                 thread,
-                payload,
+                op_images,
+                replies: posts_with_images,
                 cdn_url
             }).into_response();
         }

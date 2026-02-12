@@ -56,33 +56,82 @@
 
 <hr class="border-skin-border mb-8 opacity-50">
 
-<!-- Data Blob -->
-<script type="text/json" id="__KR_DATA">{{ payload }}</script>
+<!-- Thread List Container (Server Rendered) -->
+<div id="board-container" class="flex flex-col gap-6 min-h-[50vh]">
+    {% for item in threads %}
+    <div class="bg-skin-surface border border-skin-border rounded-lg p-4 shadow-sm hover:border-skin-accent/30 transition-colors">
+        <div class="flex flex-col sm:flex-row gap-4">
+            <!-- OP Images -->
+            <div class="shrink-0 w-full sm:w-[150px]">
+                {% if !item.images.is_empty() %}
+                <div class="grid grid-cols-2 gap-2 mb-3 select-none">
+                    {% for img in item.images %}
+                    <a href="{{ cdn_url }}/{{ img.url }}" class="lightbox-trigger block relative aspect-square bg-skin-base border border-skin-border rounded overflow-hidden group">
+                        <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="w-full h-full object-cover transition-opacity duration-200 group-hover:opacity-90" loading="lazy" alt="img">
+                        <div class="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[9px] px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity truncate">
+                            {{ (img.size / 1024) }}KB
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
 
-<!-- Thread List Container -->
-<div id="board-container" class="flex flex-col gap-10 min-h-[50vh] opacity-0 transition-opacity duration-700">
-    <div class="flex flex-col items-center justify-center py-20">
-        <span class="loading loading-bars loading-lg text-skin-accent"></span>
-        <p class="text-xs font-mono text-skin-muted mt-4">Завантажуємо...</p>
+            <!-- Thread Content -->
+            <div class="grow min-w-0">
+                <div class="text-xs text-skin-muted mb-2 flex flex-wrap items-center gap-2">
+                    <a href="/{{ item.model.board_slug }}/thread/{{ item.model.id }}" class="font-bold text-skin-accent text-sm hover:underline">/{{ item.model.board_slug }}/{{ item.model.id }}</a>
+
+                    <!-- Metadata -->
+                    <div class="flex items-center justify-between text-xs text-skin-muted border-skin-border/40 pb-1">
+                        <div class="flex items-center gap-2">
+                            <div class="flex items-center">
+                                {% if let Some(cc) = item.model.country_code %}
+                                <span class="fi fi-{{ cc|lower }} rounded-[2px] shadow-sm mr-1"></span>
+                                {% endif %}
+                                <span class="font-bold text-[#15803d]">Анонім</span>
+                            </div>
+                            <span class="opacity-70">{{ item.model.created_at.format("%d.%m.%y %H:%M") }}</span>
+                        </div>
+                    </div>
+
+                    <a href="/{{ item.model.board_slug }}/thread/{{ item.model.id }}" class="ml-auto bg-skin-primary/10 text-skin-primary px-2 py-0.5 rounded text-[10px] font-bold hover:bg-skin-primary hover:text-white transition-colors">ВІДПОВІСТИ</a>
+                </div>
+
+                {% if let Some(subject) = item.model.subject %}
+                <h3 class="font-bold text-skin-text text-base mb-1">{{ subject }}</h3>
+                {% endif %}
+
+                <div class="text-sm text-skin-text leading-relaxed whitespace-pre-wrap break-words font-sans">
+                    {% for line in item.model.content.lines() %}
+                    {% if line.trim().starts_with(">") %}
+                    <span class="text-[#789922]">{{ line }}</span><br>
+                    {% else %}
+                    {{ line }}<br>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+
+                <!-- Latest Replies -->
+                {% if !item.replies.is_empty() %}
+                <div class="mt-3 pl-3 border-l-2 border-skin-border/30 space-y-2">
+                    {% for reply in item.replies %}
+                    <div class="text-xs text-skin-muted bg-skin-base/60 p-2 rounded flex gap-2">
+                        <span class="opacity-50">>></span>
+                        <div class="truncate">{{ reply.model.content }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
     </div>
+    {% endfor %}
 </div>
 
-<!-- Global Lightbox (controlled by core.js) -->
+<!-- Global Lightbox -->
 <div id="lightbox" class="fixed inset-0 z-[100] bg-black/95 hidden flex items-center justify-center cursor-zoom-out">
     <img id="lightbox-img" src="" class="max-w-[95vw] max-h-[95vh] object-contain shadow-2xl rounded">
 </div>
-
-<!-- Config Injection -->
-<script>
-    window.__kr_config = {
-        mode: 'board',
-        targetId: 'board-container',
-        cdn: '{{ cdn_url }}',
-        boardSlug: '{{ board.slug }}'
-    };
-    // Initial Hydration trigger is in core.js DOMContentLoaded, but if this script runs after,
-    // we might need to manually trigger if core.js loaded fast.
-    if (window.__kr_hydrate) window.__kr_hydrate(window.__kr_config);
-</script>
 
 {% endblock %}

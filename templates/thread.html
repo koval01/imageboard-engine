@@ -34,26 +34,13 @@
     </div>
 
     <!-- MAIN POLL WRAPPER -->
+    <!-- hx-select ensures we grab only this wrapper from the SSR response -->
     <div id="thread-poll-wrapper"
          hx-get="/{{ board.slug }}/thread/{{ thread.id }}"
          hx-trigger="every 15s, click from:#manual-refresh-btn"
          hx-select="#thread-poll-wrapper"
          hx-swap="outerHTML"
          hx-indicator="#poll-ind">
-
-        <!-- Data Payload -->
-        <script type="text/json" id="__KR_DATA">{{ payload }}</script>
-
-        <!-- Config Injection -->
-        <script>
-            window.__kr_config = {
-                mode: 'thread',
-                targetId: 'replies-container',
-                cdn: '{{ cdn_url }}',
-                boardSlug: '{{ board.slug }}'
-            };
-            if (window.__kr_hydrate) window.__kr_hydrate(window.__kr_config);
-        </script>
 
         <div class="thread-container mb-32">
 
@@ -80,20 +67,82 @@
                     </div>
                 </div>
 
-                <!-- OP Images Anchor (Hydrated via JS) -->
-                <div id="op-images-anchor" class="hidden"></div>
+                <!-- OP Images -->
+                {% if !op_images.is_empty() %}
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 select-none">
+                    {% for img in op_images %}
+                    <a href="{{ cdn_url }}/{{ img.url }}" class="lightbox-trigger block relative aspect-square bg-skin-base border border-skin-border rounded overflow-hidden group">
+                        <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="w-full h-full object-cover transition-opacity duration-200 group-hover:opacity-90" loading="lazy" alt="img">
+                        <div class="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[9px] px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity truncate">
+                            {{ (img.size / 1024) }}KB
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% endif %}
 
                 <!-- OP Content -->
                 <div class="text-sm sm:text-base text-skin-text leading-relaxed whitespace-pre-wrap break-words font-sans">
-                    {{ thread.content }}
+                    {% for line in thread.content.lines() %}
+                    {% if line.trim().starts_with(">") %}
+                    <span class="text-[#789922]">{{ line }}</span><br>
+                    {% else %}
+                    {{ line }}<br>
+                    {% endif %}
+                    {% endfor %}
                 </div>
             </div>
 
-            <!-- Replies Container (Hydrated via JS) -->
-            <div id="replies-container" class="flex flex-col gap-1 min-h-[100px] opacity-0 transition-opacity duration-300">
-                <div class="text-center py-8 text-skin-muted text-xs font-mono">
-                    <span class="loading loading-dots loading-sm"></span>
+            <!-- Replies Container -->
+            <div id="replies-container" class="flex flex-col gap-1">
+                {% for post in replies %}
+                <div class="flex gap-2 mb-1" id="p{{ post.model.id }}">
+                    <div class="shrink-0 w-6 text-center text-[10px] text-skin-muted/40 pt-2 select-none">&gt;&gt;</div>
+                    <div class="grow bg-skin-surface border border-skin-border rounded shadow-sm p-3 min-w-0">
+                        <!-- Reply Meta -->
+                        <div class="flex items-center justify-between text-xs text-skin-muted mb-2 border-b border-skin-border/40 pb-1">
+                            <div class="flex items-center gap-2">
+                                <div class="flex items-center">
+                                    {% if let Some(cc) = post.model.country_code %}
+                                    <span class="fi fi-{{ cc|lower }} rounded-[2px] shadow-sm mr-1"></span>
+                                    {% endif %}
+                                    <span class="font-bold text-[#15803d]">Анонім</span>
+                                </div>
+                                <span class="opacity-70">{{ post.model.created_at.format("%d.%m.%y %H:%M") }}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <a href="#p{{ post.model.id }}" class="hover:text-skin-accent hover:underline font-mono reply-ref" data-id="{{ post.model.id }}">№{{ post.model.id }}</a>
+                                <span class="cursor-pointer hover:text-skin-text opacity-50 hover:opacity-100 reply-btn" data-id="{{ post.model.id }}">↵</span>
+                            </div>
+                        </div>
+
+                        <!-- Reply Images -->
+                        {% if !post.images.is_empty() %}
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 select-none">
+                            {% for img in post.images %}
+                            <a href="{{ cdn_url }}/{{ img.url }}" class="lightbox-trigger block relative aspect-square bg-skin-base border border-skin-border rounded overflow-hidden group">
+                                <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="w-full h-full object-cover transition-opacity duration-200 group-hover:opacity-90" loading="lazy" alt="img">
+                                <div class="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[9px] px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity truncate">
+                                    {{ (img.size / 1024) }}KB
+                                </div>
+                            </a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
+                        <!-- Reply Content -->
+                        <div class="text-sm text-skin-text leading-relaxed whitespace-pre-wrap break-words font-sans">
+                            {% for line in post.model.content.lines() %}
+                            {% if line.trim().starts_with(">") %}
+                            <span class="text-[#789922]">{{ line }}</span><br>
+                            {% else %}
+                            {{ line }}<br>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
                 </div>
+                {% endfor %}
             </div>
 
         </div>
