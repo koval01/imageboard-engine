@@ -10,7 +10,6 @@ use axum_extra::extract::cookie::{Cookie, CookieJar};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde_json::json;
 use std::net::SocketAddr;
-use base64::Engine;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 use time::Duration;
@@ -21,6 +20,7 @@ use crate::{model::SessionClaims, security::{get_client_ip, get_user_agent}, App
 #[derive(Clone)]
 pub struct CurrentSession {
     pub id: String,
+    pub role: i32,
 }
 
 pub async fn session_middleware(
@@ -31,15 +31,16 @@ pub async fn session_middleware(
     mut req: Request,
     next: Next,
 ) -> Result<Response, Response> {
+    // ... config setup ...
     let config = &state.read().await.config;
     let jwt_secret = config.jwt_secret.as_bytes();
     let current_ip = get_client_ip(&headers, &addr);
     let current_ua = get_user_agent(&headers);
 
     let mut session_id = String::new();
+    let mut role = 0; // Default: User
     let mut is_new_session = true;
 
-    // 1. Try to decode existing JWT from HttpOnly cookie
     if let Some(cookie) = cookie_jar.get("session_id") {
         let token = cookie.value();
         let validation = Validation::default();
@@ -50,17 +51,16 @@ pub async fn session_middleware(
             &validation,
         ) {
             let claims = token_data.claims;
-            // Validate IP and UA binding
             if claims.ip == current_ip && claims.ua == current_ua {
                 session_id = claims.sess;
+                role = claims.role; // Preserve role
                 is_new_session = false;
             }
         }
     }
 
-    // 2. Manage Cookies
     let response_jar = if is_new_session {
-        // Generate new session
+        // ... new session generation ...
         session_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now();
         let iat = now.timestamp() as usize;
@@ -70,46 +70,41 @@ pub async fn session_middleware(
             sess: session_id.clone(),
             ip: current_ip,
             ua: current_ua,
+            role: 0, // Default role
             iat,
             exp,
         };
 
-        let token = encode(
-            &Header::default(),
-            &claims,
-            &EncodingKey::from_secret(jwt_secret),
-        ).unwrap();
+        // ... encode and set cookies (same as before) ...
+        let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(jwt_secret)).unwrap();
 
-        // Cookie 1: Secure JWT (HttpOnly) - Used for server validation
         let jwt_cookie = Cookie::build(("session_id", token))
             .path("/")
             .max_age(Duration::days(365))
             .http_only(true);
 
-        // Cookie 2: Public Key (Script Accessible) - Used for JS decryption/PoW
-        let key_cookie = Cookie::build(("client_key", session_id.clone()))
-            .path("/")
-            .max_age(Duration::days(365))
-            .http_only(false); // <--- Vital: allows JS to read it
-
-        cookie_jar.add(jwt_cookie).add(key_cookie)
-    } else {
-        // Ensure client_key is synced even if session exists
         let key_cookie = Cookie::build(("client_key", session_id.clone()))
             .path("/")
             .max_age(Duration::days(365))
             .http_only(false);
 
+        cookie_jar.add(jwt_cookie).add(key_cookie)
+    } else {
+        // If not new, just ensure client_key is synced
+        let key_cookie = Cookie::build(("client_key", session_id.clone()))
+            .path("/")
+            .max_age(Duration::days(365))
+            .http_only(false);
         cookie_jar.add(key_cookie)
     };
 
-    // 3. Inject session into request context
-    req.extensions_mut().insert(CurrentSession { id: session_id });
+    // Inject session and ROLE into request context
+    req.extensions_mut().insert(CurrentSession { id: session_id, role }); // Update CurrentSession struct too!
 
     let response = next.run(req).await;
-
     Ok((response_jar, response).into_response())
 }
+
 
 pub async fn bot_guard_middleware(
     State(_): State<Arc<RwLock<AppState>>>,

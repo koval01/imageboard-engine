@@ -51,6 +51,7 @@ struct HomeTemplate {
     recent_images: Vec<images::Model>,
     recent_threads: Vec<threads::Model>,
     cdn_url: String,
+    admin_role: i32,
 }
 
 #[derive(Template)]
@@ -68,6 +69,7 @@ struct BoardTemplate {
     board: boards::Model,
     threads: Vec<ThreadItem>, // Passed directly
     cdn_url: String,
+    admin_role: i32,
 }
 
 #[derive(Template)]
@@ -78,6 +80,7 @@ struct ThreadTemplate {
     op_images: Vec<images::Model>,
     replies: Vec<PostItem>, // Passed directly
     cdn_url: String,
+    admin_role: i32,
 }
 
 async fn parse_multipart_form(
@@ -137,7 +140,10 @@ async fn parse_multipart_form(
 
 // --- HANDLERS ---
 
-pub async fn home_handler(State(state): State<Arc<RwLock<AppState>>>) -> impl IntoResponse {
+pub async fn home_handler(
+    State(state): State<Arc<RwLock<AppState>>>,
+    Extension(session): Extension<CurrentSession>,
+) -> impl IntoResponse {
     let state = state.read().await;
     let db = &state.pool;
     let cdn_url = state.config.cdn_url.clone();
@@ -183,7 +189,8 @@ pub async fn home_handler(State(state): State<Arc<RwLock<AppState>>>) -> impl In
         boards: boards_stats,
         recent_images,
         recent_threads,
-        cdn_url
+        cdn_url,
+        admin_role: session.role,
     })
 }
 
@@ -197,6 +204,7 @@ pub async fn rules_handler() -> impl IntoResponse {
 
 pub async fn view_board_handler(
     State(state): State<Arc<RwLock<AppState>>>,
+    Extension(session): Extension<CurrentSession>,
     Path(slug): Path<String>,
 ) -> impl IntoResponse {
     let state = state.read().await;
@@ -247,7 +255,8 @@ pub async fn view_board_handler(
         return HtmlTemplate(BoardTemplate {
             board,
             threads: thread_items, // No JSON, direct struct
-            cdn_url
+            cdn_url,
+            admin_role: session.role,
         }).into_response();
     }
 
@@ -256,6 +265,7 @@ pub async fn view_board_handler(
 
 pub async fn view_thread_handler(
     State(state): State<Arc<RwLock<AppState>>>,
+    Extension(session): Extension<CurrentSession>,
     Path((slug, thread_id)): Path<(String, i32)>,
 ) -> impl IntoResponse {
     let state = state.read().await;
@@ -290,7 +300,8 @@ pub async fn view_thread_handler(
                 thread,
                 op_images,
                 replies: posts_with_images,
-                cdn_url
+                cdn_url,
+                admin_role: session.role,
             }).into_response();
         }
     }

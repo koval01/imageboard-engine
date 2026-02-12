@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use axum::{
-    extract::{Form, State, Query},
+    extract::{Form, State, Query, Extension, ConnectInfo},
     response::{IntoResponse, Redirect, Response},
     http::header,
 };
@@ -10,7 +10,16 @@ use askama::Template;
 use serde::Deserialize;
 use chrono::{Utc, Duration};
 use tokio::sync::RwLock;
-use crate::{model::{admins, bans, admin_logs, posts, threads}, AppState, handler::HtmlTemplate};
+use sha2::{Sha256, Digest};
+use jsonwebtoken::{encode, Header, EncodingKey};
+use std::net::SocketAddr;
+
+use crate::{
+    model::{admins, bans, admin_logs, posts, threads, SessionClaims},
+    AppState,
+    handler::{HtmlTemplate, middleware::CurrentSession},
+    security::{get_client_ip, get_user_agent},
+};
 
 // --- Templates ---
 
@@ -32,17 +41,6 @@ struct AdminLogsTemplate {
     logs: Vec<admin_logs::Model>,
 }
 
-// --- Auth Middleware Helper ---
-pub async fn admin_check(jar: CookieJar, db: &DatabaseConnection) -> Option<admins::Model> {
-    if let Some(cookie) = jar.get("admin_session") {
-        let key = cookie.value();
-        return admins::Entity::find()
-            .filter(admins::Column::ServiceKey.eq(key))
-            .one(db).await.unwrap_or(None);
-    }
-    None
-}
-
 // --- Handlers ---
 
 #[derive(Deserialize)]
@@ -54,43 +52,78 @@ pub async fn admin_login_page() -> impl IntoResponse {
 
 pub async fn admin_login_action(
     State(state): State<Arc<RwLock<AppState>>>,
+    Extension(session): Extension<CurrentSession>,
     jar: CookieJar,
+    headers: axum::http::HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Form(payload): Form<LoginPayload>,
 ) -> impl IntoResponse {
-    let state = state.read().await;
-    let db = &state.pool;
+    let state_read = state.read().await;
+    let db = &state_read.pool;
+    let config = &state_read.config;
+    let jwt_secret = config.jwt_secret.as_bytes();
 
+    // 1. Hash the provided key (SHA-256)
+    let mut hasher = Sha256::new();
+    hasher.update(payload.key.as_bytes());
+    let hashed_key = hex::encode(hasher.finalize());
+
+    // 2. Find admin by hashed key
     let admin = admins::Entity::find()
-        .filter(admins::Column::ServiceKey.eq(&payload.key))
+        .filter(admins::Column::ServiceKey.eq(&hashed_key))
         .one(db)
         .await
         .unwrap_or(None);
 
-    if let Some(_) = admin {
-        let cookie = Cookie::build(("admin_session", payload.key))
+    if let Some(admin) = admin {
+        // 3. Regenerate JWT with the Admin Role
+        let now = Utc::now();
+        let iat = now.timestamp() as usize;
+        // Session valid for 1 year
+        let exp = (now + Duration::days(365)).timestamp() as usize;
+
+        let claims = SessionClaims {
+            sess: session.id, // Preserve the original anonymous session ID
+            ip: get_client_ip(&headers, &addr),
+            ua: get_user_agent(&headers),
+            role: admin.role, // 1=Janitor, 2=Mod, 3=Admin
+            iat,
+            exp,
+        };
+
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(jwt_secret),
+        ).unwrap();
+
+        // 4. Overwrite session_id cookie with the privileged token
+        let jwt_cookie = Cookie::build(("session_id", token))
             .path("/")
+            .max_age(time::Duration::days(365))
             .http_only(true)
             .build();
-        return (jar.add(cookie), Redirect::to("/admin/dashboard")).into_response();
+
+        return (jar.add(jwt_cookie), Redirect::to("/admin/dashboard")).into_response();
     }
 
+    // Login failed
     HtmlTemplate(AdminLoginTemplate { error: Some("Invalid Key".into()) }).into_response()
 }
 
 pub async fn admin_dashboard(
     State(state): State<Arc<RwLock<AppState>>>,
-    jar: CookieJar,
+    Extension(session): Extension<CurrentSession>,
 ) -> Response {
+    // Access Control: Must have at least role 1 (Janitor)
+    if session.role < 1 {
+        return Redirect::to("/admin").into_response();
+    }
+
     let state = state.read().await;
     let db = &state.pool;
 
-    let admin = match admin_check(jar, db).await {
-        Some(a) => a,
-        None => return Redirect::to("/admin").into_response(),
-    };
-
     // Fetch last 50 posts with board info
-    // Note: This requires a join. For simplicity in raw sql or seaorm:
     let posts = posts::Entity::find()
         .find_also_related(threads::Entity)
         .order_by_desc(posts::Column::CreatedAt)
@@ -111,8 +144,25 @@ pub async fn admin_dashboard(
         .await
         .unwrap();
 
+    // Construct a dummy admin model for the template context
+    // (Since we don't store the username in the JWT, we just display generic info)
+    let role_name = match session.role {
+        1 => "Janitor",
+        2 => "Moderator",
+        3 => "Administrator",
+        _ => "Unknown",
+    };
+
+    let admin_view_model = admins::Model {
+        id: 0,
+        username: role_name.to_string(),
+        service_key: "".to_string(),
+        role: session.role,
+        created_at: Utc::now().naive_utc(),
+    };
+
     HtmlTemplate(AdminDashboardTemplate {
-        admin,
+        admin: admin_view_model,
         recent_posts,
         recent_bans
     }).into_response()
@@ -128,20 +178,16 @@ pub struct BanPayload {
 
 pub async fn admin_ban_action(
     State(state): State<Arc<RwLock<AppState>>>,
-    jar: CookieJar,
+    Extension(session): Extension<CurrentSession>,
     Form(payload): Form<BanPayload>,
 ) -> Response {
-    let state = state.read().await;
-    let db = &state.pool;
-
-    let admin = match admin_check(jar, db).await {
-        Some(a) => a,
-        None => return Redirect::to("/admin").into_response(),
-    };
-
-    if admin.role < 2 { // Require Moderator (2) or Admin (3)
+    // Access Control: Must be at least Role 2 (Moderator) to ban
+    if session.role < 2 {
         return "Not authorized".into_response();
     }
+
+    let state = state.read().await;
+    let db = &state.pool;
 
     let expires = Utc::now().naive_utc() + Duration::hours(payload.duration_hours);
 
@@ -154,18 +200,20 @@ pub async fn admin_ban_action(
         ..Default::default()
     };
 
-    ban.insert(db).await.unwrap();
+    if let Err(e) = ban.insert(db).await {
+        return format!("Database error: {}", e).into_response();
+    }
 
     // Log Action
     let log = admin_logs::ActiveModel {
-        admin_username: Set(admin.username),
+        admin_username: Set(format!("Role_{}", session.role)), // We use role ID since username isn't in JWT
         action: Set("BAN".to_string()),
         target_id: Set(Some(payload.ip)),
         details: Set(Some(format!("Session: {}, Duration: {}h", payload.session, payload.duration_hours))),
         created_at: Set(Utc::now().naive_utc()),
         ..Default::default()
     };
-    log.insert(db).await.unwrap();
+    let _ = log.insert(db).await;
 
     Redirect::to("/admin/dashboard").into_response()
 }
@@ -178,18 +226,16 @@ pub struct ExportQuery {
 
 pub async fn admin_export_logs(
     State(state): State<Arc<RwLock<AppState>>>,
-    jar: CookieJar,
+    Extension(session): Extension<CurrentSession>,
     Query(query): Query<ExportQuery>,
 ) -> Response {
+    // Access Control: Must be Role 3 (Administrator) to export data
+    if session.role < 3 {
+        return "Admin only".into_response();
+    }
+
     let state = state.read().await;
     let db = &state.pool;
-
-    let admin = match admin_check(jar, db).await {
-        Some(a) => a,
-        None => return Redirect::to("/admin").into_response(),
-    };
-
-    if admin.role < 3 { return "Admin only".into_response(); }
 
     let mut csv_data = String::from("Type,ID,Content,Date,IP,Session\n");
 
@@ -217,7 +263,7 @@ pub async fn admin_export_logs(
 
     // Log the export action
     let log = admin_logs::ActiveModel {
-        admin_username: Set(admin.username),
+        admin_username: Set("Admin".to_string()),
         action: Set("EXPORT".to_string()),
         target_id: Set(Some(query.value)),
         details: Set(Some(query.target_type)),
@@ -233,23 +279,17 @@ pub async fn admin_export_logs(
 
 pub async fn admin_logs_view(
     State(state): State<Arc<RwLock<AppState>>>,
-    jar: CookieJar,
+    Extension(session): Extension<CurrentSession>,
 ) -> Response {
-    let state = state.read().await;
-    let db = &state.pool;
-
-    // 1. Auth Check
-    let admin = match admin_check(jar, db).await {
-        Some(a) => a,
-        None => return Redirect::to("/admin").into_response(),
-    };
-
-    // 2. Role Check: Only Admins (Level 3) should see audit logs
-    if admin.role < 3 {
+    // Access Control: Must be Role 3 (Administrator) to view logs
+    if session.role < 3 {
         return "Unauthorized. Level 3 access required.".into_response();
     }
 
-    // 3. Fetch Logs (Limit 100 most recent)
+    let state = state.read().await;
+    let db = &state.pool;
+
+    // Fetch Logs (Limit 100 most recent)
     let logs = admin_logs::Entity::find()
         .order_by_desc(admin_logs::Column::CreatedAt)
         .limit(100)

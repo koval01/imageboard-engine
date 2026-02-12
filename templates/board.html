@@ -1,5 +1,11 @@
 {% extends "layout/base.html" %}
 
+{% block admin_nav %}
+{% if admin_role > 0 %}
+<a href="/admin/dashboard" class="text-red-500 font-bold border border-red-500/50 rounded px-2 py-0.5 text-[10px] hover:bg-red-500 hover:text-white transition uppercase">Admin Panel</a>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 
 <!-- Board Header -->
@@ -56,7 +62,6 @@
 
 <hr class="border-skin-border mb-8 opacity-50">
 
-<!-- Thread List Container (Server Rendered) -->
 <div id="board-container" class="flex flex-col gap-6 min-h-[50vh]">
     {% for item in threads %}
     <div class="bg-skin-surface border border-skin-border rounded-lg p-4 shadow-sm hover:border-skin-accent/30 transition-colors">
@@ -92,6 +97,22 @@
                                 <span class="font-bold text-[#15803d]">Анонім</span>
                             </div>
                             <span class="opacity-70">{{ item.model.created_at.format("%d.%m.%y %H:%M") }}</span>
+
+                            <!-- Admin Board Thread Controls -->
+                            {% if admin_role > 0 %}
+                            <div class="flex items-center gap-1 ml-2 border-l border-skin-border pl-2">
+                                <span class="font-mono text-[10px] bg-skin-base px-1 border border-skin-border rounded text-skin-text" title="Session: {{ item.model.session_id }}">{{ item.model.ip_address }}</span>
+                                {% if admin_role >= 2 %}
+                                <form action="/admin/ban" method="POST" onsubmit="return confirm('BAN OP?');">
+                                    <input type="hidden" name="ip" value="{{ item.model.ip_address }}">
+                                    <input type="hidden" name="session" value="{{ item.model.session_id }}">
+                                    <input type="hidden" name="reason" value="Board Thread #{{ item.model.id }}">
+                                    <input type="hidden" name="duration_hours" value="24">
+                                    <button class="text-red-500 font-bold text-[10px] hover:underline">[BAN]</button>
+                                </form>
+                                {% endif %}
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
 
@@ -116,9 +137,14 @@
                 {% if !item.replies.is_empty() %}
                 <div class="mt-3 pl-3 border-l-2 border-skin-border/30 space-y-2">
                     {% for reply in item.replies %}
-                    <div class="text-xs text-skin-muted bg-skin-base/60 p-2 rounded flex gap-2">
+                    <div class="text-xs text-skin-muted bg-skin-base/60 p-2 rounded flex gap-2 items-start">
                         <span class="opacity-50">>></span>
-                        <div class="truncate">{{ reply.model.content }}</div>
+                        <div class="truncate grow">{{ reply.model.content }}</div>
+                        {% if admin_role > 0 %}
+                        <div class="flex items-center gap-1 shrink-0">
+                            <span class="font-mono text-[9px] bg-skin-surface px-1 border border-skin-border rounded">{{ reply.model.ip_address }}</span>
+                        </div>
+                        {% endif %}
                     </div>
                     {% endfor %}
                 </div>
@@ -129,7 +155,6 @@
     {% endfor %}
 </div>
 
-<!-- Global Lightbox -->
 <div id="lightbox" class="fixed inset-0 z-[100] bg-black/95 hidden flex items-center justify-center cursor-zoom-out">
     <img id="lightbox-img" src="" class="max-w-[95vw] max-h-[95vh] object-contain shadow-2xl rounded">
 </div>

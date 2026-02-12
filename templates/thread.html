@@ -1,5 +1,11 @@
 {% extends "layout/base.html" %}
 
+{% block admin_nav %}
+{% if admin_role > 0 %}
+<a href="/admin/dashboard" class="text-red-500 font-bold border border-red-500/50 rounded px-2 py-0.5 text-[10px] hover:bg-red-500 hover:text-white transition uppercase">Admin Panel</a>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 
 <!-- Navigation & Controls -->
@@ -11,12 +17,10 @@
 
         <!-- Thread Controls -->
         <div class="flex items-center gap-0">
-            <!-- Auto-Update Timer -->
             <div class="flex items-center gap-1" title="Час до авто-оновлення">
                 <div class="relative w-4 h-4">
                     <svg class="w-full h-full transform -rotate-90 max-w-4" viewBox="0 0 20 20">
                         <circle cx="10" cy="10" r="9" fill="none" stroke="currentColor" stroke-width="2" class="text-skin-border opacity-30"></circle>
-                        <!-- Animation class 'timer-anim' must be in CSS -->
                         <circle id="timer-circle" cx="10" cy="10" r="9" fill="none" stroke="currentColor" stroke-width="2" class="text-skin-accent timer-anim" stroke-linecap="round"></circle>
                     </svg>
                 </div>
@@ -33,8 +37,6 @@
         </div>
     </div>
 
-    <!-- MAIN POLL WRAPPER -->
-    <!-- hx-select ensures we grab only this wrapper from the SSR response -->
     <div id="thread-poll-wrapper"
          hx-get="/{{ board.slug }}/thread/{{ thread.id }}"
          hx-trigger="every 15s, click from:#manual-refresh-btn"
@@ -46,7 +48,6 @@
 
             <!-- OP Post -->
             <div class="bg-skin-surface border border-skin-border rounded-lg p-4 sm:p-6 mb-6 shadow-sm">
-                <!-- OP Header -->
                 <div class="flex flex-wrap justify-between items-start border-b border-skin-border/50 pb-2 mb-3">
                     <div class="text-sm text-skin-muted flex flex-wrap items-center gap-3">
                         {% if let Some(subject) = thread.subject %}
@@ -59,15 +60,29 @@
                             <span class="font-bold text-[#15803d]">Анонім</span>
                         </div>
                         <span class="opacity-70 text-xs">{{ thread.created_at.format("%d.%m.%Y %H:%M") }}</span>
+
+                        <!-- Admin Controls OP -->
+                        {% if admin_role > 0 %}
+                        <div class="flex items-center gap-2 ml-2 border-l border-skin-border pl-2">
+                            <span class="font-mono text-[10px] bg-skin-base px-1 border border-skin-border rounded text-skin-text" title="Session: {{ thread.session_id }}">{{ thread.ip_address }}</span>
+                            {% if admin_role >= 2 %}
+                            <form action="/admin/ban" method="POST" onsubmit="return confirm('BAN OP?');">
+                                <input type="hidden" name="ip" value="{{ thread.ip_address }}">
+                                <input type="hidden" name="session" value="{{ thread.session_id }}">
+                                <input type="hidden" name="reason" value="Thread #{{ thread.id }}">
+                                <input type="hidden" name="duration_hours" value="24">
+                                <button class="text-red-500 font-bold text-[10px] hover:underline">[BAN]</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% endif %}
                     </div>
                     <div class="text-xs">
                         <span class="font-mono text-skin-text select-all mr-2">№{{ thread.id }}</span>
-                        <!-- Class 'reply-btn' handles the click in core.js -->
                         <button class="text-skin-link font-bold hover:underline reply-btn" data-id="{{ thread.id }}">[ВІДПОВІСТИ]</button>
                     </div>
                 </div>
 
-                <!-- OP Images -->
                 {% if !op_images.is_empty() %}
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 select-none">
                     {% for img in op_images %}
@@ -81,7 +96,6 @@
                 </div>
                 {% endif %}
 
-                <!-- OP Content -->
                 <div class="text-sm sm:text-base text-skin-text leading-relaxed whitespace-pre-wrap break-words font-sans">
                     {% for line in thread.content.lines() %}
                     {% if line.trim().starts_with(">") %}
@@ -109,6 +123,22 @@
                                     <span class="font-bold text-[#15803d]">Анонім</span>
                                 </div>
                                 <span class="opacity-70">{{ post.model.created_at.format("%d.%m.%y %H:%M") }}</span>
+
+                                <!-- Admin Controls Post -->
+                                {% if admin_role > 0 %}
+                                <div class="flex items-center gap-1 ml-2 border-l border-skin-border pl-2">
+                                    <span class="font-mono text-[10px] bg-skin-base px-1 border border-skin-border rounded text-skin-text" title="Session: {{ post.model.session_id }}">{{ post.model.ip_address }}</span>
+                                    {% if admin_role >= 2 %}
+                                    <form action="/admin/ban" method="POST" onsubmit="return confirm('BAN User?');">
+                                        <input type="hidden" name="ip" value="{{ post.model.ip_address }}">
+                                        <input type="hidden" name="session" value="{{ post.model.session_id }}">
+                                        <input type="hidden" name="reason" value="Post #{{ post.model.id }}">
+                                        <input type="hidden" name="duration_hours" value="24">
+                                        <button class="text-red-500 font-bold text-[10px] hover:underline">[BAN]</button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                                {% endif %}
                             </div>
                             <div class="flex items-center gap-2">
                                 <a href="#p{{ post.model.id }}" class="hover:text-skin-accent hover:underline font-mono reply-ref" data-id="{{ post.model.id }}">№{{ post.model.id }}</a>
@@ -116,7 +146,6 @@
                             </div>
                         </div>
 
-                        <!-- Reply Images -->
                         {% if !post.images.is_empty() %}
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 select-none">
                             {% for img in post.images %}
@@ -130,7 +159,6 @@
                         </div>
                         {% endif %}
 
-                        <!-- Reply Content -->
                         <div class="text-sm text-skin-text leading-relaxed whitespace-pre-wrap break-words font-sans">
                             {% for line in post.model.content.lines() %}
                             {% if line.trim().starts_with(">") %}
@@ -149,15 +177,13 @@
     </div>
 </div>
 
-<!-- Reply Form (Fixed Bottom) -->
+<!-- Reply Form -->
 <div class="fixed bottom-0 left-0 right-0 z-40 px-2 sm:px-0 pointer-events-none">
     <div class="max-w-4xl mx-auto flex flex-col items-end pointer-events-auto">
-
         <button onclick="document.getElementById('reply-panel').classList.toggle('translate-y-[120%]')"
                 class="bg-skin-header text-white text-[10px] font-bold px-4 py-1.5 rounded-t-lg shadow-lg hover:bg-skin-accent transition-colors mr-2 sm:mr-0">
             ВІДПОВІСТИ
         </button>
-
         <div id="reply-panel" class="w-full bg-skin-surface border-t border-skin-border shadow-[0_-5px_30px_rgba(0,0,0,0.15)] p-3 transition-transform duration-300 transform translate-y-0 sm:rounded-t-lg">
             <form id="reply-form"
                   hx-post="/{{ board.slug }}/thread/{{ thread.id }}/reply"
@@ -167,10 +193,8 @@
                   hx-swap="outerHTML"
                   hx-indicator="#btn-spinner"
                   class="flex flex-col gap-2">
-
                 <div class="flex gap-2">
                     <textarea id="reply-box" name="content" rows="3" class="grow w-full p-2 text-sm bg-skin-input border border-skin-border rounded focus:ring-1 focus:ring-skin-accent resize-none placeholder-skin-muted/50" placeholder="Ваша відповідь..." required></textarea>
-
                     <div class="flex flex-col gap-2 w-20 sm:w-24 shrink-0">
                         <button type="submit" class="h-full bg-skin-primary text-white font-bold rounded shadow-sm hover:bg-skin-primary-hover transition-colors flex flex-col items-center justify-center text-xs">
                             <span>POST</span>
@@ -178,7 +202,6 @@
                         </button>
                     </div>
                 </div>
-
                 <div class="flex items-center justify-between text-xs text-skin-muted px-1">
                     <label class="flex items-center gap-2 cursor-pointer hover:text-skin-text transition-colors">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
@@ -195,7 +218,6 @@
     </div>
 </div>
 
-<!-- Global Lightbox -->
 <div id="lightbox" class="fixed inset-0 z-[100] bg-black/95 hidden flex items-center justify-center cursor-zoom-out">
     <img id="lightbox-img" src="" class="max-w-[95vw] max-h-[95vh] object-contain shadow-2xl rounded">
 </div>

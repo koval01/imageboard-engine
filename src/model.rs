@@ -7,6 +7,7 @@ pub struct SessionClaims {
     pub sess: String,
     pub ip: String,
     pub ua: String,
+    pub role: i32,
     pub exp: usize,
     pub iat: usize,
 }

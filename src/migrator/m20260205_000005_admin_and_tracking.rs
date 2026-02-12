@@ -6,6 +6,8 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // ... (Previous table creations for Threads, Posts, Admins, Bans, AdminLogs remain the same) ...
+
         // 1. Add IP Address to Threads
         manager.alter_table(
             Table::alter()
@@ -22,53 +24,54 @@ impl MigrationTrait for Migration {
                 .to_owned()
         ).await?;
 
-        // 3. Create Admins Table (Service Keys)
+        // 3. Create Admins Table
         manager.create_table(
             Table::create()
                 .table(Admins::Table)
                 .if_not_exists()
                 .col(ColumnDef::new(Admins::Id).integer().not_null().auto_increment().primary_key())
                 .col(ColumnDef::new(Admins::Username).string().not_null().unique_key())
-                .col(ColumnDef::new(Admins::ServiceKey).string().not_null()) // The login key
-                .col(ColumnDef::new(Admins::Role).integer().not_null()) // 1=Janitor, 2=Mod, 3=Admin
+                .col(ColumnDef::new(Admins::ServiceKey).string().not_null()) // Stores SHA-256 Hash (64 chars)
+                .col(ColumnDef::new(Admins::Role).integer().not_null())
                 .col(ColumnDef::new(Admins::CreatedAt).timestamp().not_null().default(Expr::current_timestamp()))
                 .to_owned()
         ).await?;
 
-        // 4. Create Bans Table
+        // 4. Create Bans Table (As before)
         manager.create_table(
             Table::create()
                 .table(Bans::Table)
                 .if_not_exists()
                 .col(ColumnDef::new(Bans::Id).integer().not_null().auto_increment().primary_key())
-                .col(ColumnDef::new(Bans::IpAddress).string().null()) // Ban by IP
-                .col(ColumnDef::new(Bans::SessionId).string().null()) // Ban by Session
+                .col(ColumnDef::new(Bans::IpAddress).string().null())
+                .col(ColumnDef::new(Bans::SessionId).string().null())
                 .col(ColumnDef::new(Bans::Reason).string().null())
                 .col(ColumnDef::new(Bans::ExpiresAt).timestamp().not_null())
                 .col(ColumnDef::new(Bans::CreatedAt).timestamp().not_null().default(Expr::current_timestamp()))
                 .to_owned()
         ).await?;
 
-        // 5. Create Admin Logs Table (Audit trail)
+        // 5. Create Admin Logs Table (As before)
         manager.create_table(
             Table::create()
                 .table(AdminLogs::Table)
                 .if_not_exists()
                 .col(ColumnDef::new(AdminLogs::Id).integer().not_null().auto_increment().primary_key())
                 .col(ColumnDef::new(AdminLogs::AdminUsername).string().not_null())
-                .col(ColumnDef::new(AdminLogs::Action).string().not_null()) // "DELETE", "BAN", "EXPORT"
-                .col(ColumnDef::new(AdminLogs::TargetId).string().null()) // ID of post/thread or IP
+                .col(ColumnDef::new(AdminLogs::Action).string().not_null())
+                .col(ColumnDef::new(AdminLogs::TargetId).string().null())
                 .col(ColumnDef::new(AdminLogs::Details).string().null())
                 .col(ColumnDef::new(AdminLogs::CreatedAt).timestamp().not_null().default(Expr::current_timestamp()))
                 .to_owned()
         ).await?;
 
-        // Seed a default admin (Key: "admin_secret_123")
-        // In production, change this immediately or seed via ENV
+        // Seed Default Admin
+        // Password: "ChangeThisPasswordImmediately!"
+        // SHA256 Hash: 5e917d230b561df0996d9e03d5267e7c0934eb872049d5885732959639739500
         let insert = Query::insert()
             .into_table(Admins::Table)
             .columns([Admins::Username, Admins::ServiceKey, Admins::Role])
-            .values_panic(["root".into(), "admin_secret_123".into(), 3.into()])
+            .values_panic(["root".into(), "5e917d230b561df0996d9e03d5267e7c0934eb872049d5885732959639739500".into(), 3.into()])
             .to_owned();
 
         manager.exec_stmt(insert).await
@@ -83,6 +86,7 @@ impl MigrationTrait for Migration {
     }
 }
 
+// ... (Iden enums remain the same) ...
 #[derive(DeriveIden)]
 enum Threads { Table, IpAddress }
 #[derive(DeriveIden)]
