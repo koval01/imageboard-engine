@@ -6,6 +6,7 @@ use askama::Template;
 
 pub mod middleware;
 pub mod board;
+pub mod admin;
 
 #[derive(Template)]
 #[template(path = "layout/error.html")]

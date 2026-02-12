@@ -1,0 +1,63 @@
+{% extends "layout/base.html" %}
+{% block content %}
+<div class="p-6">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold">Admin Panel <span class="text-sm text-skin-muted">({{ admin.username }} - L{{ admin.role }})</span></h1>
+        <a href="/" class="text-skin-link">Back to Site</a>
+    </div>
+
+    <!-- Export Tool -->
+    {% if admin.role >= 3 %}
+    <div class="bg-skin-surface p-4 rounded border border-skin-border mb-6">
+        <h3 class="font-bold mb-2">Investigation Export</h3>
+        <form action="/admin/export" method="GET" class="flex gap-2">
+            <select name="target_type" class="p-1 rounded border">
+                <option value="ip">By IP</option>
+                <option value="session">By Session</option>
+            </select>
+            <input type="text" name="value" placeholder="Target Value" class="p-1 rounded border">
+            <button type="submit" class="bg-skin-primary text-white px-3 rounded">Download CSV</button>
+        </form>
+    </div>
+    {% endif %}
+
+    <!-- Recent Posts -->
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left">
+            <thead class="bg-skin-header text-white">
+            <tr>
+                <th class="p-2">ID</th>
+                <th class="p-2">Board</th>
+                <th class="p-2">Content</th>
+                <th class="p-2">IP</th>
+                <th class="p-2">Session</th>
+                <th class="p-2">Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for (post, slug) in recent_posts %}
+            <tr class="border-b border-skin-border hover:bg-skin-base/50">
+                <td class="p-2">{{ post.id }}</td>
+                <td class="p-2">/{{ slug }}/</td>
+                <td class="p-2 truncate max-w-xs" title="{{ post.content }}">{{ post.content }}</td>
+                <td class="p-2 font-mono">{{ post.ip_address }}</td>
+                <td class="p-2 font-mono text-xs">{{ post.session_id }}</td>
+                <td class="p-2 flex gap-2">
+                    {% if admin.role >= 2 %}
+                    <form action="/admin/ban" method="POST" onsubmit="return confirm('Ban user?');">
+                        <input type="hidden" name="ip" value="{{ post.ip_address }}">
+                        <input type="hidden" name="session" value="{{ post.session_id }}">
+                        <input type="hidden" name="reason" value="Spam/Rule violation">
+                        <input type="hidden" name="duration_hours" value="24">
+                        <button type="submit" class="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700">BAN 24h</button>
+                    </form>
+                    {% endif %}
+                    <!-- Add Delete logic later -->
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

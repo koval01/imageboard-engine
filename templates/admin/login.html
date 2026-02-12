@@ -1,0 +1,13 @@
+{% extends "layout/base.html" %}
+{% block content %}
+<div class="max-w-md mx-auto mt-20 p-6 bg-skin-surface border border-skin-border rounded shadow">
+  <h1 class="text-2xl font-bold mb-4">Admin Access</h1>
+  {% if let Some(e) = error %}
+  <div class="text-red-500 mb-4">{{ e }}</div>
+  {% endif %}
+  <form method="POST" action="/admin/login">
+    <input type="password" name="key" placeholder="Service Key" class="w-full p-2 border mb-4 rounded bg-skin-input">
+    <button type="submit" class="w-full bg-skin-primary text-white p-2 rounded font-bold">Login</button>
+  </form>
+</div>
+{% endblock %}

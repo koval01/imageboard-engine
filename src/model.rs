@@ -62,6 +62,7 @@ pub mod threads {
         pub content: String,
         pub session_id: String,
         pub country_code: Option<String>,
+        pub ip_address: String,
         pub created_at: NaiveDateTime,
         pub updated_at: NaiveDateTime,
     }
@@ -114,6 +115,7 @@ pub mod posts {
         pub thread_id: i32,
         pub content: String,
         pub session_id: String,
+        pub ip_address: String,
         pub country_code: Option<String>,
         pub created_at: NaiveDateTime,
     }
@@ -200,5 +202,58 @@ pub mod images {
         }
     }
 
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod admins {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize)]
+    #[sea_orm(table_name = "admins")]
+    pub struct Model {
+        #[sea_orm(primary_key)]
+        pub id: i32,
+        pub username: String,
+        pub service_key: String,
+        pub role: i32, // 1=Janitor, 2=Mod, 3=Admin
+        pub created_at: NaiveDateTime,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod bans {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize)]
+    #[sea_orm(table_name = "bans")]
+    pub struct Model {
+        #[sea_orm(primary_key)]
+        pub id: i32,
+        pub ip_address: Option<String>,
+        pub session_id: Option<String>,
+        pub reason: Option<String>,
+        pub expires_at: NaiveDateTime,
+        pub created_at: NaiveDateTime,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod admin_logs {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize)]
+    #[sea_orm(table_name = "admin_logs")]
+    pub struct Model {
+        #[sea_orm(primary_key)]
+        pub id: i32,
+        pub admin_username: String,
+        pub action: String,
+        pub target_id: Option<String>,
+        pub details: Option<String>,
+        pub created_at: NaiveDateTime,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
     impl ActiveModelBehavior for ActiveModel {}
 }

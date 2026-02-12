@@ -308,8 +308,24 @@ pub async fn create_thread_handler(
 ) -> impl IntoResponse {
     let state_read = state.read().await;
     let ip = get_client_ip(&headers, &addr);
-    let country_code = resolve_country_code(ip, &state_read.ip_cache).await;
+    let country_code = resolve_country_code(ip.clone(), &state_read.ip_cache).await;
     let db = &state_read.pool; // Extract db reference
+
+    let is_banned = crate::model::bans::Entity::find()
+        .filter(
+            sea_orm::Condition::any()
+                .add(crate::model::bans::Column::IpAddress.eq(&ip))
+                .add(crate::model::bans::Column::SessionId.eq(&session.id))
+        )
+        .filter(crate::model::bans::Column::ExpiresAt.gt(Utc::now().naive_utc()))
+        .one(db).await.unwrap_or(None);
+
+    if let Some(ban) = is_banned {
+        return HtmlTemplate(crate::handler::ErrorTemplate {
+            message: format!("Ви забанені. Причина: {}. Спливає: {}",
+                             ban.reason.unwrap_or_default(), ban.expires_at)
+        }).into_response();
+    }
 
     // Pass db to parse_multipart_form
     let parsed = match parse_multipart_form(multipart, &state_read.storage, db).await {
@@ -327,6 +343,7 @@ pub async fn create_thread_handler(
         subject: Set(parsed.subject),
         content: Set(parsed.content),
         session_id: Set(session.id),
+        ip_address: Set(ip.clone()),
         country_code: Set(Some(country_code)),
         created_at: Set(Utc::now().naive_utc()),
         updated_at: Set(Utc::now().naive_utc()),
@@ -368,7 +385,7 @@ pub async fn reply_handler(
 ) -> impl IntoResponse {
     let state_read = state.read().await;
     let ip = get_client_ip(&headers, &addr);
-    let country_code = resolve_country_code(ip, &state_read.ip_cache).await;
+    let country_code = resolve_country_code(ip.clone(), &state_read.ip_cache).await;
     let db = &state_read.pool; // Extract db reference
 
     // Pass db to parse_multipart_form
@@ -385,6 +402,7 @@ pub async fn reply_handler(
         thread_id: Set(thread_id),
         content: Set(parsed.content),
         session_id: Set(session.id),
+        ip_address: Set(ip.clone()),
         country_code: Set(Some(country_code)),
         created_at: Set(Utc::now().naive_utc()),
         ..Default::default()
