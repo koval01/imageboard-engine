@@ -26,7 +26,6 @@ sea-orm = { version = "1.1", features = [ "sqlx-sqlite", "sqlx-postgres", "runti
 sea-orm-migration = "1.1"
 time = "0.3"
 tokio = { version = "1.49", features = ["full"] }
-# Added "cors" just in case, though usually not strictly needed for simple static get
 tower-http = { version = "0.6", features = ["fs", "trace", "cors"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.20", features = ["serde", "v4"] }

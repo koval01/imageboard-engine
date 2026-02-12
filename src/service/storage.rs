@@ -78,14 +78,12 @@ impl StorageService {
         }
     }
 
-    /// Calculates SHA256 hash of byte slice
     fn calculate_hash(data: &[u8]) -> String {
         let mut hasher = Sha256::new();
         hasher.update(data);
         hex::encode(hasher.finalize())
     }
 
-    /// Internal method to actually write the file to the selected backend
     async fn save_file(&self, key: &str, data: Vec<u8>, content_type: &str) -> Result<()> {
         match self.storage_type {
             StorageType::S3 => {
@@ -160,16 +158,12 @@ impl StorageService {
         let hash = Self::calculate_hash(&full_img_bytes);
 
         // 3. Deduplication: Check if this hash already exists in DB
-        // We only need one record to get the storage_key
         let existing_image = images::Entity::find()
             .filter(images::Column::Hash.eq(&hash))
             .one(db)
             .await?;
 
         if let Some(img) = existing_image {
-            // DEDUPLICATION HIT
-            // Return struct pointing to EXISTING storage keys
-            // But use the NEW original_filename (so user sees their filename, but backend uses same file)
             return Ok(ProcessedImage {
                 url: img.url,
                 thumbnail_url: img.thumbnail_url,

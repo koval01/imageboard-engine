@@ -24,7 +24,6 @@ use sea_orm_migration::MigratorTrait;
 use tokio::sync::RwLock;
 use moka::future::Cache;
 
-// New imports for media server
 use axum::Router;
 use tower_http::{services::ServeDir, trace::TraceLayer};
 use tower_http::cors::CorsLayer;
@@ -52,16 +51,15 @@ async fn main() -> Result<()> {
         .time_to_live(Duration::from_secs(60 * 60 * 24))
         .build();
 
-    // Check if we need to spawn the media server
     if config.storage_type == StorageType::Local {
         let media_path = config.media_path.clone();
         let media_port = config.media_port;
 
         tokio::spawn(async move {
             let app = Router::new()
-                .nest_service("/", ServeDir::new(media_path))
+                .fallback_service(ServeDir::new(media_path))
                 .layer(TraceLayer::new_for_http())
-                .layer(CorsLayer::permissive()); // Allow access from main app
+                .layer(CorsLayer::permissive());
 
             let addr = format!("0.0.0.0:{}", media_port);
             println!("Media Server running on http://{}", addr);

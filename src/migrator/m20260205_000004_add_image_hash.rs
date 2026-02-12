@@ -15,7 +15,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // Add an index on the hash column for fast lookups
         manager
             .create_index(
                 Index::create()
