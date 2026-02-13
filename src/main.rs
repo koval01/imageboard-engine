@@ -28,6 +28,9 @@ use axum::Router;
 use tower_http::{services::ServeDir, trace::TraceLayer};
 use tower_http::cors::CorsLayer;
 
+// Import the Cache Enum definition
+use crate::handler::board::CacheData;
+
 pub struct AppState {
     pub pool: DatabaseConnection,
     pub config: Config,
@@ -35,6 +38,10 @@ pub struct AppState {
     pub ip_cache: Cache<String, String>,
     // Key: "IP_TYPE" (e.g. "127.0.0.1_thread"), Value: Timestamp (u64)
     pub rate_limit_cache: Cache<String, u64>,
+
+    // NEW: Application Data Cache (RAM)
+    // Caches heavy view structures for a few seconds
+    pub db_cache: Cache<String, CacheData>,
 }
 
 #[tokio::main]
@@ -57,7 +64,15 @@ async fn main() -> Result<()> {
     // Cache for Rate Limiting
     let rate_limit_cache = Cache::builder()
         .max_capacity(10_000)
-        .time_to_live(Duration::from_secs(60 * 5)) // Keep entry for 5 mins
+        .time_to_live(Duration::from_secs(60 * 5))
+        .build();
+
+    // Cache for Heavy DB Queries (TTL: 5 seconds)
+    // This allows serving thousands of requests per second
+    // while only hitting the DB once every 5 seconds per view.
+    let db_cache = Cache::builder()
+        .max_capacity(1000)
+        .time_to_live(Duration::from_secs(5))
         .build();
 
     if config.storage_type == StorageType::Local {
@@ -84,6 +99,7 @@ async fn main() -> Result<()> {
         storage,
         ip_cache,
         rate_limit_cache,
+        db_cache,
     }));
 
     route::serve(app_state).await?;
