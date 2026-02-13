@@ -7,7 +7,7 @@ use aws_credential_types::Credentials;
 use aws_sdk_s3::{config::Region, Client};
 use bytes::Bytes;
 use image::{imageops::FilterType, GenericImageView};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use tokio::fs;

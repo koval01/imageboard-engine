@@ -64,33 +64,8 @@
                         </td>
                         <td class="p-2 flex flex-col gap-1">
                             <div class="flex gap-1">
-                                {% if let Some(post) = post_opt %}
-                                <a href="/admin/dashboard?search={{ post.id }}" class="bg-skin-input border px-1 rounded hover:bg-gray-200">🔍</a>
-                                {% if admin.role >= 2 %}
-                                <form hx-post="/admin/delete" hx-confirm="Видалити пост?" hx-swap="none">
-                                    <input type="hidden" name="post_id" value="{{ report.post_id }}">
-                                    <button class="text-red-600 font-bold hover:underline">[DEL]</button>
-                                </form>
-                                {% endif %}
-                                {% if admin.role >= 3 %}
-                                <!-- Ban triggered via custom JS logic hooking into this button -->
-                                <button data-action="ban" class="text-red-800 font-bold hover:underline">[BAN]</button>
-                                <!-- Hidden inputs for JS to fill -->
-                                <form hx-post="/admin/ban" hx-swap="none" class="hidden">
-                                    <input type="hidden" name="ip" value="{{ post.ip_address }}">
-                                    <input type="hidden" name="session" value="{{ post.session_id }}">
-                                    <input type="hidden" name="reason">
-                                    <input type="hidden" name="duration_hours">
-                                    <button type="submit" id="ban-submit-{{ post.id }}"></button>
-                                </form>
-                                {% endif %}
-                                {% endif %}
+                                <a href="/admin/reports" class="bg-skin-input border px-1 rounded hover:bg-gray-200">🔍</a>
                             </div>
-                            <form hx-post="/admin/report/resolve" hx-swap="outerHTML" hx-target="closest tr">
-                                <input type="hidden" name="report_id" value="{{ report.id }}">
-                                <input type="hidden" name="status" value="RESOLVED">
-                                <button class="text-green-600 font-bold hover:underline text-[10px]">✔ Закрити</button>
-                            </form>
                         </td>
                     </tr>
                     {% endfor %}

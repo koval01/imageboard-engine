@@ -14,7 +14,7 @@ use sha2::{Sha256, Digest};
 use jsonwebtoken::{encode, Header, EncodingKey};
 use std::net::SocketAddr;
 use sea_orm::sea_query::Expr;
-use sea_orm::{Condition, ColumnTrait, EntityTrait, QueryFilter, ActiveModelTrait, Set, ModelTrait, PaginatorTrait, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, ActiveModelTrait, Set, PaginatorTrait, QueryOrder};
 use crate::{
     model::{admins, bans, admin_logs, posts, threads, images, reports, SessionClaims},
     AppState,

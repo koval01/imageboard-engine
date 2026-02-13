@@ -83,7 +83,7 @@
                 <!-- Ban & Delete (Nuclear Option) -->
                 <button @click="confirmBan('{{ post.ip_address }}', '{{ post.session_id }}', '{{ report.id }}', '{{ report.reason }}')"
                         class="w-full bg-red-600 text-white border border-red-700 hover:bg-red-700 py-2 rounded font-bold text-sm shadow-sm">
-                    🔨 BAN & DELETE
+                    🔨 BAN & DEL
                 </button>
                 {% else %}
                 <form hx-post="/admin/report/resolve" hx-swap="outerHTML" hx-target="closest .bg-skin-surface">
