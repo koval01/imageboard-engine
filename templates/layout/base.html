@@ -90,6 +90,7 @@
             <a href="/rules" class="hover:underline">Rules</a>
         </div>
         <div>Copyright © 2026 Kryivka.org</div>
+        <div class="text-[10px] opacity-50 mt-1" id="proc-time"></div>
     </footer>
 </div>
 
@@ -123,6 +124,19 @@
                 window.showToast("Network Error", "error");
             });
 
+            // HTMX: Update timing after request
+            document.body.addEventListener('htmx:afterOnLoad', function(evt) {
+                const xhr = evt.detail.xhr;
+                const timing = xhr.getResponseHeader('Server-Timing');
+                if (timing) {
+                    const match = timing.match(/total;dur=([\d.]+)/);
+                    if (match) {
+                        const el = document.getElementById('proc-time');
+                        if(el) el.innerText = `Processed in ${match[1]}ms`;
+                    }
+                }
+            });
+
             const removeToast = (id) => {
                 toasts.value = toasts.value.filter(t => t.id !== id);
             };
@@ -132,6 +146,23 @@
     });
 
     app.mount('#app');
+
+    // Initial Load Timing
+    window.addEventListener('load', () => {
+        if (window.performance) {
+            // Give browser a moment to populate entries
+            setTimeout(() => {
+                const navEntry = performance.getEntriesByType("navigation")[0];
+                if (navEntry && navEntry.serverTiming) {
+                    const server = navEntry.serverTiming.find(e => e.name === 'total');
+                    if (server) {
+                        const el = document.getElementById('proc-time');
+                        if(el) el.innerText = `Processed in ${server.duration.toFixed(3)}ms`;
+                    }
+                }
+            }, 0);
+        }
+    });
 </script>
 
 </body>

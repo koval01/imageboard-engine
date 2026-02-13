@@ -12,7 +12,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 use crate::{
     handler::{
         board::{home_handler, view_board_handler, view_thread_handler, create_thread_handler, reply_handler, about_handler, rules_handler, poll_new_posts_handler},
-        middleware::{session_middleware, bot_guard_middleware},
+        middleware::{session_middleware, bot_guard_middleware, response_time_middleware},
         admin::{create_report, resolve_report},
     },
     AppState,
@@ -62,6 +62,7 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
         .nest_service("/assets", ServeDir::new(format!("{}/assets", assets_path.to_str().unwrap())))
         .layer(from_fn_with_state(app_state.clone(), bot_guard_middleware))
         .layer(from_fn_with_state(app_state.clone(), session_middleware))
+        .layer(axum::middleware::from_fn(response_time_middleware))
         .layer(TraceLayer::new_for_http())
         .with_state(app_state);
 

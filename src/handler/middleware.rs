@@ -23,6 +23,18 @@ pub struct CurrentSession {
     pub role: i32,
 }
 
+pub async fn response_time_middleware(request: Request, next: Next) -> Response {
+    let start = std::time::Instant::now();
+    let mut response = next.run(request).await;
+    let elapsed = start.elapsed();
+    let value = format!("total;dur={:.3}", elapsed.as_secs_f64() * 1000.0);
+    // Standard Server-Timing header
+    if let Ok(val) = value.parse() {
+        response.headers_mut().insert("Server-Timing", val);
+    }
+    response
+}
+
 pub async fn session_middleware(
     cookie_jar: CookieJar,
     State(state): State<Arc<RwLock<AppState>>>,
