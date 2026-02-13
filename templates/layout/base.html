@@ -143,27 +143,6 @@
     });
 
     app.mount('#app');
-
-    // Initial Load Timing
-    window.addEventListener('load', () => {
-        // Since we can't easily read custom headers on initial doc load without fetch,
-        // we use Navigation Timing API as a fallback approximation (Total Time).
-        setTimeout(() => {
-            const navEntry = performance.getEntriesByType("navigation")[0];
-            if (navEntry) {
-                // responseEnd - requestStart = Server Time + Download Time
-                const dur = navEntry.responseEnd - navEntry.requestStart;
-                const el = document.getElementById('proc-time');
-                if(el) el.innerText = `Processed in ~${dur.toFixed(0)}ms`;
-            } else if (window.performance && window.performance.timing) {
-                // Legacy fallback
-                const timing = window.performance.timing;
-                const loadTime = timing.responseEnd - timing.requestStart;
-                const el = document.getElementById('proc-time');
-                if(el) el.innerText = `Processed in ~${loadTime}ms`;
-            }
-        }, 0);
-    });
 </script>
 
 </body>
