@@ -41,11 +41,13 @@
             {% endif %}
             {% endif %}
 
+            {% if admin_role <= 1 %}
             <form hx-post="/report" hx-swap="none" data-no-reset="true">
                 <input type="hidden" name="post_id" value="{{ thread.id }}">
                 <input type="hidden" name="reason" value="">
                 <button data-action="report" class="text-skin-accent hover:underline ml-1 cursor-pointer" title="Поскаржитися">⚠</button>
             </form>
+            {% endif %}
         </div>
 
         <div class="flex gap-4">

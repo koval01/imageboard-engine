@@ -20,6 +20,7 @@ use crate::{
     security::get_client_ip,
 };
 
+// --- CACHE ENUM DEFINITION ---
 #[derive(Clone)]
 pub enum CacheData {
     Home(Vec<BoardStat>, Vec<(images::Model, String)>, Vec<threads::Model>),
@@ -53,6 +54,7 @@ pub struct ThreadItem {
     pub omitted_images: usize,
 }
 
+// --- Home Page Structs ---
 #[derive(Clone)]
 pub struct BoardStat {
     pub model: boards::Model,
@@ -77,6 +79,7 @@ struct AboutTemplate {}
 #[template(path = "rules.html")]
 struct RulesTemplate {}
 
+// --- Board & Thread Templates ---
 #[derive(Template)]
 #[template(path = "board.html")]
 struct BoardTemplate {
@@ -98,6 +101,10 @@ struct ThreadTemplate {
     last_post_id: i32,
 }
 
+// --- Partial Templates (HTMX Responses) ---
+
+// We keep this for individual post rendering if needed elsewhere,
+// but reply_handler will now use PostsListPartialTemplate
 #[derive(Template)]
 #[template(path = "partials/post.html")]
 struct PostPartialTemplate {
@@ -108,7 +115,6 @@ struct PostPartialTemplate {
 #[template(path = "partials/posts_list.html")]
 struct PostsListPartialTemplate {
     posts: Vec<PostItem>,
-    // Data needed to update the HTMX polling cursor
     next_cursor: Option<i32>,
     board_slug: String,
     thread_id: i32,
@@ -181,6 +187,9 @@ async fn check_rate_limit(ip: &str, cache: &moka::future::Cache<String, u64>) ->
     cache.insert(key, now).await;
     Ok(())
 }
+
+
+// --- HANDLERS ---
 
 pub async fn home_handler(
     State(state): State<Arc<RwLock<AppState>>>,
@@ -628,14 +637,20 @@ pub async fn reply_handler(
             state_read.db_cache.invalidate(&format!("board_{}", slug)).await;
             state_read.db_cache.invalidate(&format!("thread_{}", thread_id)).await;
 
-            HtmlTemplate(PostPartialTemplate {
-                post: PostItem {
-                    model: post,
+            // FIX: Return PostsListPartialTemplate with `next_cursor` to update
+            // the poller OOB. This prevents the poller from asking for the post
+            // we just inserted.
+            HtmlTemplate(PostsListPartialTemplate {
+                posts: vec![PostItem {
+                    model: post.clone(),
                     images: saved_images,
                     cdn_url: state_read.config.cdn_url.clone(),
                     admin_role: session.role,
-                    board_slug: slug,
-                }
+                    board_slug: slug.clone(),
+                }],
+                next_cursor: Some(post.id),
+                board_slug: slug,
+                thread_id: thread_id
             }).into_response()
         },
         Err(e) => {
@@ -659,7 +674,6 @@ pub async fn poll_new_posts_handler(
     let db = &state.pool;
     let cdn_url = state.config.cdn_url.clone();
 
-    // No cache for polling updates (real-time)
     let new_posts = posts::Entity::find()
         .filter(posts::Column::ThreadId.eq(thread_id))
         .filter(posts::Column::Id.gt(query.after))

@@ -1,4 +1,27 @@
 <div class="post-container mb-2 last:mb-0" id="p{{ post.model.id }}">
+    <!-- Defensive Check: If this ID already exists, remove this new instance immediately -->
+    <script>
+        (function() {
+            var id = "p{{ post.model.id }}";
+            var existing = document.querySelectorAll('#' + id);
+            if (existing.length > 1) {
+                // Remove the last one added (this one), assuming the previous one is valid
+                // We use document.currentScript.parentElement to refer to the container we are in
+                // but since script executes, we can just find and remove the last occurence.
+                // However, HTMX executes scripts after swapping.
+                // Safest way:
+                var current = document.getElementById(id);
+                // If there is another one preceding it in the DOM, remove this one.
+                // Since this is appended, the 'previous' one is the 'real' one.
+                // Actually, let's just count. If > 1, remove the last one found in DOM.
+                var all = document.querySelectorAll('#' + id);
+                if(all.length > 1) {
+                    all[all.length - 1].remove();
+                }
+            }
+        })();
+    </script>
+
     <div class="side-arrows">>></div>
     <div class="post reply bg-skin-reply-bg border border-skin-border-reply rounded shadow-sm p-2 ml-4">
         <!-- Reply Meta -->
@@ -24,12 +47,14 @@
             </form>
             {% endif %}
 
-            <!-- Report Button (For everyone) -->
+            <!-- Report Button -->
+            {% if post.admin_role <= 1 %}
             <form hx-post="/report" hx-swap="none" data-no-reset="true">
                 <input type="hidden" name="post_id" value="{{ post.model.id }}">
                 <input type="hidden" name="reason" value="">
                 <button data-action="report" class="text-skin-accent hover:underline ml-1 cursor-pointer" title="Поскаржитися">⚠</button>
             </form>
+            {% endif %}
         </div>
 
         <div class="flex gap-2 items-start">

@@ -2,7 +2,7 @@
 {% include "partials/post.html" %}
 {% endfor %}
 
-<!-- OOB Swap to update the poller with the new Last ID -->
+<!-- Update the polling cursor Out-Of-Band -->
 {% if let Some(cursor) = next_cursor %}
 <div id="poll-trigger"
      hx-swap-oob="true"
