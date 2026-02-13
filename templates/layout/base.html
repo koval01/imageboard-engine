@@ -90,7 +90,8 @@
             <a href="/rules" class="hover:underline">Rules</a>
         </div>
         <div>Copyright © 2026 Kryivka.org</div>
-        <div class="text-[10px] opacity-50 mt-1" id="proc-time"></div>
+        <!-- This placeholder is replaced by the server middleware with the actual processing time -->
+        <div class="text-[10px] opacity-50 mt-1" id="proc-time"><!-- PROC_TIME --></div>
     </footer>
 </div>
 
@@ -124,7 +125,8 @@
                 window.showToast("Network Error", "error");
             });
 
-            // HTMX: Update timing after request using custom header to bypass proxies
+            // HTMX: Update timing after request using custom header
+            // This handles updating the timer on subsequent HTMX interactions
             document.body.addEventListener('htmx:afterOnLoad', function(evt) {
                 const xhr = evt.detail.xhr;
                 const timing = xhr.getResponseHeader('X-Processing-Time');

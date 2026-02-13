@@ -4,6 +4,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
+    body::{Body, to_bytes}, // Import Body utilities
     Json
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar};
@@ -25,18 +26,54 @@ pub struct CurrentSession {
 
 pub async fn response_time_middleware(request: Request, next: Next) -> Response {
     let start = std::time::Instant::now();
-    let mut response = next.run(request).await;
+    let response = next.run(request).await;
     let elapsed = start.elapsed();
+    let time_ms = elapsed.as_secs_f64() * 1000.0;
+    let time_str = format!("{:.3}ms", time_ms);
 
-    // We use a custom header X-Processing-Time because standard Server-Timing
-    // headers are often stripped or modified by reverse proxies like Cloudflare.
-    let value = format!("{:.3}ms", elapsed.as_secs_f64() * 1000.0);
+    let (mut parts, body) = response.into_parts();
 
-    if let Ok(val) = value.parse() {
-        response.headers_mut().insert("X-Processing-Time", val);
+    // 1. Add Custom Header (X-Processing-Time)
+    // Useful for HTMX Javascript to update the footer dynamically on partial reloads
+    if let Ok(val) = time_str.parse() {
+        parts.headers.insert("X-Processing-Time", val);
     }
 
-    response
+    // 2. Server-Side Injection (SSR)
+    // Check if the response is HTML. If so, read the body, find the placeholder,
+    // and replace it with the actual time. This ensures the time is visible
+    // immediately on first paint, without waiting for client-side JS.
+    let is_html = parts.headers.get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.starts_with("text/html"))
+        .unwrap_or(false);
+
+    if is_html {
+        // Buffer body (limit 1MB to be safe)
+        match to_bytes(body, 1024 * 1024).await {
+            Ok(bytes) => {
+                // Try to parse as UTF-8 string to perform replacement
+                if let Ok(content) = std::str::from_utf8(&bytes) {
+                    let marker = "<!-- PROC_TIME -->";
+                    if content.contains(marker) {
+                        let new_content = content.replace(marker, &format!("Processed in {}", time_str));
+                        return Response::from_parts(parts, Body::from(new_content));
+                    }
+                }
+                // Return original if not text or marker not found
+                return Response::from_parts(parts, Body::from(bytes));
+            }
+            Err(_) => {
+                // Body read error
+                return Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(Body::empty())
+                    .unwrap();
+            }
+        }
+    }
+
+    Response::from_parts(parts, body)
 }
 
 pub async fn session_middleware(
