@@ -36,6 +36,7 @@ pub struct ThreadItem {
     pub model: threads::Model,
     pub images: Vec<images::Model>,
     pub replies: Vec<PostItem>,
+    pub reply_count: usize, // Added field
 }
 
 // --- Home Page Structs ---
@@ -232,6 +233,8 @@ pub async fn view_board_handler(
                 .await
                 .unwrap();
 
+            let reply_count = posts_raw.len();
+
             // Preview last 3 posts
             let preview_posts_raw = posts_raw.into_iter().rev().take(3).rev().collect::<Vec<_>>();
             let post_images = preview_posts_raw.load_many(images::Entity, db).await.unwrap();
@@ -248,6 +251,7 @@ pub async fn view_board_handler(
                 model: thread,
                 images: thread_images[i].clone(),
                 replies,
+                reply_count,
             });
         }
 

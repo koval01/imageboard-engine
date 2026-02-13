@@ -96,9 +96,9 @@
 
         <!-- Replies (Last 3) -->
         <div class="replies mt-1">
-            {% if thread.model.reply_count > 3 %}
+            {% if thread.reply_count > 3 %}
             <div class="text-skin-muted text-xs ml-4 mb-1">
-                {{ thread.model.reply_count - 3 }} posts omitted. <a href="/{{ board.slug }}/thread/{{ thread.model.id }}" class="text-skin-link hover:underline">Click to view.</a>
+                {{ thread.reply_count - 3 }} posts omitted. <a href="/{{ board.slug }}/thread/{{ thread.model.id }}" class="text-skin-link hover:underline">Click to view.</a>
             </div>
             {% endif %}
 
