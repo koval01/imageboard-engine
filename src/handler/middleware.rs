@@ -27,11 +27,15 @@ pub async fn response_time_middleware(request: Request, next: Next) -> Response 
     let start = std::time::Instant::now();
     let mut response = next.run(request).await;
     let elapsed = start.elapsed();
-    let value = format!("total;dur={:.3}", elapsed.as_secs_f64() * 1000.0);
-    // Standard Server-Timing header
+
+    // We use a custom header X-Processing-Time because standard Server-Timing
+    // headers are often stripped or modified by reverse proxies like Cloudflare.
+    let value = format!("{:.3}ms", elapsed.as_secs_f64() * 1000.0);
+
     if let Ok(val) = value.parse() {
-        response.headers_mut().insert("Server-Timing", val);
+        response.headers_mut().insert("X-Processing-Time", val);
     }
+
     response
 }
 

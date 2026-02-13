@@ -124,16 +124,13 @@
                 window.showToast("Network Error", "error");
             });
 
-            // HTMX: Update timing after request
+            // HTMX: Update timing after request using custom header to bypass proxies
             document.body.addEventListener('htmx:afterOnLoad', function(evt) {
                 const xhr = evt.detail.xhr;
-                const timing = xhr.getResponseHeader('Server-Timing');
+                const timing = xhr.getResponseHeader('X-Processing-Time');
                 if (timing) {
-                    const match = timing.match(/total;dur=([\d.]+)/);
-                    if (match) {
-                        const el = document.getElementById('proc-time');
-                        if(el) el.innerText = `Processed in ${match[1]}ms`;
-                    }
+                    const el = document.getElementById('proc-time');
+                    if(el) el.innerText = `Processed in ${timing}`;
                 }
             });
 
@@ -149,19 +146,23 @@
 
     // Initial Load Timing
     window.addEventListener('load', () => {
-        if (window.performance) {
-            // Give browser a moment to populate entries
-            setTimeout(() => {
-                const navEntry = performance.getEntriesByType("navigation")[0];
-                if (navEntry && navEntry.serverTiming) {
-                    const server = navEntry.serverTiming.find(e => e.name === 'total');
-                    if (server) {
-                        const el = document.getElementById('proc-time');
-                        if(el) el.innerText = `Processed in ${server.duration.toFixed(3)}ms`;
-                    }
-                }
-            }, 0);
-        }
+        // Since we can't easily read custom headers on initial doc load without fetch,
+        // we use Navigation Timing API as a fallback approximation (Total Time).
+        setTimeout(() => {
+            const navEntry = performance.getEntriesByType("navigation")[0];
+            if (navEntry) {
+                // responseEnd - requestStart = Server Time + Download Time
+                const dur = navEntry.responseEnd - navEntry.requestStart;
+                const el = document.getElementById('proc-time');
+                if(el) el.innerText = `Processed in ~${dur.toFixed(0)}ms`;
+            } else if (window.performance && window.performance.timing) {
+                // Legacy fallback
+                const timing = window.performance.timing;
+                const loadTime = timing.responseEnd - timing.requestStart;
+                const el = document.getElementById('proc-time');
+                if(el) el.innerText = `Processed in ~${loadTime}ms`;
+            }
+        }, 0);
     });
 </script>
 
