@@ -1,0 +1,169 @@
+{% extends "layout/base.html" %}
+
+{% block content %}
+<div class="p-6 font-sans">
+    <div class="flex justify-between items-center mb-6 bg-skin-header p-4 rounded text-skin-text shadow-sm">
+        <h1 class="text-2xl font-bold tracking-wide">ЧЕРГА СКАРГ</h1>
+        <div class="flex gap-4 text-sm font-bold">
+            <a href="/admin/dashboard" class="hover:text-skin-link hover:underline">ДАШБОРД</a>
+            <a href="/" class="hover:text-skin-link hover:underline">НА ГОЛОВНУ</a>
+        </div>
+    </div>
+
+    {% if reports.is_empty() %}
+    <div class="p-12 text-center bg-skin-surface border border-skin-border rounded text-skin-muted text-xl">
+        🎉 Скарг немає! Все чисто.
+    </div>
+    {% else %}
+    <div class="space-y-6">
+        {% for (report, post_opt, imgs) in reports %}
+        <div class="bg-skin-surface border border-skin-border rounded-lg shadow-sm overflow-hidden flex flex-col md:flex-row relative">
+
+            <!-- Report Meta (Left) -->
+            <div class="bg-skin-base p-4 md:w-64 border-b md:border-b-0 md:border-r border-skin-border flex-shrink-0">
+                <div class="text-xs font-mono text-skin-muted mb-2">REPORT #{{ report.id }}</div>
+                <div class="font-bold text-red-600 text-lg mb-2">{{ report.reason }}</div>
+                <div class="text-xs text-skin-muted mb-4">
+                    Від: <span class="font-mono">{{ report.ip_address }}</span><br>
+                    Час: {{ report.created_at.format("%d.%m %H:%M") }}
+                </div>
+
+                <form hx-post="/admin/report/resolve" hx-swap="outerHTML" hx-target="closest .bg-skin-surface">
+                    <input type="hidden" name="report_id" value="{{ report.id }}">
+                    <input type="hidden" name="status" value="REJECTED">
+                    <button class="w-full bg-skin-surface border border-skin-border hover:bg-gray-100 text-skin-text py-1 px-3 rounded text-xs font-bold mb-2">
+                        ❌ Відхилити (Закрити)
+                    </button>
+                </form>
+            </div>
+
+            <!-- Post Content (Center) -->
+            <div class="p-4 flex-1">
+                {% if let Some(post) = post_opt %}
+                <div class="border-b border-skin-border pb-2 mb-2 text-xs text-skin-muted flex justify-between">
+                    <div>
+                        <span class="font-bold text-skin-name">Анонім</span>
+                        <span class="font-mono ml-2">[{{ post.ip_address }}]</span>
+                        <span class="font-mono ml-1">UID: {{ post.session_id }}</span>
+                    </div>
+                    <a href="/{{ "b" }}/thread/{{ post.thread_id }}#p{{ post.id }}" target="_blank" class="text-skin-link hover:underline">Link to Post -></a>
+                </div>
+
+                <div class="flex gap-4">
+                    {% if !imgs.is_empty() %}
+                    <div class="flex flex-col gap-2">
+                        {% for img in imgs %}
+                        <a href="/media/{{ img.url }}" target="_blank" class="block">
+                            <img src="/media/{{ img.thumbnail_url }}" class="w-32 h-32 object-cover rounded border border-skin-border">
+                        </a>
+                        <div class="text-[9px] text-skin-muted truncate w-32">{{ img.filename }}</div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <div class="whitespace-pre-wrap text-sm text-skin-text font-medium">{{ post.content }}</div>
+                </div>
+                {% else %}
+                <div class="text-red-500 italic p-4">Пост вже видалено.</div>
+                {% endif %}
+            </div>
+
+            <!-- Actions (Right) -->
+            <div class="bg-red-50 p-4 md:w-48 border-t md:border-t-0 md:border-l border-skin-border flex flex-col gap-2 justify-center">
+                {% if let Some(post) = post_opt %}
+                <!-- Delete Post & Close Report -->
+                <form hx-post="/admin/delete" hx-confirm="Видалити пост і закрити скаргу?" hx-swap="outerHTML" hx-target="closest .bg-skin-surface">
+                    <input type="hidden" name="post_id" value="{{ post.id }}">
+                    <input type="hidden" name="report_id" value="{{ report.id }}">
+                    <button class="w-full bg-orange-100 text-orange-800 border border-orange-300 hover:bg-orange-200 py-2 rounded font-bold text-sm">
+                        🗑 Видалити
+                    </button>
+                </form>
+
+                <!-- Ban & Delete (Nuclear Option) -->
+                <button @click="confirmBan('{{ post.ip_address }}', '{{ post.session_id }}', '{{ report.id }}', '{{ report.reason }}')"
+                        class="w-full bg-red-600 text-white border border-red-700 hover:bg-red-700 py-2 rounded font-bold text-sm shadow-sm">
+                    🔨 BAN & DELETE
+                </button>
+                {% else %}
+                <form hx-post="/admin/report/resolve" hx-swap="outerHTML" hx-target="closest .bg-skin-surface">
+                    <input type="hidden" name="report_id" value="{{ report.id }}">
+                    <input type="hidden" name="status" value="RESOLVED">
+                    <button class="w-full bg-gray-200 text-gray-800 border border-gray-300 hover:bg-gray-300 py-2 rounded font-bold text-sm">
+                        Закрити
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    // Vue logic for handling the complex Ban modal
+    function confirmBan(ip, session, reportId, defaultReason) {
+        Swal.fire({
+            title: 'BAN & PURGE',
+            html: `
+                <div class="text-left text-sm">
+                    <p class="mb-2"><strong>IP:</strong> ${ip}</p>
+                    <div class="mb-2">
+                        <label class="block font-bold">Duration:</label>
+                        <select id="ban-duration" class="w-full border p-1 rounded bg-gray-50">
+                            <option value="24">24 Hours</option>
+                            <option value="72">3 Days</option>
+                            <option value="168">1 Week</option>
+                            <option value="720">1 Month</option>
+                            <option value="87600" selected>Forever</option>
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="block font-bold">Reason:</label>
+                        <input id="ban-reason" class="w-full border p-1 rounded" value="${defaultReason}">
+                    </div>
+                    <div class="mb-2 flex items-center gap-2 bg-red-100 p-2 rounded border border-red-200">
+                        <input type="checkbox" id="ban-delete" checked class="w-4 h-4 text-red-600">
+                        <label for="ban-delete" class="text-red-800 font-bold text-xs">DELETE ALL POSTS FROM IP</label>
+                    </div>
+                </div>
+            `,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            confirmButtonText: 'EXECUTE',
+            preConfirm: () => {
+                return {
+                    duration: document.getElementById('ban-duration').value,
+                    reason: document.getElementById('ban-reason').value,
+                    delete_posts: document.getElementById('ban-delete').checked
+                }
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Manually trigger HTMX request via hidden form or JS
+                // Since we are inside Vue/Vanilla context, we can construct the payload manually
+                const formData = new FormData();
+                formData.append('ip', ip);
+                formData.append('session', session);
+                formData.append('reason', result.value.reason);
+                formData.append('duration_hours', result.value.duration);
+                formData.append('delete_posts', result.value.delete_posts);
+                formData.append('report_id', reportId);
+
+                // Use HTMX api to send request to preserve global loading states
+                htmx.ajax('POST', '/admin/ban', {
+                    values: Object.fromEntries(formData),
+                    target: 'body', // This might refresh the whole body or we can target the row if we had an ID
+                    swap: 'none'    // We handle UI update via reload or removal
+                }).then(() => {
+                    window.showToast('User Banned & Content Purged');
+                    setTimeout(() => location.reload(), 1000); // Reload to refresh list
+                });
+            }
+        });
+    }
+</script>
+{% endblock %}

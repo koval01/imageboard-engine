@@ -8,59 +8,131 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.3.2/css/flag-icons.min.css" />
     <link rel="stylesheet" href="/assets/css/sweetalert2.min.css">
 
-    <!-- Core Libraries -->
+    <!-- Libraries -->
     <script src="/assets/js/htmx.min.js"></script>
     <script src="/assets/js/sweetalert2.min.js"></script>
+    <!-- Vue.js -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.5.28/dist/vue.global.min.js"></script>
     <!-- Main Logic -->
     <script src="/assets/js/core.min.js" defer></script>
+
+    <style>
+        /* Toast Transitions */
+        .toast-enter-active, .toast-leave-active { transition: all 0.5s ease; }
+        .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateX(30px); }
+        /* Loader Overlay */
+        .loader-overlay { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(2px); z-index: 9999; }
+        [data-theme="dark"] .loader-overlay { background: rgba(0, 0, 0, 0.7); }
+    </style>
 </head>
 <body class="bg-skin-surface text-skin-text font-sans text-[13px]">
 
-<!-- Header -->
-<div class="border-b border-skin-border-reply mb-2 p-1 text-[13px]">
-    <div class="flex flex-wrap justify-between items-center">
-        <div class="flex gap-1">
-            <span class="text-skin-muted">[</span>
-            <a href="/" class="hover:underline font-bold">Home</a>
-            <span class="text-skin-muted">/</span>
-            <a href="/b" class="hover:underline">b</a>
-            <span class="text-skin-muted">/</span>
-            <a href="/pol" class="hover:underline">pol</a>
-            <span class="text-skin-muted">/</span>
-            <a href="/tech" class="hover:underline">tech</a>
-            <span class="text-skin-muted">/</span>
-            <a href="/a" class="hover:underline">a</a>
-            <span class="text-skin-muted">/</span>
-            <a href="/sex" class="hover:underline">sex</a>
-            <span class="text-skin-muted">]</span>
-        </div>
-
-        <div class="flex gap-2">
-            {% block admin_nav %}{% endblock %}
-
-            <span class="text-skin-muted">[</span>
-            <button id="theme-toggle" class="hover:underline cursor-pointer">Theme</button>
-            <span class="text-skin-muted">]</span>
+<div id="app">
+    <!-- Global Loader -->
+    <div v-if="isLoading" class="loader-overlay fixed inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-300">
+        <div class="bg-skin-header p-4 rounded-lg shadow-lg border border-skin-border flex flex-col items-center gap-2">
+            <svg class="animate-spin h-8 w-8 text-skin-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span class="font-bold text-xs uppercase tracking-wider">Processing...</span>
         </div>
     </div>
+
+    <!-- Toast Notifications -->
+    <div class="fixed top-4 right-4 z-[10000] flex flex-col gap-2">
+        <transition-group name="toast">
+            <div v-for="toast in toasts" :key="toast.id"
+                 :class="['p-3 rounded shadow-lg border text-sm font-bold min-w-[250px] cursor-pointer',
+                 toast.type === 'error' ? 'bg-red-100 border-red-400 text-red-800' : 'bg-green-100 border-green-400 text-green-800']"
+                 @click="removeToast(toast.id)">
+                {{ toast.message }}
+            </div>
+        </transition-group>
+    </div>
+
+    <!-- Header -->
+    <div class="border-b border-skin-border-reply mb-2 p-1 text-[13px]">
+        <div class="flex flex-wrap justify-between items-center">
+            <div class="flex gap-1">
+                <span class="text-skin-muted">[</span>
+                <a href="/" class="hover:underline font-bold">Home</a>
+                <span class="text-skin-muted">/</span>
+                <a href="/b" class="hover:underline">b</a>
+                <span class="text-skin-muted">/</span>
+                <a href="/pol" class="hover:underline">pol</a>
+                <span class="text-skin-muted">/</span>
+                <a href="/tech" class="hover:underline">tech</a>
+                <span class="text-skin-muted">/</span>
+                <a href="/a" class="hover:underline">a</a>
+                <span class="text-skin-muted">/</span>
+                <a href="/sex" class="hover:underline">sex</a>
+                <span class="text-skin-muted">]</span>
+            </div>
+
+            <div class="flex gap-2">
+                {% block admin_nav %}{% endblock %}
+                <span class="text-skin-muted">[</span>
+                <button id="theme-toggle" class="hover:underline cursor-pointer">Theme</button>
+                <span class="text-skin-muted">]</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="px-2 pb-10">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="mt-8 pb-4 text-center text-xs text-skin-muted border-t border-skin-border-reply pt-2">
+        <div class="mb-2">
+            <a href="/about" class="hover:underline">About</a> •
+            <a href="/rules" class="hover:underline">Rules</a>
+        </div>
+        <div>Copyright © 2026 Kryivka.org</div>
+    </footer>
 </div>
 
-<!-- Main Content -->
-<main class="px-2 pb-10">
-    {% block content %}{% endblock %}
-</main>
+<script>
+    const { createApp, ref } = Vue;
 
-<footer class="mt-8 pb-4 text-center text-xs text-skin-muted border-t border-skin-border-reply pt-2">
-    <div class="mb-2">
-        <a href="/about" class="hover:underline">About</a> •
-        <a href="/rules" class="hover:underline">Rules</a>
-    </div>
-    <div>Copyright © 2026 Kryivka.org</div>
-</footer>
+    const app = createApp({
+        setup() {
+            const isLoading = ref(false);
+            const toasts = ref([]);
+            let toastId = 0;
 
-<!-- Icons for Theme Toggle (Hidden, handled by JS if needed for other places) -->
-<svg id="icon-light" class="hidden"></svg>
-<svg id="icon-dark" class="hidden"></svg>
+            // Global exposure for non-Vue JS to trigger toasts
+            window.showToast = (message, type = 'success') => {
+                const id = toastId++;
+                toasts.value.push({ id, message, type });
+                setTimeout(() => {
+                    toasts.value = toasts.value.filter(t => t.id !== id);
+                }, 3000);
+            };
+
+            // Event Listeners for HTMX
+            window.addEventListener('htmx:beforeRequest', () => isLoading.value = true);
+            window.addEventListener('htmx:afterRequest', () => isLoading.value = false);
+            window.addEventListener('htmx:responseError', () => {
+                isLoading.value = false;
+                window.showToast("Server Error", "error");
+            });
+            window.addEventListener('htmx:sendError', () => {
+                isLoading.value = false;
+                window.showToast("Network Error", "error");
+            });
+
+            const removeToast = (id) => {
+                toasts.value = toasts.value.filter(t => t.id !== id);
+            };
+
+            return { isLoading, toasts, removeToast };
+        }
+    });
+
+    app.mount('#app');
+</script>
 
 </body>
 </html>

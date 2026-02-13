@@ -58,6 +58,7 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
         .route("/admin/report/resolve", post(resolve_report))
         .route("/admin/export", get(crate::handler::admin::admin_export_logs))
         .route("/admin/logs", get(crate::handler::admin::admin_logs_view))
+        .route("/admin/reports", get(crate::handler::admin::admin_reports_view))
         .nest_service("/assets", ServeDir::new(format!("{}/assets", assets_path.to_str().unwrap())))
         .layer(from_fn_with_state(app_state.clone(), bot_guard_middleware))
         .layer(from_fn_with_state(app_state.clone(), session_middleware))

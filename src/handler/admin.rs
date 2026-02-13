@@ -14,6 +14,7 @@ use sha2::{Sha256, Digest};
 use jsonwebtoken::{encode, Header, EncodingKey};
 use std::net::SocketAddr;
 use sea_orm::sea_query::Expr;
+use sea_orm::{Condition, ColumnTrait, EntityTrait, QueryFilter, ActiveModelTrait, Set, ModelTrait, PaginatorTrait, QueryOrder};
 use crate::{
     model::{admins, bans, admin_logs, posts, threads, images, reports, SessionClaims},
     AppState,
@@ -186,6 +187,8 @@ pub struct BanPayload {
     session: String,
     reason: String,
     duration_hours: i64,
+    delete_posts: Option<bool>,
+    report_id: Option<i32>,
 }
 
 pub async fn admin_ban_action(
@@ -199,9 +202,10 @@ pub async fn admin_ban_action(
 
     let state = state.read().await;
     let db = &state.pool;
+    let storage = &state.storage;
 
+    // 1. Insert Ban
     let expires = Utc::now().naive_utc() + Duration::hours(payload.duration_hours);
-
     let ban = bans::ActiveModel {
         ip_address: Set(Some(payload.ip.clone())),
         session_id: Set(Some(payload.session.clone())),
@@ -215,23 +219,73 @@ pub async fn admin_ban_action(
         return format!("Database error: {}", e).into_response();
     }
 
+    // 2. Delete posts from this IP if requested
+    if payload.delete_posts.unwrap_or(false) {
+        // Find all posts by this IP to delete images
+        let posts_to_del = posts::Entity::find()
+            .filter(posts::Column::IpAddress.eq(&payload.ip))
+            .all(db).await.unwrap_or_default();
+
+        for p in posts_to_del {
+            // Re-use logic from delete action (simplified here)
+            // Fetch images and delete from S3/Local
+            let imgs = images::Entity::find().filter(images::Column::PostId.eq(p.id)).all(db).await.unwrap_or_default();
+            for img in imgs {
+                let _ = storage.delete_file(&img.url).await;
+                let _ = storage.delete_file(&img.thumbnail_url).await;
+            }
+            let _ = posts::Entity::delete_by_id(p.id).exec(db).await;
+        }
+
+        // Also threads by this IP
+        let threads_to_del = threads::Entity::find()
+            .filter(threads::Column::IpAddress.eq(&payload.ip))
+            .all(db).await.unwrap_or_default();
+
+        for t in threads_to_del {
+            let imgs = images::Entity::find().filter(images::Column::ThreadId.eq(t.id)).all(db).await.unwrap_or_default();
+            for img in imgs {
+                let _ = storage.delete_file(&img.url).await;
+                let _ = storage.delete_file(&img.thumbnail_url).await;
+            }
+            let _ = threads::Entity::delete_by_id(t.id).exec(db).await;
+        }
+    }
+
+    // 3. Close Report if exists
+    if let Some(rid) = payload.report_id {
+        let _ = reports::Entity::update_many()
+            .col_expr(reports::Column::Status, Expr::value("RESOLVED"))
+            .filter(reports::Column::Id.eq(rid))
+            .exec(db).await;
+    }
+
+    // Also close any other open reports for this IP
+    let _ = reports::Entity::update_many()
+        .col_expr(reports::Column::Status, Expr::value("RESOLVED"))
+        .filter(reports::Column::IpAddress.eq(&payload.ip))
+        .exec(db).await;
+
+    // 4. Log
     let log = admin_logs::ActiveModel {
         admin_username: Set(format!("L{}", session.role)),
         action: Set("BAN".to_string()),
         target_id: Set(Some(payload.ip)),
-        details: Set(Some(format!("Session: {}, Duration: {}h, Reason: {}", payload.session, payload.duration_hours, payload.reason))),
+        details: Set(Some(format!("Del: {:?}, Reason: {}", payload.delete_posts, payload.reason))),
         created_at: Set(Utc::now().naive_utc()),
         ..Default::default()
     };
     let _ = log.insert(db).await;
 
-    "OK".into_response()
+    // HTMX response: Remove the table row if triggered from a list
+    "".into_response()
 }
 
 #[derive(Deserialize)]
 pub struct DeletePayload {
     post_id: Option<i32>,
     thread_id: Option<i32>,
+    report_id: Option<i32>,
 }
 
 pub async fn admin_delete_post_action(
@@ -251,17 +305,21 @@ pub async fn admin_delete_post_action(
     let mut log_target = String::new();
 
     if let Some(pid) = payload.post_id {
-        log_target = format!("Post {}", pid);
         if let Ok(Some(_)) = posts::Entity::find_by_id(pid).one(db).await {
-            let imgs = images::Entity::find()
-                .filter(images::Column::PostId.eq(pid))
-                .all(db).await.unwrap_or_default();
+            let imgs = images::Entity::find().filter(images::Column::PostId.eq(pid)).all(db).await.unwrap_or_default();
             for img in imgs {
-                image_keys_to_check.push((img.storage_key, img.url, img.thumbnail_url));
+                let _ = storage.delete_file(&img.url).await;
+                let _ = storage.delete_file(&img.thumbnail_url).await;
             }
             let _ = posts::Entity::delete_by_id(pid).exec(db).await;
+
+            // Close associated reports
+            let _ = reports::Entity::update_many()
+                .col_expr(reports::Column::Status, Expr::value("RESOLVED"))
+                .filter(reports::Column::PostId.eq(pid))
+                .exec(db).await;
         }
-    } else if let Some(tid) = payload.thread_id {
+    }  else if let Some(tid) = payload.thread_id {
         log_target = format!("Thread {}", tid);
         if let Ok(Some(_)) = threads::Entity::find_by_id(tid).one(db).await {
             let op_imgs = images::Entity::find()
@@ -283,6 +341,13 @@ pub async fn admin_delete_post_action(
             }
             let _ = threads::Entity::delete_by_id(tid).exec(db).await;
         }
+    }
+
+    if let Some(rid) = payload.report_id {
+        let _ = reports::Entity::update_many()
+            .col_expr(reports::Column::Status, Expr::value("RESOLVED"))
+            .filter(reports::Column::Id.eq(rid))
+            .exec(db).await;
     }
 
     for (key, main_url, thumb_url) in image_keys_to_check {
@@ -451,4 +516,48 @@ pub async fn admin_logs_view(
         .unwrap_or_default();
 
     HtmlTemplate(AdminLogsTemplate { logs }).into_response()
+}
+
+#[derive(Template)]
+#[template(path = "admin/reports.html")]
+struct AdminReportsTemplate {
+    reports: Vec<(reports::Model, Option<posts::Model>, Vec<images::Model>)>,
+}
+
+pub async fn admin_reports_view(
+    State(state): State<Arc<RwLock<AppState>>>,
+    Extension(session): Extension<CurrentSession>,
+) -> Response {
+    if session.role < 1 {
+        return Redirect::to("/admin").into_response();
+    }
+
+    let state = state.read().await;
+    let db = &state.pool;
+
+    let reports_raw = reports::Entity::find()
+        .filter(reports::Column::Status.eq("OPEN"))
+        .order_by_asc(reports::Column::CreatedAt)
+        .all(db)
+        .await
+        .unwrap_or_default();
+
+    let mut full_reports = Vec::new();
+
+    for report in reports_raw {
+        let post = posts::Entity::find_by_id(report.post_id).one(db).await.unwrap_or(None);
+        let mut imgs = Vec::new();
+        if let Some(ref p) = post {
+            imgs = images::Entity::find()
+                .filter(images::Column::PostId.eq(p.id))
+                .all(db)
+                .await
+                .unwrap_or_default();
+        }
+        full_reports.push((report, post, imgs));
+    }
+
+    HtmlTemplate(AdminReportsTemplate {
+        reports: full_reports,
+    }).into_response()
 }
