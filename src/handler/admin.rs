@@ -38,6 +38,12 @@ struct AdminDashboardTemplate {
     total_reports: u64,
 }
 
+#[derive(Template)]
+#[template(path = "admin/logs.html")]
+struct AdminLogsTemplate {
+    logs: Vec<admin_logs::Model>,
+}
+
 // --- Handlers ---
 
 #[derive(Deserialize)]
@@ -314,7 +320,7 @@ pub struct ReportPayload {
 
 pub async fn create_report(
     State(state): State<Arc<RwLock<AppState>>>,
-    Extension(session): Extension<CurrentSession>,
+    Extension(_session): Extension<CurrentSession>, // Fixed unused variable
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
     Form(payload): Form<ReportPayload>,
@@ -369,4 +375,80 @@ pub async fn resolve_report(
 
     // Return empty string to remove the report row from dashboard via HTMX
     "".into_response()
+}
+
+#[derive(Deserialize)]
+pub struct ExportQuery {
+    target_type: String, // "ip" or "session"
+    value: String,
+}
+
+pub async fn admin_export_logs(
+    State(state): State<Arc<RwLock<AppState>>>,
+    Extension(session): Extension<CurrentSession>,
+    Query(query): Query<ExportQuery>,
+) -> Response {
+    if session.role < 3 {
+        return "Admin only".into_response();
+    }
+
+    let state = state.read().await;
+    let db = &state.pool;
+
+    let mut csv_data = String::from("Type,ID,Content,Date,IP,Session\n");
+
+    let threads = match query.target_type.as_str() {
+        "ip" => threads::Entity::find().filter(threads::Column::IpAddress.eq(&query.value)).all(db).await.unwrap(),
+        _ => threads::Entity::find().filter(threads::Column::SessionId.eq(&query.value)).all(db).await.unwrap(),
+    };
+
+    for t in threads {
+        csv_data.push_str(&format!("THREAD,{},\"{}\",{},{},{}\n",
+                                   t.id, t.content.replace("\"", "\"\""), t.created_at, t.ip_address, t.session_id));
+    }
+
+    let posts = match query.target_type.as_str() {
+        "ip" => posts::Entity::find().filter(posts::Column::IpAddress.eq(&query.value)).all(db).await.unwrap(),
+        _ => posts::Entity::find().filter(posts::Column::SessionId.eq(&query.value)).all(db).await.unwrap(),
+    };
+
+    for p in posts {
+        csv_data.push_str(&format!("POST,{},\"{}\",{},{},{}\n",
+                                   p.id, p.content.replace("\"", "\"\""), p.created_at, p.ip_address, p.session_id));
+    }
+
+    let log = admin_logs::ActiveModel {
+        admin_username: Set("Admin".to_string()),
+        action: Set("EXPORT".to_string()),
+        target_id: Set(Some(query.value)),
+        details: Set(Some(query.target_type)),
+        created_at: Set(Utc::now().naive_utc()),
+        ..Default::default()
+    };
+    let _ = log.insert(db).await;
+
+    ([(header::CONTENT_TYPE, "text/csv"),
+         (header::CONTENT_DISPOSITION, "attachment; filename=\"investigation.csv\"")],
+     csv_data).into_response()
+}
+
+pub async fn admin_logs_view(
+    State(state): State<Arc<RwLock<AppState>>>,
+    Extension(session): Extension<CurrentSession>,
+) -> Response {
+    if session.role < 3 {
+        return "Unauthorized. Level 3 access required.".into_response();
+    }
+
+    let state = state.read().await;
+    let db = &state.pool;
+
+    let logs = admin_logs::Entity::find()
+        .order_by_desc(admin_logs::Column::CreatedAt)
+        .limit(100)
+        .all(db)
+        .await
+        .unwrap_or_default();
+
+    HtmlTemplate(AdminLogsTemplate { logs }).into_response()
 }

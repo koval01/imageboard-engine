@@ -80,9 +80,7 @@
 
     <!-- Replies -->
     <div class="replies space-y-2" id="replies-container">
-        {% let mut last_id = 0 %}
         {% for post in replies %}
-        {% let last_id = post.model.id %}
         {% include "partials/post.html" %}
         {% endfor %}
 
@@ -90,8 +88,6 @@
         <div id="new-posts"></div>
 
         <!-- Auto Refresh Trigger -->
-        <!-- Logic: Poll every 10s, asking for posts > last_id -->
-        {% let last_post_id = if replies.is_empty() { 0 } else { replies.last().unwrap().model.id } %}
         <div id="poll-trigger"
              hx-get="/{{ board.slug }}/thread/{{ thread.id }}/poll"
              hx-vals='{"after": {{ last_post_id }}}'

@@ -89,6 +89,7 @@ struct ThreadTemplate {
     replies: Vec<PostItem>,
     cdn_url: String,
     admin_role: i32,
+    last_post_id: i32, // Added to fix template logic error
 }
 
 // --- Partial Templates (HTMX Responses) ---
@@ -358,6 +359,8 @@ pub async fn view_thread_handler(
                 .await
                 .unwrap();
 
+            let last_post_id = posts_raw.last().map(|p| p.id).unwrap_or(0);
+
             let post_images_vec = posts_raw.load_many(images::Entity, db).await.unwrap();
 
             let mut posts_with_images = Vec::new();
@@ -378,6 +381,7 @@ pub async fn view_thread_handler(
                 replies: posts_with_images,
                 cdn_url,
                 admin_role: session.role,
+                last_post_id,
             }).into_response();
         }
     }
