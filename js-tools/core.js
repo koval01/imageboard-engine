@@ -22,18 +22,14 @@
     // --- Helper: PoW Solver (SHA-256) ---
     async function solvePoW(sessionId) {
         const encoder = new TextEncoder();
-        const salt = generateUUID(); // Unique salt per request
+        const salt = generateUUID();
         let nonce = 0;
 
         while (true) {
-            // Format: session_id + salt + nonce
-            // Target: Starts with 0x00 0x00
             const input = sessionId + salt + nonce.toString();
             const buffer = encoder.encode(input);
             const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
             const hashArray = new Uint8Array(hashBuffer);
-
-            // Check if first 2 bytes are 0
             if (hashArray[0] === 0 && hashArray[1] === 0) {
                 return { nonce: nonce.toString(), salt: salt };
             }
@@ -50,7 +46,7 @@
         function applyTheme(theme) {
             html.setAttribute('data-theme', theme);
             localStorage.setItem('theme', theme);
-            if(themeLabel) themeLabel.innerText = theme === 'dark' ? 'Tomorrow' : 'Yotsuba B';
+            if(themeLabel) themeLabel.innerText = theme === 'dark' ? 'Ніч' : 'День';
         }
         const saved = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         applyTheme(saved);
@@ -84,7 +80,6 @@
 
     // --- File Input Feedback ---
     function initFileInputs() {
-        // Find all file inputs (main form and quick reply)
         const inputs = document.querySelectorAll('input[type="file"]');
         inputs.forEach(input => {
             input.addEventListener('change', (e) => {
@@ -95,7 +90,7 @@
                 if (listDisplay) {
                     if (files.length > 0) {
                         listDisplay.innerHTML = files.map(f =>
-                            `<span class="block text-skin-link">[File: ${f.name} (${(f.size/1024).toFixed(0)}KB)]</span>`
+                            `<span class="block text-skin-link">[Файл: ${f.name} (${(f.size/1024).toFixed(0)}KB)]</span>`
                         ).join('');
                         listDisplay.classList.remove('hidden');
                     } else {
@@ -111,25 +106,77 @@
     function initFormHandling() {
         // 1. Intercept Confirmation to compute PoW
         document.body.addEventListener('htmx:confirm', async (evt) => {
-            // Apply to ALL post requests (including admin actions via hx-post)
             if (evt.detail.verb === 'post') {
-                evt.preventDefault(); // Pause request execution
+
+                // Handle Report Button Logic specifically
+                if(evt.target.getAttribute('data-action') === 'report') {
+                    evt.preventDefault();
+                    const { value: reason } = await Swal.fire({
+                        title: 'Поскаржитися',
+                        input: 'select',
+                        inputOptions: {
+                            'spam': 'Спам / Вайп',
+                            'illegal': 'Незаконний контент (ЦП)',
+                            'violence': 'Насильство',
+                            'other': 'Інше'
+                        },
+                        inputPlaceholder: 'Оберіть причину',
+                        showCancelButton: true
+                    });
+
+                    if (reason) {
+                        evt.target.querySelector('input[name="reason"]').value = reason;
+                        // Continue to PoW...
+                    } else {
+                        return; // Cancelled
+                    }
+                }
+
+                // Handle Ban Button Logic
+                if(evt.target.getAttribute('data-action') === 'ban') {
+                    evt.preventDefault();
+                    const { value: formValues } = await Swal.fire({
+                        title: 'Ban User',
+                        html:
+                            '<input id="swal-reason" class="swal2-input" placeholder="Причина">' +
+                            '<select id="swal-duration" class="swal2-input">' +
+                            '<option value="1">1 Година</option>' +
+                            '<option value="24">24 Години</option>' +
+                            '<option value="168">7 Днів</option>' +
+                            '<option value="720">30 Днів</option>' +
+                            '<option value="87600">Назавжди</option>' +
+                            '</select>',
+                        focusConfirm: false,
+                        preConfirm: () => {
+                            return [
+                                document.getElementById('swal-reason').value,
+                                document.getElementById('swal-duration').value
+                            ]
+                        }
+                    });
+
+                    if (formValues) {
+                        evt.target.querySelector('input[name="reason"]').value = formValues[0] || 'Rule violation';
+                        evt.target.querySelector('input[name="duration_hours"]').value = formValues[1];
+                    } else {
+                        return;
+                    }
+                }
+
+                evt.preventDefault();
 
                 const clientKey = getCookie('client_key');
                 if (!clientKey) {
-                    console.warn("No client key found, skipping PoW (middleware will likely block)");
                     evt.detail.issueRequest();
                     return;
                 }
 
-                // UI Feedback: Disable button inside the form
                 document.body.style.cursor = 'wait';
                 const form = evt.detail.elt.tagName === 'FORM' ? evt.detail.elt : evt.detail.elt.closest('form');
                 const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
 
                 if(submitBtn) {
                     submitBtn.disabled = true;
-                    // Optional: change text if inside a span
                     const txtSpan = submitBtn.querySelector('.btn-text');
                     if(txtSpan) {
                         txtSpan.setAttribute('data-original', txtSpan.innerText);
@@ -139,21 +186,11 @@
 
                 try {
                     const powData = await solvePoW(clientKey);
-
-                    // Attach data to element attributes so configRequest can read it synchronously
                     evt.detail.elt.setAttribute('data-pow-nonce', powData.nonce);
                     evt.detail.elt.setAttribute('data-pow-salt', powData.salt);
-
-                    // Resume request
                     evt.detail.issueRequest();
                 } catch (e) {
-                    console.error("PoW Calculation Error", e);
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Security Check Failed',
-                        text: 'Could not compute Proof of Work. Reload the page.',
-                        toast: true, position: 'top-end', showConfirmButton: false, timer: 3000
-                    });
+                    console.error("PoW Error", e);
                 } finally {
                     document.body.style.cursor = 'default';
                     if(submitBtn) {
@@ -167,80 +204,70 @@
             }
         });
 
-        // 2. Inject Header just before sending
         document.body.addEventListener('htmx:configRequest', (evt) => {
             if (evt.detail.verb === 'post') {
                 const nonce = evt.detail.elt.getAttribute('data-pow-nonce');
                 const salt = evt.detail.elt.getAttribute('data-pow-salt');
-
                 if (nonce && salt) {
                     evt.detail.headers['X-PoW-Nonce'] = nonce;
                     evt.detail.headers['X-PoW-Salt'] = salt;
-
-                    // Clean up
                     evt.detail.elt.removeAttribute('data-pow-nonce');
                     evt.detail.elt.removeAttribute('data-pow-salt');
                 }
             }
         });
 
-        // 3. Handle Success (Clear form)
         document.body.addEventListener('htmx:afterRequest', (evt) => {
             if (evt.detail.successful && evt.detail.verb === 'post') {
                 const form = evt.detail.elt.closest('form');
-                if (form) {
-                    // Only reset if it's a posting form, not an admin button
+                // Don't reset if it's an admin action form (ban/delete) which usually replaces itself or row
+                if (form && !form.getAttribute('data-no-reset')) {
                     if(form.querySelector('textarea') || form.querySelector('input[type="text"]')) {
                         form.reset();
-
-                        // Clear file list display
                         const listDisplay = form.querySelector('.file-list-display');
                         if(listDisplay) {
                             listDisplay.innerHTML = '';
                             listDisplay.classList.add('hidden');
                         }
-
-                        // Remove saved draft
                         const key = DRAFT_PREFIX + window.location.pathname;
                         localStorage.removeItem(key);
                     }
+                }
 
-                    // Scroll to new posts if on thread page and it was a reply
-                    if(window.location.pathname.includes('/thread/') && evt.detail.target.id === 'new-posts') {
-                        const newPosts = document.getElementById('new-posts');
-                        if(newPosts) newPosts.scrollIntoView({ behavior: 'smooth' });
+                // Auto-scroll on new posts
+                if(window.location.pathname.includes('/thread/') && evt.detail.target.id === 'new-posts') {
+                    // Update polling trigger to latest ID
+                    const newPosts = evt.detail.target.querySelectorAll('.post-container');
+                    if(newPosts.length > 0) {
+                        const lastId = newPosts[newPosts.length - 1].id.replace('p', '');
+                        const pollDiv = document.getElementById('poll-trigger');
+                        if(pollDiv) {
+                            pollDiv.setAttribute('hx-vals', `{"after": ${lastId}}`);
+                        }
                     }
                 }
             }
         });
 
-        // 4. Handle Errors
         document.body.addEventListener('htmx:responseError', (evt) => {
             let msg = `Server responded with ${evt.detail.xhr.status}`;
-
-            if (evt.detail.xhr.status === 429) {
-                msg = "You are posting too fast. Please wait.";
-            } else if (evt.detail.xhr.status === 403) {
-                const resp = JSON.parse(evt.detail.xhr.responseText || "{}");
-                msg = resp.error || "Security check failed. Please refresh.";
-            }
+            if (evt.detail.xhr.status === 429) msg = "Занадто швидко. Зачекайте.";
+            else if (evt.detail.xhr.status === 403) msg = "Помилка безпеки. Оновіть сторінку.";
 
             Swal.fire({
                 icon: 'error',
-                title: 'Error',
+                title: 'Помилка',
                 text: msg,
                 toast: true, position: 'top-end', showConfirmButton: false, timer: 3000
             });
         });
     }
 
-    // --- Initialization ---
     document.addEventListener('DOMContentLoaded', () => {
         initTheme();
         initFileInputs();
         initFormHandling();
 
-        // Restore Drafts
         const replyBox = document.getElementById('reply-box');
         if (replyBox) {
             const key = DRAFT_PREFIX + window.location.pathname;
@@ -248,16 +275,20 @@
             replyBox.addEventListener('input', (e) => localStorage.setItem(key, e.target.value));
         }
 
-        // Global Click Delegations
         document.addEventListener('click', (e) => {
-            // 1. Expand Images
             const imgLink = e.target.closest('.file-link');
             if (imgLink) {
+                // If it's a link to the file on home page, do nothing (let it open new tab)
+                // But if it has a toggle class (not implemented on home currently), toggle.
+                // Request said: "on home page, clicking photo takes to post".
+                // We handle that via HTML href change.
+                // For thread view expansion:
+                if(!imgLink.closest('.thread-container')) return; // Allow normal link behavior on home if needed
+
                 e.preventDefault();
                 toggleImage(imgLink);
             }
 
-            // 2. Reply to ID
             const replyRef = e.target.closest('.reply-btn');
             if (replyRef) {
                 e.preventDefault();
@@ -265,7 +296,6 @@
                 const box = document.getElementById('reply-box');
                 const formDetails = document.getElementById('post-form-details');
 
-                // Logic: If board index -> Scroll top form. If thread -> Scroll bottom form.
                 if (formDetails) {
                     formDetails.open = true;
                     formDetails.scrollIntoView({ behavior: 'smooth' });
@@ -273,14 +303,9 @@
                     box.scrollIntoView({ behavior: 'smooth' });
                 }
 
-                // Insert quote
                 if (box) {
                     const ref = '>>' + id + '\n';
-                    // Append text or focus
-                    const startPos = box.selectionStart;
-                    const endPos = box.selectionEnd;
                     const text = box.value;
-                    // Append to end if not selected, or insert at cursor
                     box.value = text + ref;
                     box.focus();
                 }

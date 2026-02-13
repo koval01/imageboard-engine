@@ -23,9 +23,9 @@ pub struct CreatePostSchema {
     pub content: String,
 }
 
+// ... (Previous modules boards, threads, posts, images remain unchanged) ...
 pub mod boards {
     use super::*;
-
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize)]
     #[sea_orm(table_name = "boards")]
     pub struct Model {
@@ -34,25 +34,19 @@ pub mod boards {
         pub name: String,
         pub description: String,
     }
-
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {
         #[sea_orm(has_many = "super::threads::Entity")]
         Threads,
     }
-
     impl Related<super::threads::Entity> for Entity {
-        fn to() -> RelationDef {
-            Relation::Threads.def()
-        }
+        fn to() -> RelationDef { Relation::Threads.def() }
     }
-
     impl ActiveModelBehavior for ActiveModel {}
 }
 
 pub mod threads {
     use super::*;
-
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize)]
     #[sea_orm(table_name = "threads")]
     pub struct Model {
@@ -67,47 +61,23 @@ pub mod threads {
         pub created_at: NaiveDateTime,
         pub updated_at: NaiveDateTime,
     }
-
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {
-        #[sea_orm(
-            belongs_to = "super::boards::Entity",
-            from = "Column::BoardSlug",
-            to = "super::boards::Column::Slug",
-            on_update = "NoAction",
-            on_delete = "Cascade"
-        )]
+        #[sea_orm(belongs_to = "super::boards::Entity", from = "Column::BoardSlug", to = "super::boards::Column::Slug", on_update = "NoAction", on_delete = "Cascade")]
         Board,
         #[sea_orm(has_many = "super::posts::Entity")]
         Posts,
         #[sea_orm(has_many = "super::images::Entity")]
         Images,
     }
-
-    impl Related<super::boards::Entity> for Entity {
-        fn to() -> RelationDef {
-            Relation::Board.def()
-        }
-    }
-
-    impl Related<super::posts::Entity> for Entity {
-        fn to() -> RelationDef {
-            Relation::Posts.def()
-        }
-    }
-
-    impl Related<super::images::Entity> for Entity {
-        fn to() -> RelationDef {
-            Relation::Images.def()
-        }
-    }
-
+    impl Related<super::boards::Entity> for Entity { fn to() -> RelationDef { Relation::Board.def() } }
+    impl Related<super::posts::Entity> for Entity { fn to() -> RelationDef { Relation::Posts.def() } }
+    impl Related<super::images::Entity> for Entity { fn to() -> RelationDef { Relation::Images.def() } }
     impl ActiveModelBehavior for ActiveModel {}
 }
 
 pub mod posts {
     use super::*;
-
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize)]
     #[sea_orm(table_name = "posts")]
     pub struct Model {
@@ -120,39 +90,23 @@ pub mod posts {
         pub country_code: Option<String>,
         pub created_at: NaiveDateTime,
     }
-
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {
-        #[sea_orm(
-            belongs_to = "super::threads::Entity",
-            from = "Column::ThreadId",
-            to = "super::threads::Column::Id",
-            on_update = "NoAction",
-            on_delete = "Cascade"
-        )]
+        #[sea_orm(belongs_to = "super::threads::Entity", from = "Column::ThreadId", to = "super::threads::Column::Id", on_update = "NoAction", on_delete = "Cascade")]
         Thread,
         #[sea_orm(has_many = "super::images::Entity")]
         Images,
+        #[sea_orm(has_many = "super::reports::Entity")]
+        Reports,
     }
-
-    impl Related<super::threads::Entity> for Entity {
-        fn to() -> RelationDef {
-            Relation::Thread.def()
-        }
-    }
-
-    impl Related<super::images::Entity> for Entity {
-        fn to() -> RelationDef {
-            Relation::Images.def()
-        }
-    }
-
+    impl Related<super::threads::Entity> for Entity { fn to() -> RelationDef { Relation::Thread.def() } }
+    impl Related<super::images::Entity> for Entity { fn to() -> RelationDef { Relation::Images.def() } }
+    impl Related<super::reports::Entity> for Entity { fn to() -> RelationDef { Relation::Reports.def() } }
     impl ActiveModelBehavior for ActiveModel {}
 }
 
 pub mod images {
     use super::*;
-
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize)]
     #[sea_orm(table_name = "images")]
     pub struct Model {
@@ -170,39 +124,15 @@ pub mod images {
         pub size: i64,
         pub created_at: NaiveDateTime,
     }
-
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {
-        #[sea_orm(
-            belongs_to = "super::threads::Entity",
-            from = "Column::ThreadId",
-            to = "super::threads::Column::Id",
-            on_update = "NoAction",
-            on_delete = "Cascade"
-        )]
+        #[sea_orm(belongs_to = "super::threads::Entity", from = "Column::ThreadId", to = "super::threads::Column::Id", on_update = "NoAction", on_delete = "Cascade")]
         Thread,
-        #[sea_orm(
-            belongs_to = "super::posts::Entity",
-            from = "Column::PostId",
-            to = "super::posts::Column::Id",
-            on_update = "NoAction",
-            on_delete = "Cascade"
-        )]
+        #[sea_orm(belongs_to = "super::posts::Entity", from = "Column::PostId", to = "super::posts::Column::Id", on_update = "NoAction", on_delete = "Cascade")]
         Post,
     }
-
-    impl Related<super::threads::Entity> for Entity {
-        fn to() -> RelationDef {
-            Relation::Thread.def()
-        }
-    }
-
-    impl Related<super::posts::Entity> for Entity {
-        fn to() -> RelationDef {
-            Relation::Post.def()
-        }
-    }
-
+    impl Related<super::threads::Entity> for Entity { fn to() -> RelationDef { Relation::Thread.def() } }
+    impl Related<super::posts::Entity> for Entity { fn to() -> RelationDef { Relation::Post.def() } }
     impl ActiveModelBehavior for ActiveModel {}
 }
 
@@ -256,5 +186,27 @@ pub mod admin_logs {
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod reports {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize)]
+    #[sea_orm(table_name = "reports")]
+    pub struct Model {
+        #[sea_orm(primary_key)]
+        pub id: i32,
+        pub post_id: i32,
+        pub reason: String,
+        pub status: String,
+        pub ip_address: String,
+        pub created_at: NaiveDateTime,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {
+        #[sea_orm(belongs_to = "super::posts::Entity", from = "Column::PostId", to = "super::posts::Column::Id", on_update = "NoAction", on_delete = "Cascade")]
+        Post,
+    }
+    impl Related<super::posts::Entity> for Entity { fn to() -> RelationDef { Relation::Post.def() } }
     impl ActiveModelBehavior for ActiveModel {}
 }

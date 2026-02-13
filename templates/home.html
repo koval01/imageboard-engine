@@ -2,7 +2,7 @@
 
 {% block admin_nav %}
 {% if admin_role > 0 %}
-<a href="/admin/dashboard" class="text-red-500 font-bold border border-red-500/50 rounded px-2 py-0.5 text-[10px] hover:bg-red-500 hover:text-white transition uppercase">Admin Panel</a>
+<a href="/admin/dashboard" class="text-red-500 font-bold border border-red-500/50 rounded px-2 py-0.5 text-[10px] hover:bg-red-500 hover:text-white transition uppercase">АДМІН</a>
 {% endif %}
 {% endblock %}
 
@@ -11,7 +11,7 @@
 
     <!-- Header Logo Area -->
     <div class="w-full text-center py-8">
-        <h1 class="text-5xl font-black tracking-tight text-skin-primary mb-2 drop-shadow-sm">Kryivka.org</h1>
+        <h1 class="text-5xl font-black tracking-tight text-skin-text mb-2 drop-shadow-sm"><span class="text-skin-accent">Kryivka</span>.org</h1>
         <p class="text-skin-muted text-sm uppercase tracking-widest font-medium">Вільна територія</p>
     </div>
 
@@ -19,11 +19,11 @@
     <div class="w-full max-w-5xl">
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {% for stat in boards %}
-            <a href="/{{ stat.model.slug }}" class="group relative bg-skin-surface border border-skin-border rounded-lg p-5 hover:border-skin-accent transition-all duration-200 hover:shadow-md flex flex-col justify-between h-32">
+            <a href="/{{ stat.model.slug }}" class="group relative bg-skin-surface border border-skin-border-reply rounded-lg p-5 hover:border-skin-accent transition-all duration-200 hover:shadow-md flex flex-col justify-between h-32">
                 <div>
                     <div class="flex justify-between items-start mb-1">
                         <span class="text-2xl font-bold text-skin-accent group-hover:underline">/{{ stat.model.slug }}/</span>
-                        <span class="text-xs font-mono bg-skin-base px-2 py-1 rounded border border-skin-border text-skin-muted">
+                        <span class="text-xs font-mono bg-skin-base px-2 py-1 rounded border border-skin-border-input text-skin-muted">
                             {{ stat.post_count }}
                         </span>
                     </div>
@@ -39,18 +39,18 @@
 
         <!-- Recent Images -->
         <div class="lg:col-span-2">
-            <h3 class="text-lg font-bold text-skin-text border-b border-skin-border pb-3 mb-5 flex items-center gap-2">
+            <h3 class="text-lg font-bold text-skin-text border-b border-skin-border-reply pb-3 mb-5 flex items-center gap-2">
                 <span class="text-skin-accent">●</span> Останні зображення
             </h3>
 
             {% if recent_images.is_empty() %}
-            <div class="text-center p-12 text-skin-muted bg-skin-surface rounded-lg border border-skin-border border-dashed">
+            <div class="text-center p-12 text-skin-muted bg-skin-surface rounded-lg border border-skin-border-reply border-dashed">
                 Зображень поки немає...
             </div>
             {% else %}
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {% for img in recent_images %}
-                <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="block group relative aspect-square bg-skin-base overflow-hidden rounded-md border border-skin-border hover:border-skin-accent transition-colors">
+                {% for (img, thread_id) in recent_images %}
+                <a href="/thread/{{ thread_id }}" class="block group relative aspect-square bg-skin-base overflow-hidden rounded-md border border-skin-border-reply hover:border-skin-accent transition-colors">
                     <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" alt="{{ img.filename }}" loading="lazy" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 opacity-95 group-hover:opacity-100">
                 </a>
                 {% endfor %}
@@ -60,13 +60,13 @@
 
         <!-- Recent Threads -->
         <div class="lg:col-span-1">
-            <h3 class="text-lg font-bold text-skin-text border-b border-skin-border pb-3 mb-5 flex items-center gap-2">
-                <span class="text-skin-primary">●</span> Активні треди
+            <h3 class="text-lg font-bold text-skin-text border-b border-skin-border-reply pb-3 mb-5 flex items-center gap-2">
+                <span class="text-skin-text">●</span> Активні треди
             </h3>
 
             <div class="flex flex-col gap-3">
                 {% for thread in recent_threads %}
-                <div class="bg-skin-surface border border-skin-border p-3 rounded-lg hover:border-skin-accent/50 transition-colors shadow-sm">
+                <div class="bg-skin-surface border border-skin-border-reply p-3 rounded-lg hover:border-skin-accent/50 transition-colors shadow-sm">
                     <div class="flex justify-between items-center mb-1 text-[10px] font-mono font-bold text-skin-muted">
                         <a href="/{{ thread.board_slug }}" class="hover:text-skin-accent">/{{ thread.board_slug }}/</a>
                         <span>{{ thread.updated_at.format("%d.%m %H:%M") }}</span>

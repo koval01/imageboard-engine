@@ -1,41 +1,56 @@
-<div class="post-container" id="p{{ post.model.id }}">
+<div class="post-container mb-2 last:mb-0" id="p{{ post.model.id }}">
     <div class="side-arrows">>></div>
-    <div class="post reply">
+    <div class="post reply bg-skin-reply-bg border border-skin-border-reply rounded shadow-sm p-2 ml-4">
         <!-- Reply Meta -->
-        <div class="mb-1 text-xs">
+        <div class="mb-1 text-xs text-skin-muted flex gap-2 items-center border-b border-skin-border-reply/30 pb-1">
             <input type="checkbox">
-            <span class="name">Anonymous</span>
+            <span class="name text-skin-name font-bold">Анонім</span>
             {% if let Some(cc) = post.model.country_code %}
             <span class="fi fi-{{ cc|lower }}"></span>
             {% endif %}
-            <span>{{ post.model.created_at.format("%d/%m/%y(%a)%H:%M:%S") }}</span>
-            <a href="/{{ post.board_slug }}/thread/{{ post.model.thread_id }}#p{{ post.model.id }}" class="text-skin-link hover:text-skin-red">No.{{ post.model.id }}</a>
+            <span>{{ post.model.created_at.format("%d/%m %H:%M") }}</span>
+            <a href="/{{ post.board_slug }}/thread/{{ post.model.thread_id }}#p{{ post.model.id }}" class="text-skin-link hover:text-skin-red font-mono">No.{{ post.model.id }}</a>
+            <span class="text-skin-link cursor-pointer hover:underline reply-btn bg-white px-1 border border-skin-border-reply rounded" data-id="{{ post.model.id }}">Reply</span>
+
+            <!-- Admin Tools -->
             {% if post.admin_role > 0 %}
-            <span class="text-gray-500 text-[9px]">[{{ post.model.ip_address }}]</span>
+            <span class="text-gray-500 text-[9px] font-mono ml-auto">[{{ post.model.ip_address }}]</span>
             {% endif %}
+
+            {% if post.admin_role >= 2 %}
+            <form hx-post="/admin/delete" hx-confirm="Видалити пост?" hx-swap="delete" hx-target="#p{{ post.model.id }}" data-no-reset="true">
+                <input type="hidden" name="post_id" value="{{ post.model.id }}">
+                <button class="text-red-700 font-bold hover:underline ml-1 cursor-pointer">[D]</button>
+            </form>
+            {% endif %}
+
+            <!-- Report Button (For everyone) -->
+            <form hx-post="/report" hx-swap="none" data-no-reset="true">
+                <input type="hidden" name="post_id" value="{{ post.model.id }}">
+                <input type="hidden" name="reason" value="">
+                <button data-action="report" class="text-skin-accent hover:underline ml-1 cursor-pointer" title="Поскаржитися">⚠</button>
+            </form>
         </div>
 
-        <!-- Post Image -->
-        {% for img in post.images %}
-        <div class="file-info text-[10px]">
-            <a href="{{ post.cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
-        </div>
-        <a class="file-link" href="{{ post.cdn_url }}/{{ img.url }}">
-            <img src="{{ post.cdn_url }}/{{ img.thumbnail_url }}" class="file-thumb !mb-1 !mr-2 !w-32 !h-32">
-        </a>
-        {% endfor %}
-
-        <blockquote class="postMessage">
-            {% for line in post.model.content.lines() %}
-            {% if line.trim().starts_with(">") && !line.trim().starts_with(">>") %}
-            <span class="greentext">{{ line }}</span><br>
-            {% else if line.trim().starts_with(">>") %}
-            {% let ref_id = line.trim().replace(">>", "") %}
-            <a href="/{{ post.board_slug }}/thread/{{ post.model.thread_id }}#p{{ ref_id }}" class="text-skin-link hover:underline">&gt;&gt;{{ ref_id }}</a><br>
-            {% else %}
-            {{ line }}<br>
-            {% endif %}
+        <div class="flex gap-2 items-start">
+            {% for img in post.images %}
+            <a class="file-link block shrink-0" href="{{ post.cdn_url }}/{{ img.url }}">
+                <img src="{{ post.cdn_url }}/{{ img.thumbnail_url }}" class="file-thumb border border-skin-border-reply rounded w-20 h-20 object-cover">
+            </a>
             {% endfor %}
-        </blockquote>
+
+            <blockquote class="postMessage text-xs leading-relaxed flex-1 min-w-0">
+                {% for line in post.model.content.lines() %}
+                {% if line.trim().starts_with(">") && !line.trim().starts_with(">>") %}
+                <span class="greentext">{{ line }}</span><br>
+                {% else if line.trim().starts_with(">>") %}
+                {% let ref_id = line.trim().replace(">>", "") %}
+                <a href="#p{{ ref_id }}" class="text-skin-link hover:underline">&gt;&gt;{{ ref_id }}</a><br>
+                {% else %}
+                {{ line }}<br>
+                {% endif %}
+                {% endfor %}
+            </blockquote>
+        </div>
     </div>
 </div>

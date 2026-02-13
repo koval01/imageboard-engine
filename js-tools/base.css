@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 @layer base {
-    /* Theme: "Yotsuba B" (Classic Blue/Peach) - Modernized */
+    /* Theme: "Yotsuba B" (Light) */
     :root {
         --bg-body: #eef2ff;
         --bg-surface: #ffffff;
@@ -28,29 +28,29 @@
         --shadow-card: 0 1px 3px rgba(0,0,0,0.1);
     }
 
-    /* Theme: "Tomorrow" (Dark) - Softer */
+    /* Theme: "Obsidian" (High Contrast Dark) */
     [data-theme="dark"] {
-        --bg-body: #1d1f21;
-        --bg-surface: #282a2e;
-        --bg-header: #373b41;
-        --bg-input: #373b41;
-        --bg-reply: #30343a;
-        --bg-highlight: #44484f;
+        --bg-body: #121212;
+        --bg-surface: #1e1e1e;
+        --bg-header: #2a2a2a;
+        --bg-input: #2d2d2d;
+        --bg-reply: #252525;
+        --bg-highlight: #333333;
 
-        --text-base: #c5c8c6;
-        --text-muted: #969896;
-        --text-subject: #b294bb;
-        --text-name: #b5bd68;
-        --text-link: #81a2be;
-        --text-link-hover: #ffffff;
-        --text-quote: #b5bd68;
-        --text-accent: #cc6666;
+        --text-base: #e0e0e0;
+        --text-muted: #a0a0a0;
+        --text-subject: #98c379;
+        --text-name: #56b6c2;
+        --text-link: #61afef;
+        --text-link-hover: #e06c75;
+        --text-quote: #98c379;
+        --text-accent: #e5c07b;
 
-        --border-main: #373b41;
-        --border-reply: #44484f;
-        --border-input: #1d1f21;
+        --border-main: #333333;
+        --border-reply: #383838;
+        --border-input: #444444;
 
-        --shadow-card: 0 1px 3px rgba(0,0,0,0.3);
+        --shadow-card: 0 1px 3px rgba(0,0,0,0.5);
     }
 }
 

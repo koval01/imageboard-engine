@@ -13,9 +13,9 @@ use tokio::sync::RwLock;
 use sha2::{Sha256, Digest};
 use jsonwebtoken::{encode, Header, EncodingKey};
 use std::net::SocketAddr;
-
+use sea_orm::sea_query::Expr;
 use crate::{
-    model::{admins, bans, admin_logs, posts, threads, images, SessionClaims},
+    model::{admins, bans, admin_logs, posts, threads, images, reports, SessionClaims},
     AppState,
     handler::{HtmlTemplate, middleware::CurrentSession},
     security::{get_client_ip, get_user_agent},
@@ -31,16 +31,11 @@ struct AdminLoginTemplate { error: Option<String> }
 #[template(path = "admin/dashboard.html")]
 struct AdminDashboardTemplate {
     admin: admins::Model,
-    recent_posts: Vec<(posts::Model, String)>, // Post + BoardSlug
-    recent_bans: Vec<bans::Model>,
+    reports: Vec<(reports::Model, Option<posts::Model>)>,
+    logs: Vec<admin_logs::Model>,
     total_posts: u64,
     total_bans: u64,
-}
-
-#[derive(Template)]
-#[template(path = "admin/logs.html")]
-struct AdminLogsTemplate {
-    logs: Vec<admin_logs::Model>,
+    total_reports: u64,
 }
 
 // --- Handlers ---
@@ -107,9 +102,15 @@ pub async fn admin_login_action(
     HtmlTemplate(AdminLoginTemplate { error: Some("Invalid Key".into()) }).into_response()
 }
 
+#[derive(Deserialize)]
+pub struct DashboardQuery {
+    search: Option<String>,
+}
+
 pub async fn admin_dashboard(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
+    Query(query): Query<DashboardQuery>,
 ) -> Response {
     if session.role < 1 {
         return Redirect::to("/admin").into_response();
@@ -118,34 +119,41 @@ pub async fn admin_dashboard(
     let state = state.read().await;
     let db = &state.pool;
 
-    let posts = posts::Entity::find()
-        .find_also_related(threads::Entity)
-        .order_by_desc(posts::Column::CreatedAt)
-        .limit(50)
+    // Get Active Reports
+    let reports_raw = reports::Entity::find()
+        .filter(reports::Column::Status.eq("OPEN"))
+        .find_also_related(posts::Entity)
+        .order_by_asc(reports::Column::CreatedAt)
         .all(db)
         .await
-        .unwrap();
+        .unwrap_or_default();
 
-    let recent_posts: Vec<(posts::Model, String)> = posts.into_iter().map(|(p, t)| {
-        let slug = t.map(|th| th.board_slug).unwrap_or("?".to_string());
-        (p, slug)
-    }).collect();
+    // Get Logs (with search)
+    let mut logs_query = admin_logs::Entity::find()
+        .order_by_desc(admin_logs::Column::CreatedAt)
+        .limit(100);
 
-    let recent_bans = bans::Entity::find()
-        .order_by_desc(bans::Column::CreatedAt)
-        .limit(20)
-        .all(db)
-        .await
-        .unwrap();
+    if let Some(s) = query.search {
+        if !s.is_empty() {
+            logs_query = logs_query.filter(
+                admin_logs::Column::TargetId.contains(&s)
+                    .or(admin_logs::Column::Details.contains(&s))
+                    .or(admin_logs::Column::Action.contains(&s))
+            );
+        }
+    }
+
+    let logs = logs_query.all(db).await.unwrap_or_default();
 
     let total_posts = posts::Entity::find().count(db).await.unwrap_or(0);
     let total_bans = bans::Entity::find().count(db).await.unwrap_or(0);
+    let total_reports = reports::Entity::find().count(db).await.unwrap_or(0);
 
     let role_name = match session.role {
-        1 => "Janitor",
-        2 => "Moderator",
-        3 => "Administrator",
-        _ => "Unknown",
+        1 => "Вартовий (L1)",
+        2 => "Модератор (L2)",
+        3 => "Адміністратор (L3)",
+        _ => "Гість",
     };
 
     let admin_view_model = admins::Model {
@@ -158,10 +166,11 @@ pub async fn admin_dashboard(
 
     HtmlTemplate(AdminDashboardTemplate {
         admin: admin_view_model,
-        recent_posts,
-        recent_bans,
+        reports: reports_raw,
+        logs,
         total_posts,
         total_bans,
+        total_reports,
     }).into_response()
 }
 
@@ -178,8 +187,8 @@ pub async fn admin_ban_action(
     Extension(session): Extension<CurrentSession>,
     Form(payload): Form<BanPayload>,
 ) -> Response {
-    if session.role < 2 {
-        return "Not authorized".into_response();
+    if session.role < 3 {
+        return "Недостатньо прав (потрібен L3)".into_response();
     }
 
     let state = state.read().await;
@@ -190,7 +199,7 @@ pub async fn admin_ban_action(
     let ban = bans::ActiveModel {
         ip_address: Set(Some(payload.ip.clone())),
         session_id: Set(Some(payload.session.clone())),
-        reason: Set(Some(payload.reason)),
+        reason: Set(Some(payload.reason.clone())),
         expires_at: Set(expires),
         created_at: Set(Utc::now().naive_utc()),
         ..Default::default()
@@ -201,16 +210,16 @@ pub async fn admin_ban_action(
     }
 
     let log = admin_logs::ActiveModel {
-        admin_username: Set(format!("Role_{}", session.role)),
+        admin_username: Set(format!("L{}", session.role)),
         action: Set("BAN".to_string()),
         target_id: Set(Some(payload.ip)),
-        details: Set(Some(format!("Session: {}, Duration: {}h", payload.session, payload.duration_hours))),
+        details: Set(Some(format!("Session: {}, Duration: {}h, Reason: {}", payload.session, payload.duration_hours, payload.reason))),
         created_at: Set(Utc::now().naive_utc()),
         ..Default::default()
     };
     let _ = log.insert(db).await;
 
-    Redirect::to("/admin/dashboard").into_response()
+    "OK".into_response()
 }
 
 #[derive(Deserialize)]
@@ -224,44 +233,37 @@ pub async fn admin_delete_post_action(
     Extension(session): Extension<CurrentSession>,
     Form(payload): Form<DeletePayload>,
 ) -> Response {
-    if session.role < 1 {
-        return "Not authorized".into_response();
+    if session.role < 2 {
+        return "Недостатньо прав (потрібен L2)".into_response();
     }
 
     let state = state.read().await;
     let db = &state.pool;
     let storage = &state.storage;
 
-    // 1. Identify what to delete and get potential image keys *before* deleting
     let mut image_keys_to_check = Vec::new();
     let mut log_target = String::new();
 
     if let Some(pid) = payload.post_id {
         log_target = format!("Post {}", pid);
-        if let Ok(Some(post)) = posts::Entity::find_by_id(pid).one(db).await {
-            // Find images linked to this post
+        if let Ok(Some(_)) = posts::Entity::find_by_id(pid).one(db).await {
             let imgs = images::Entity::find()
                 .filter(images::Column::PostId.eq(pid))
                 .all(db).await.unwrap_or_default();
             for img in imgs {
                 image_keys_to_check.push((img.storage_key, img.url, img.thumbnail_url));
             }
-            // Delete post (cascades DB deletion)
             let _ = posts::Entity::delete_by_id(pid).exec(db).await;
         }
     } else if let Some(tid) = payload.thread_id {
         log_target = format!("Thread {}", tid);
-        if let Ok(Some(thread)) = threads::Entity::find_by_id(tid).one(db).await {
-            // Find all images in thread (OP + Replies)
-            // Note: SeaORM Cascade deletes will wipe them, so fetch first
-            // Thread OP images
+        if let Ok(Some(_)) = threads::Entity::find_by_id(tid).one(db).await {
             let op_imgs = images::Entity::find()
                 .filter(images::Column::ThreadId.eq(tid))
                 .all(db).await.unwrap_or_default();
             for img in op_imgs {
                 image_keys_to_check.push((img.storage_key, img.url, img.thumbnail_url));
             }
-            // Reply images
             let posts = posts::Entity::find()
                 .filter(posts::Column::ThreadId.eq(tid))
                 .all(db).await.unwrap_or_default();
@@ -273,27 +275,23 @@ pub async fn admin_delete_post_action(
                     image_keys_to_check.push((img.storage_key, img.url, img.thumbnail_url));
                 }
             }
-            // Delete thread
             let _ = threads::Entity::delete_by_id(tid).exec(db).await;
         }
     }
 
-    // 2. Garbage Collection: Check if keys still exist in DB. If not, delete from Storage.
     for (key, main_url, thumb_url) in image_keys_to_check {
         let count = images::Entity::find()
             .filter(images::Column::StorageKey.eq(&key))
             .count(db).await.unwrap_or(0);
 
         if count == 0 {
-            // No references left, delete physical files
             let _ = storage.delete_file(&main_url).await;
             let _ = storage.delete_file(&thumb_url).await;
         }
     }
 
-    // Log Action
     let log = admin_logs::ActiveModel {
-        admin_username: Set(format!("Role_{}", session.role)),
+        admin_username: Set(format!("L{}", session.role)),
         action: Set("DELETE".to_string()),
         target_id: Set(Some(log_target)),
         details: Set(Some("Content deleted".to_string())),
@@ -302,81 +300,73 @@ pub async fn admin_delete_post_action(
     };
     let _ = log.insert(db).await;
 
-    Redirect::to("/admin/dashboard").into_response()
+    // Return empty response with client-side swap to remove element
+    "".into_response()
 }
+
+// --- REPORTING SYSTEM ---
 
 #[derive(Deserialize)]
-pub struct ExportQuery {
-    target_type: String, // "ip" or "session"
-    value: String,
+pub struct ReportPayload {
+    post_id: i32,
+    reason: String,
 }
 
-pub async fn admin_export_logs(
+pub async fn create_report(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
-    Query(query): Query<ExportQuery>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
+    Form(payload): Form<ReportPayload>,
 ) -> Response {
-    if session.role < 3 {
-        return "Admin only".into_response();
+    let state_read = state.read().await;
+    let db = &state_read.pool;
+    let ip = get_client_ip(&headers, &addr);
+
+    // Limit check? (Simple check if this IP already reported this post)
+    let exists = reports::Entity::find()
+        .filter(reports::Column::PostId.eq(payload.post_id))
+        .filter(reports::Column::IpAddress.eq(&ip))
+        .count(db).await.unwrap_or(0);
+
+    if exists > 0 {
+        return "Вже надіслано".into_response();
     }
 
-    let state = state.read().await;
-    let db = &state.pool;
-
-    let mut csv_data = String::from("Type,ID,Content,Date,IP,Session\n");
-
-    let threads = match query.target_type.as_str() {
-        "ip" => threads::Entity::find().filter(threads::Column::IpAddress.eq(&query.value)).all(db).await.unwrap(),
-        _ => threads::Entity::find().filter(threads::Column::SessionId.eq(&query.value)).all(db).await.unwrap(),
-    };
-
-    for t in threads {
-        csv_data.push_str(&format!("THREAD,{},\"{}\",{},{},{}\n",
-                                   t.id, t.content.replace("\"", "\"\""), t.created_at, t.ip_address, t.session_id));
-    }
-
-    let posts = match query.target_type.as_str() {
-        "ip" => posts::Entity::find().filter(posts::Column::IpAddress.eq(&query.value)).all(db).await.unwrap(),
-        _ => posts::Entity::find().filter(posts::Column::SessionId.eq(&query.value)).all(db).await.unwrap(),
-    };
-
-    for p in posts {
-        csv_data.push_str(&format!("POST,{},\"{}\",{},{},{}\n",
-                                   p.id, p.content.replace("\"", "\"\""), p.created_at, p.ip_address, p.session_id));
-    }
-
-    let log = admin_logs::ActiveModel {
-        admin_username: Set("Admin".to_string()),
-        action: Set("EXPORT".to_string()),
-        target_id: Set(Some(query.value)),
-        details: Set(Some(query.target_type)),
+    let report = reports::ActiveModel {
+        post_id: Set(payload.post_id),
+        reason: Set(payload.reason),
+        ip_address: Set(ip),
         created_at: Set(Utc::now().naive_utc()),
         ..Default::default()
     };
-    let _ = log.insert(db).await;
 
-    ([(header::CONTENT_TYPE, "text/csv"),
-         (header::CONTENT_DISPOSITION, "attachment; filename=\"investigation.csv\"")],
-     csv_data).into_response()
+    let _ = report.insert(db).await;
+
+    "Дякуємо!".into_response()
 }
 
-pub async fn admin_logs_view(
+#[derive(Deserialize)]
+pub struct ResolveReportPayload {
+    report_id: i32,
+    status: String, // RESOLVED, REJECTED
+}
+
+pub async fn resolve_report(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
+    Form(payload): Form<ResolveReportPayload>,
 ) -> Response {
-    if session.role < 3 {
-        return "Unauthorized. Level 3 access required.".into_response();
-    }
+    if session.role < 1 { return "".into_response(); }
 
     let state = state.read().await;
     let db = &state.pool;
 
-    let logs = admin_logs::Entity::find()
-        .order_by_desc(admin_logs::Column::CreatedAt)
-        .limit(100)
-        .all(db)
-        .await
-        .unwrap_or_default();
+    let _ = reports::Entity::update_many()
+        .col_expr(reports::Column::Status, Expr::value(payload.status.clone()))
+        .filter(reports::Column::Id.eq(payload.report_id))
+        .exec(db).await;
 
-    HtmlTemplate(AdminLogsTemplate { logs }).into_response()
+    // Return empty string to remove the report row from dashboard via HTMX
+    "".into_response()
 }

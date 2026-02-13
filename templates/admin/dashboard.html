@@ -1,76 +1,142 @@
 {% extends "layout/base.html" %}
 {% block content %}
-<div class="p-6 font-sans">
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-2xl font-bold">Admin Panel <span class="text-sm text-skin-muted">({{ admin.username }} - L{{ admin.role }})</span></h1>
-        <a href="/" class="text-skin-link font-bold hover:underline">Back to Site</a>
-    </div>
-
-    <!-- Stats -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 text-sm">
-        <div class="bg-skin-reply-bg p-3 border border-skin-border-reply rounded">
-            <div class="text-skin-muted font-bold uppercase text-[10px]">Total Posts</div>
-            <div class="text-xl font-bold">{{ total_posts }}</div>
-        </div>
-        <div class="bg-skin-reply-bg p-3 border border-skin-border-reply rounded">
-            <div class="text-skin-muted font-bold uppercase text-[10px]">Total Bans</div>
-            <div class="text-xl font-bold">{{ total_bans }}</div>
+<div class="p-4 font-sans">
+    <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-skin-header p-4 rounded text-skin-text shadow-sm">
+        <h1 class="text-2xl font-bold tracking-wide">ПАНЕЛЬ КЕРУВАННЯ <span class="text-sm font-mono text-skin-accent ml-2">[{{ admin.username }}]</span></h1>
+        <div class="flex gap-4 text-sm font-bold">
+            <a href="/" class="hover:text-skin-link hover:underline">НА ГОЛОВНУ</a>
+            <a href="/admin/logs" class="hover:text-skin-link hover:underline">ЛОГИ</a>
         </div>
     </div>
 
-    {% if admin.role >= 3 %}
-    <div class="bg-skin-reply-bg p-4 rounded border border-skin-border-reply mb-6">
-        <h3 class="font-bold mb-2">Data Export</h3>
-        <form action="/admin/export" method="GET" class="flex gap-2">
-            <select name="target_type" class="p-1 border text-sm">
-                <option value="ip">By IP</option>
-                <option value="session">By Session</option>
-            </select>
-            <input type="text" name="value" placeholder="Target Value" class="p-1 border text-sm">
-            <button type="submit" class="bg-skin-border border px-3 py-1 text-sm font-bold hover:bg-white cursor-pointer">Download</button>
-        </form>
+    <!-- Overview Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div class="bg-skin-surface p-4 border border-skin-border-reply rounded shadow-sm text-center">
+            <div class="text-skin-muted text-xs uppercase font-bold tracking-widest mb-1">Постів</div>
+            <div class="text-2xl font-black text-skin-text">{{ total_posts }}</div>
+        </div>
+        <div class="bg-skin-surface p-4 border border-skin-border-reply rounded shadow-sm text-center">
+            <div class="text-skin-muted text-xs uppercase font-bold tracking-widest mb-1">Банів</div>
+            <div class="text-2xl font-black text-skin-red">{{ total_bans }}</div>
+        </div>
+        <div class="bg-skin-surface p-4 border border-skin-border-reply rounded shadow-sm text-center">
+            <div class="text-skin-muted text-xs uppercase font-bold tracking-widest mb-1">Скарг (Відкритих)</div>
+            <div class="text-2xl font-black text-skin-accent">{{ reports.len() }}</div>
+        </div>
+        <div class="bg-skin-surface p-4 border border-skin-border-reply rounded shadow-sm text-center">
+            <div class="text-skin-muted text-xs uppercase font-bold tracking-widest mb-1">Всього Скарг</div>
+            <div class="text-2xl font-black text-skin-text">{{ total_reports }}</div>
+        </div>
     </div>
-    {% endif %}
 
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm text-left border border-skin-border-reply border-collapse">
-            <thead class="bg-skin-reply-bg">
-            <tr>
-                <th class="p-2 border border-skin-border-reply">ID</th>
-                <th class="p-2 border border-skin-border-reply">Board</th>
-                <th class="p-2 border border-skin-border-reply">Content</th>
-                <th class="p-2 border border-skin-border-reply">IP</th>
-                <th class="p-2 border border-skin-border-reply">Actions</th>
-            </tr>
-            </thead>
-            <tbody>
-            {% for (post, slug) in recent_posts %}
-            <tr class="hover:bg-skin-reply-bg">
-                <td class="p-2 border border-skin-border-reply">{{ post.id }}</td>
-                <td class="p-2 border border-skin-border-reply">/{{ slug }}/</td>
-                <td class="p-2 border border-skin-border-reply truncate max-w-xs" title="{{ post.content }}">{{ post.content }}</td>
-                <td class="p-2 border border-skin-border-reply font-mono text-xs">{{ post.ip_address }}</td>
-                <td class="p-2 border border-skin-border-reply flex gap-1">
-                    <!-- HTMX Post for PoW -->
-                    <form hx-post="/admin/delete" hx-confirm="Delete this post?" hx-swap="none">
-                        <input type="hidden" name="post_id" value="{{ post.id }}">
-                        <button class="text-red-600 font-bold hover:underline cursor-pointer">[DEL]</button>
-                    </form>
-                    {% if admin.role >= 2 %}
-                    <!-- HTMX Post for PoW -->
-                    <form hx-post="/admin/ban" hx-confirm="Ban user?" hx-swap="none">
-                        <input type="hidden" name="ip" value="{{ post.ip_address }}">
-                        <input type="hidden" name="session" value="{{ post.session_id }}">
-                        <input type="hidden" name="reason" value="Dashboard Ban">
-                        <input type="hidden" name="duration_hours" value="24">
-                        <button type="submit" class="text-red-600 font-bold hover:underline ml-2 cursor-pointer">[BAN]</button>
-                    </form>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-            </tbody>
-        </table>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- Reports Section -->
+        <div class="bg-skin-surface border border-skin-border-reply rounded shadow-sm overflow-hidden h-fit">
+            <div class="bg-skin-header px-4 py-2 border-b border-skin-border-reply flex justify-between items-center">
+                <h3 class="font-bold text-skin-text uppercase text-sm">Скарги</h3>
+            </div>
+            <div class="max-h-[500px] overflow-y-auto p-0">
+                {% if reports.is_empty() %}
+                <div class="p-8 text-center text-skin-muted italic">Чисто.</div>
+                {% else %}
+                <table class="w-full text-xs text-left">
+                    <thead class="bg-skin-base text-skin-muted uppercase">
+                    <tr>
+                        <th class="p-2">ID</th>
+                        <th class="p-2">Причина</th>
+                        <th class="p-2">Пост</th>
+                        <th class="p-2">Дії</th>
+                    </tr>
+                    </thead>
+                    <tbody class="divide-y divide-skin-border-reply">
+                    {% for (report, post_opt) in reports %}
+                    <tr class="hover:bg-skin-base">
+                        <td class="p-2 font-mono">{{ report.id }}</td>
+                        <td class="p-2 font-bold text-skin-red">{{ report.reason }}</td>
+                        <td class="p-2">
+                            {% if let Some(post) = post_opt %}
+                            <div class="max-w-[150px] truncate text-skin-muted">{{ post.content }}</div>
+                            <div class="font-mono text-[9px] mt-1">{{ post.ip_address }}</div>
+                            {% else %}
+                            <span class="text-gray-400 italic">Видалено</span>
+                            {% endif %}
+                        </td>
+                        <td class="p-2 flex flex-col gap-1">
+                            <div class="flex gap-1">
+                                {% if let Some(post) = post_opt %}
+                                <a href="/admin/dashboard?search={{ post.id }}" class="bg-skin-input border px-1 rounded hover:bg-gray-200">🔍</a>
+                                {% if admin.role >= 2 %}
+                                <form hx-post="/admin/delete" hx-confirm="Видалити пост?" hx-swap="none">
+                                    <input type="hidden" name="post_id" value="{{ report.post_id }}">
+                                    <button class="text-red-600 font-bold hover:underline">[DEL]</button>
+                                </form>
+                                {% endif %}
+                                {% if admin.role >= 3 %}
+                                <!-- Ban triggered via custom JS logic hooking into this button -->
+                                <button data-action="ban" class="text-red-800 font-bold hover:underline">[BAN]</button>
+                                <!-- Hidden inputs for JS to fill -->
+                                <form hx-post="/admin/ban" hx-swap="none" class="hidden">
+                                    <input type="hidden" name="ip" value="{{ post.ip_address }}">
+                                    <input type="hidden" name="session" value="{{ post.session_id }}">
+                                    <input type="hidden" name="reason">
+                                    <input type="hidden" name="duration_hours">
+                                    <button type="submit" id="ban-submit-{{ post.id }}"></button>
+                                </form>
+                                {% endif %}
+                                {% endif %}
+                            </div>
+                            <form hx-post="/admin/report/resolve" hx-swap="outerHTML" hx-target="closest tr">
+                                <input type="hidden" name="report_id" value="{{ report.id }}">
+                                <input type="hidden" name="status" value="RESOLVED">
+                                <button class="text-green-600 font-bold hover:underline text-[10px]">✔ Закрити</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Logs / Search Section -->
+        <div class="bg-skin-surface border border-skin-border-reply rounded shadow-sm overflow-hidden h-fit">
+            <div class="bg-skin-header px-4 py-2 border-b border-skin-border-reply flex justify-between items-center">
+                <h3 class="font-bold text-skin-text uppercase text-sm">Останні дії / Пошук</h3>
+            </div>
+            <div class="p-2 border-b border-skin-border-reply bg-skin-base">
+                <form action="/admin/dashboard" method="GET" class="flex gap-2">
+                    <input type="text" name="search" placeholder="IP, Session, Post ID..." class="w-full p-1 text-sm border rounded">
+                    <button type="submit" class="bg-skin-header px-3 py-1 text-sm font-bold border rounded hover:opacity-80">Пошук</button>
+                </form>
+            </div>
+            <div class="max-h-[500px] overflow-y-auto">
+                <table class="w-full text-xs text-left">
+                    <tbody class="divide-y divide-skin-border-reply">
+                    {% for log in logs %}
+                    <tr class="hover:bg-skin-base">
+                        <td class="p-2 w-20 text-skin-muted">{{ log.created_at.format("%m-%d %H:%M") }}</td>
+                        <td class="p-2 w-20 font-bold">{{ log.admin_username }}</td>
+                        <td class="p-2 w-20">
+                                <span class="px-1 rounded text-[10px] border
+                                    {% if log.action == "BAN" %}bg-red-100 text-red-800 border-red-200
+                            {% else if log.action == "DELETE" %}bg-orange-100 text-orange-800 border-orange-200
+                            {% else %}bg-gray-100 text-gray-800 border-gray-200{% endif %}">
+                            {{ log.action }}
+                            </span>
+                        </td>
+                        <td class="p-2 font-mono text-[10px] text-skin-link">{{ log.target_id.clone().unwrap_or_default() }}</td>
+                        <td class="p-2 text-skin-muted truncate max-w-[150px]" title="{{ log.details.clone().unwrap_or_default() }}">
+                            {{ log.details.clone().unwrap_or_default() }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
     </div>
 </div>
 {% endblock %}

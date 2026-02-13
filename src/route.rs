@@ -11,8 +11,9 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 use crate::{
     handler::{
-        board::{home_handler, view_board_handler, view_thread_handler, create_thread_handler, reply_handler, about_handler, rules_handler},
+        board::{home_handler, view_board_handler, view_thread_handler, create_thread_handler, reply_handler, about_handler, rules_handler, poll_new_posts_handler},
         middleware::{session_middleware, bot_guard_middleware},
+        admin::{create_report, resolve_report},
     },
     AppState,
 };
@@ -24,7 +25,7 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
                 .unwrap_or_else(|_| {
                     #[cfg(debug_assertions)]
                     {
-                        "debug".into() // debug in dev
+                        "debug".into()
                     }
                     #[cfg(not(debug_assertions))]
                     {
@@ -47,11 +48,14 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
         .route("/{slug}/submit", post(create_thread_handler))
         .route("/{slug}/thread/{id}", get(view_thread_handler))
         .route("/{slug}/thread/{id}/reply", post(reply_handler))
+        .route("/{slug}/thread/{id}/poll", get(poll_new_posts_handler)) // Polling Route
+        .route("/report", post(create_report))
         .route("/admin", get(crate::handler::admin::admin_login_page))
         .route("/admin/login", post(crate::handler::admin::admin_login_action))
         .route("/admin/dashboard", get(crate::handler::admin::admin_dashboard))
         .route("/admin/ban", post(crate::handler::admin::admin_ban_action))
         .route("/admin/delete", post(crate::handler::admin::admin_delete_post_action))
+        .route("/admin/report/resolve", post(resolve_report))
         .route("/admin/export", get(crate::handler::admin::admin_export_logs))
         .route("/admin/logs", get(crate::handler::admin::admin_logs_view))
         .nest_service("/assets", ServeDir::new(format!("{}/assets", assets_path.to_str().unwrap())))

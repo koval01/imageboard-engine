@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::net::SocketAddr;
 use axum::{
-    extract::{Path, State, Extension, Multipart, ConnectInfo},
+    extract::{Path, State, Extension, Multipart, ConnectInfo, Query},
     response::{IntoResponse, Redirect, Response},
     http::HeaderMap,
 };
@@ -9,6 +9,7 @@ use sea_orm::{EntityTrait, QueryOrder, Set, ActiveModelTrait, ModelTrait, QueryF
 use tokio::sync::RwLock;
 use askama::Template;
 use chrono::Utc;
+use serde::Deserialize;
 
 use crate::{
     model::{boards, threads, posts, images},
@@ -29,9 +30,9 @@ struct ParsedForm {
 pub struct PostItem {
     pub model: posts::Model,
     pub images: Vec<images::Model>,
-    pub cdn_url: String, // Added to pass to partial
-    pub admin_role: i32, // Added to pass to partial
-    pub board_slug: String, // Context for links
+    pub cdn_url: String,
+    pub admin_role: i32,
+    pub board_slug: String,
 }
 
 #[derive(Clone)]
@@ -55,7 +56,7 @@ pub struct BoardStat {
 #[template(path = "home.html")]
 struct HomeTemplate {
     boards: Vec<BoardStat>,
-    recent_images: Vec<images::Model>,
+    recent_images: Vec<(images::Model, String)>, // Image + Thread ID
     recent_threads: Vec<threads::Model>,
     cdn_url: String,
     admin_role: i32,
@@ -97,6 +98,12 @@ struct PostPartialTemplate {
     post: PostItem,
 }
 
+#[derive(Template)]
+#[template(path = "partials/posts_list.html")]
+struct PostsListPartialTemplate {
+    posts: Vec<PostItem>,
+}
+
 async fn parse_multipart_form(
     mut multipart: Multipart,
     storage: &StorageService,
@@ -135,13 +142,13 @@ async fn parse_multipart_form(
             let data = field.bytes().await.map_err(|e| e.body_text())?;
 
             if data.len() > max_file_size {
-                return Err(format!("File {} is too large (max 5MB)", filename));
+                return Err(format!("Файл {} завеликий (макс 5MB)", filename));
             }
 
             if !data.is_empty() {
                 match storage.upload_image(data, filename, db).await {
                     Ok(img) => processed_images.push(img),
-                    Err(e) => return Err(format!("Upload failed: {}", e)),
+                    Err(e) => return Err(format!("Помилка завантаження: {}", e)),
                 }
             }
         }
@@ -158,7 +165,7 @@ async fn check_rate_limit(ip: &str, cache: &moka::future::Cache<String, u64>) ->
     if let Some(last_post) = cache.get(&key).await {
         if now < last_post + 60 {
             let wait = (last_post + 60) - now;
-            return Err(format!("You are posting too fast. Wait {} seconds.", wait));
+            return Err(format!("Зачекайте ще {} сек.", wait));
         }
     }
 
@@ -200,12 +207,25 @@ pub async fn home_handler(
         });
     }
 
-    let recent_images = images::Entity::find()
+    let recent_images_raw = images::Entity::find()
         .order_by_desc(images::Column::CreatedAt)
         .limit(12)
         .all(db)
         .await
         .unwrap_or_default();
+
+    let mut recent_images = Vec::new();
+    for img in recent_images_raw {
+        let thread_id = if let Some(tid) = img.thread_id {
+            tid.to_string()
+        } else if let Some(pid) = img.post_id {
+            let post = posts::Entity::find_by_id(pid).one(db).await.unwrap();
+            post.map(|p| p.thread_id.to_string()).unwrap_or_default()
+        } else {
+            "0".to_string()
+        };
+        recent_images.push((img, thread_id));
+    }
 
     let recent_threads = threads::Entity::find()
         .order_by_desc(threads::Column::UpdatedAt)
@@ -284,7 +304,6 @@ pub async fn view_board_handler(
             }
 
             let mut replies = Vec::new();
-            // Iterate from start_idx to end
             for j in start_idx..reply_count {
                 replies.push(PostItem {
                     model: posts_raw[j].clone(),
@@ -378,12 +397,10 @@ pub async fn create_thread_handler(
     let ip = get_client_ip(&headers, &addr);
     let db = &state_read.pool;
 
-    // 1. Rate Limit
     if let Err(msg) = check_rate_limit(&ip, &state_read.rate_limit_cache).await {
         return HtmlTemplate(crate::handler::ErrorTemplate { message: msg }).into_response();
     }
 
-    // 2. Ban Check
     let is_banned = crate::model::bans::Entity::find()
         .filter(
             sea_orm::Condition::any()
@@ -395,7 +412,7 @@ pub async fn create_thread_handler(
 
     if let Some(ban) = is_banned {
         return HtmlTemplate(crate::handler::ErrorTemplate {
-            message: format!("BANNED. Reason: {}. Expires: {}",
+            message: format!("БАН. Причина: {}. Спливає: {}",
                              ban.reason.unwrap_or_default(), ban.expires_at)
         }).into_response();
     }
@@ -408,7 +425,7 @@ pub async fn create_thread_handler(
     };
 
     if parsed.content.trim().is_empty() && parsed.images.is_empty() {
-        return HtmlTemplate(crate::handler::ErrorTemplate { message: "Cannot submit empty thread".into() }).into_response();
+        return HtmlTemplate(crate::handler::ErrorTemplate { message: "Порожній тред".into() }).into_response();
     }
 
     let new_thread = threads::ActiveModel {
@@ -445,7 +462,7 @@ pub async fn create_thread_handler(
         return Redirect::to(&format!("/{}/thread/{}", slug, thread.id)).into_response();
     }
 
-    HtmlTemplate(crate::handler::ErrorTemplate { message: "Failed to create thread".into() }).into_response()
+    HtmlTemplate(crate::handler::ErrorTemplate { message: "Помилка створення треду".into() }).into_response()
 }
 
 pub async fn reply_handler(
@@ -460,7 +477,6 @@ pub async fn reply_handler(
     let ip = get_client_ip(&headers, &addr);
     let db = &state_read.pool;
 
-    // 1. Rate Limit
     if let Err(msg) = check_rate_limit(&ip, &state_read.rate_limit_cache).await {
         return (
             axum::http::StatusCode::TOO_MANY_REQUESTS,
@@ -468,7 +484,6 @@ pub async fn reply_handler(
         ).into_response();
     }
 
-    // 2. Ban Check (Simplified reuse)
     let is_banned = crate::model::bans::Entity::find()
         .filter(
             sea_orm::Condition::any()
@@ -480,7 +495,7 @@ pub async fn reply_handler(
 
     if let Some(ban) = is_banned {
         return HtmlTemplate(crate::handler::ErrorTemplate {
-            message: format!("BANNED. Reason: {}. Expires: {}",
+            message: format!("БАН. Причина: {}. Спливає: {}",
                              ban.reason.unwrap_or_default(), ban.expires_at)
         }).into_response();
     }
@@ -493,7 +508,7 @@ pub async fn reply_handler(
     };
 
     if parsed.content.trim().is_empty() && parsed.images.is_empty() {
-        return HtmlTemplate(crate::handler::ErrorTemplate { message: "Cannot reply empty".into() }).into_response();
+        return HtmlTemplate(crate::handler::ErrorTemplate { message: "Порожній пост".into() }).into_response();
     }
 
     let new_post = posts::ActiveModel {
@@ -528,7 +543,6 @@ pub async fn reply_handler(
                 }
             }
 
-            // Bump Thread
             let thread = threads::ActiveModel {
                 id: Set(thread_id),
                 updated_at: Set(Utc::now().naive_utc()),
@@ -536,7 +550,6 @@ pub async fn reply_handler(
             };
             let _ = thread.update(db).await;
 
-            // Render PARTIAL instead of redirect
             HtmlTemplate(PostPartialTemplate {
                 post: PostItem {
                     model: post,
@@ -551,4 +564,49 @@ pub async fn reply_handler(
             HtmlTemplate(crate::handler::ErrorTemplate { message: format!("Database error: {}", e) }).into_response()
         }
     }
+}
+
+#[derive(Deserialize)]
+pub struct PollQuery {
+    after: i32,
+}
+
+pub async fn poll_new_posts_handler(
+    State(state): State<Arc<RwLock<AppState>>>,
+    Extension(session): Extension<CurrentSession>,
+    Path((slug, thread_id)): Path<(String, i32)>,
+    Query(query): Query<PollQuery>,
+) -> impl IntoResponse {
+    let state = state.read().await;
+    let db = &state.pool;
+    let cdn_url = state.config.cdn_url.clone();
+
+    let new_posts = posts::Entity::find()
+        .filter(posts::Column::ThreadId.eq(thread_id))
+        .filter(posts::Column::Id.gt(query.after))
+        .order_by_asc(posts::Column::CreatedAt)
+        .all(db)
+        .await
+        .unwrap_or_default();
+
+    if new_posts.is_empty() {
+        return "".into_response();
+    }
+
+    let post_images_vec = new_posts.load_many(images::Entity, db).await.unwrap();
+    let mut posts_with_images = Vec::new();
+
+    for (i, post) in new_posts.into_iter().enumerate() {
+        posts_with_images.push(PostItem {
+            model: post,
+            images: post_images_vec[i].clone(),
+            cdn_url: cdn_url.clone(),
+            admin_role: session.role,
+            board_slug: slug.clone(),
+        });
+    }
+
+    HtmlTemplate(PostsListPartialTemplate {
+        posts: posts_with_images
+    }).into_response()
 }
