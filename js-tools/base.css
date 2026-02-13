@@ -9,20 +9,20 @@
         --bg-post-reply: #d6daf0;
         --bg-header: #d6daf0;
         --bg-input: #ffffff;
-        --bg-highlight: #d1d5ef; /* Target highlight */
+        --bg-highlight: #d1d5ef;
 
         --text-color: #000000;
         --text-subject: #0F0C5D;
         --text-name: #117743;
-        --text-poster-name: #117743; /* Admin/Mod color usually same or red/purple */
         --text-link: #34345C;
         --text-link-hover: #d00;
-        --text-quote: #789922; /* Greentext */
+        --text-quote: #789922;
 
-        --border-reply: #b7c5d9;
-        --border-input: #a9a9a9;
+        /* Darker borders for better definition */
+        --border-main: #B7C5D9;
+        --border-input: #aaa;
 
-        --shadow-popover: 2px 2px 5px rgba(0,0,0,0.2);
+        --shadow-post: 1px 1px 2px rgba(0,0,0,0.15);
     }
 
     /* Theme: "Tomorrow" (Dark) */
@@ -40,8 +40,10 @@
         --text-link-hover: #c5c8c6;
         --text-quote: #b5bd68;
 
-        --border-reply: #1d1f21;
+        --border-main: #303030;
         --border-input: #1d1f21;
+
+        --shadow-post: 1px 1px 2px rgba(0,0,0,0.5);
     }
 }
 
@@ -54,156 +56,99 @@ body {
     padding-bottom: 40px;
 }
 
-/* Links */
-a {
-    color: var(--text-link);
-    text-decoration: none;
-    cursor: pointer;
-}
-a:hover {
-    color: var(--text-link-hover);
-    text-decoration: underline;
-}
+a { color: var(--text-link); text-decoration: none; cursor: pointer; }
+a:hover { color: var(--text-link-hover); text-decoration: underline; }
 
-/* Typography */
-.subject {
-    color: var(--text-subject);
-    font-weight: 700;
-    font-size: 10pt;
-}
-.name {
-    color: var(--text-name);
-    font-weight: 700;
-}
-.postMessage {
-    font-size: 13px;
-    line-height: 1.4;
-    margin: 1em 0;
-}
-.greentext {
-    color: var(--text-quote);
-}
+/* --- Post Layout --- */
 
-/* Post Layout */
-.thread {
-    margin: 0;
+/* The Container for the whole thread on board index */
+.thread-container {
     clear: both;
+    margin-bottom: 25px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-main);
 }
 
-.postContainer {
-    display: block;
-    margin: 4px 0;
-}
-
-.opContainer {
-    display: block;
-}
-
-.post {
-    display: inline-block; /* Hug content */
-    padding: 4px 8px;
-    overflow: hidden;
-    position: relative;
-    max-width: 100%;
-}
-
-.post.reply {
-    background-color: var(--bg-post-reply);
-    border: 1px solid var(--border-reply);
-    border-radius: 2px;
-    margin-left: 20px;
-    display: table; /* Fit content */
-}
-
+/* Opening Post */
 .post.op {
     display: block;
-    background: transparent;
-    border: none;
+    margin-bottom: 8px;
+}
+
+/* Reply Post Container */
+.post-container {
+    display: table;
+    margin-bottom: 4px;
+}
+
+.side-arrows {
+    display: table-cell;
+    vertical-align: top;
+    padding-right: 4px;
+    color: var(--border-main);
+    font-size: 10px;
+}
+
+/* The actual reply box */
+.post.reply {
+    display: block;
+    background-color: var(--bg-post-reply);
+    border: 1px solid var(--border-main);
+    border-right: 2px solid var(--border-main); /* Slight 3D effect */
+    border-bottom: 2px solid var(--border-main);
+    border-radius: 2px;
+    padding: 6px 10px;
+    min-width: 300px;
+    max-width: 100%;
+    box-shadow: var(--shadow-post);
 }
 
 .post:target {
     background-color: var(--bg-highlight) !important;
-    border: 1px solid var(--text-link-hover) !important; /* Visual feedback */
+    border: 1px dashed var(--text-link-hover) !important;
 }
 
-.sideArrows {
-    color: #b7c5d9;
-    float: left;
-    margin-right: 2px;
-    margin-top: 0;
-    margin-left: 2px;
-    font-size: 10px;
-}
-[data-theme="dark"] .sideArrows { color: #4e5359; }
+/* Typography */
+.subject { color: var(--text-subject); font-weight: 700; font-size: 14px; }
+.name { color: var(--text-name); font-weight: 700; }
+.postMessage { font-size: 13px; line-height: 1.5; margin: 8px 0; word-wrap: break-word; }
+.greentext { color: var(--text-quote); }
 
 /* Images */
-.file {
-    display: block;
-    margin-bottom: 5px;
-}
-.fileText {
-    font-size: 11px;
-    margin-bottom: 2px;
-    margin-left: 20px;
-}
-.fileThumb {
-    float: left;
-    margin-left: 20px;
-    margin-right: 20px;
-    margin-bottom: 10px;
-}
-.fileThumb img {
-    border: none;
-    float: left;
-    max-width: 250px;
-    max-height: 250px;
-    object-fit: cover;
-}
+.file-info { font-size: 11px; margin-bottom: 2px; }
+.file-thumb { float: left; margin: 2px 20px 10px 0; max-width: 250px; max-height: 250px; object-fit: cover; }
+.file-expanded { max-width: 98vw; max-height: 98vh; display: block; margin: 10px 0; width: auto; height: auto;}
 
-/* Image Expansion */
-.fileThumb.expanded img {
-    max-width: 98vw;
-    max-height: 98vh;
-    width: auto;
-    height: auto;
-    display: block;
-}
-
-/* Form Elements */
-input[type="text"], input[type="password"], textarea, select {
+/* Forms */
+input, textarea, select {
     background-color: var(--bg-input);
     color: var(--text-color);
     border: 1px solid var(--border-input);
     font-size: 13px;
-    padding: 2px 4px;
+    padding: 4px;
 }
-input:focus, textarea:focus {
-    border: 1px solid var(--text-link);
-    outline: none;
+input:focus, textarea:focus { border: 1px solid var(--text-link); outline: none; }
+
+/* Submission Feedback Styles */
+.htmx-request .btn-text { display: none; }
+.htmx-request .loading-spinner { display: inline-block; }
+.loading-spinner { display: none; }
+
+/* File List Styling */
+#file-list {
+    font-size: 11px;
+    margin-top: 4px;
+    font-family: monospace;
+    color: var(--text-link);
 }
 
 /* Quote Preview */
 #quote-preview {
     position: absolute;
     background-color: var(--bg-post-reply);
-    border: 1px solid var(--border-reply);
-    padding: 5px;
+    border: 1px solid var(--border-main);
+    padding: 8px;
     display: none;
     z-index: 999;
-    box-shadow: var(--shadow-popover);
-    border-radius: 2px;
-    pointer-events: none;
-}
-
-/* Misc */
-.omitted-posts {
-    color: #707070;
-    font-size: 12px;
-    margin-left: 20px;
-    margin-top: 10px;
-}
-hr {
-    border: none;
-    border-top: 1px solid var(--border-reply);
-    height: 0;
+    box-shadow: 2px 2px 10px rgba(0,0,0,0.3);
 }

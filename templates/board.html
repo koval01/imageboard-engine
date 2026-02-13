@@ -2,91 +2,113 @@
 
 {% block admin_nav %}
 {% if admin_role > 0 %}
-<span class="text-skin-muted">[</span><a href="/admin/dashboard" class="text-skin-red font-bold hover:underline">ADMIN</a><span class="text-skin-muted">]</span>
+<span class="text-skin-muted">[</span><a href="/admin/dashboard" class="text-red-700 font-bold hover:underline">ADMIN</a><span class="text-skin-muted">]</span>
 {% endif %}
 {% endblock %}
 
 {% block content %}
 
-<!-- Board Title -->
+<!-- Board Banner -->
 <div class="text-center mb-6">
-    <h1 class="text-3xl font-bold text-skin-text tracking-tight text-skin-subject">/{{ board.slug }}/ - {{ board.name }}</h1>
+    <h1 class="text-3xl font-bold text-[#800000] tracking-tight">/{{ board.slug }}/ - {{ board.name }}</h1>
+    <p class="text-xs text-skin-muted">{{ board.description }}</p>
 </div>
 
 <!-- Post Form -->
 <div class="flex justify-center mb-8">
-    <details id="post-form-details" class="bg-skin-reply-bg border border-skin-border-reply p-1" open>
-        <summary class="text-center text-sm font-bold cursor-pointer select-none">Start a New Thread</summary>
-        <form hx-post="/{{ board.slug }}/submit"
-              hx-encoding="multipart/form-data"
-              hx-target="body"
-              class="flex flex-col gap-1 p-2 w-[400px]">
+    <div class="bg-[#EEF2FF] border border-[#B7C5D9] p-1 rounded-sm">
+        <details id="post-form-details" open>
+            <summary class="text-center text-sm font-bold cursor-pointer select-none underline">Start a New Thread</summary>
 
-            <input type="text" name="subject" placeholder="Subject" class="p-1 w-full">
-            <textarea name="content" rows="4" placeholder="Comment" class="p-1 w-full" required></textarea>
+            <form hx-post="/{{ board.slug }}/submit"
+                  hx-encoding="multipart/form-data"
+                  hx-target="body"
+                  hx-indicator="#submit-spinner"
+                  class="flex flex-col gap-1 p-2 w-[460px]">
 
-            <div class="flex items-center gap-2">
-                <input type="file" name="file" multiple id="file-input" class="hidden">
-                <button type="button" onclick="document.getElementById('file-input').click()" class="bg-white border border-skin-border px-2 py-0.5 text-xs hover:bg-gray-100 cursor-pointer" id="file-btn-label">Choose File</button>
-                <button type="submit" class="ml-auto bg-skin-base border border-skin-border px-4 py-0.5 text-sm font-bold hover:bg-white cursor-pointer">Post</button>
-            </div>
-        </form>
-    </details>
+                <div class="grid grid-cols-[60px_1fr] items-center gap-1">
+                    <span class="bg-[#0F0C5D] text-white text-xs font-bold px-1 py-0.5">Subject</span>
+                    <input type="text" name="subject" class="w-full">
+                </div>
+
+                <div class="grid grid-cols-[60px_1fr] gap-1">
+                    <span class="bg-[#0F0C5D] text-white text-xs font-bold px-1 py-0.5 h-fit">Comment</span>
+                    <textarea name="content" rows="4" class="w-full" required></textarea>
+                </div>
+
+                <div class="grid grid-cols-[60px_1fr] items-center gap-1 mt-1">
+                    <span class="bg-[#0F0C5D] text-white text-xs font-bold px-1 py-0.5">File</span>
+                    <div class="flex flex-col">
+                        <div class="flex gap-2">
+                            <input type="file" name="file" multiple id="file-input" class="hidden">
+                            <button type="button" onclick="document.getElementById('file-input').click()" class="bg-white border border-[#aaa] px-2 py-0.5 text-xs hover:bg-gray-100 cursor-pointer">Browse...</button>
+                            <!-- Submit Button with Loading State -->
+                            <button type="submit" class="bg-[#EEF2FF] border border-[#B7C5D9] px-4 py-0.5 text-sm font-bold hover:bg-white cursor-pointer ml-auto min-w-[80px]">
+                                <span class="btn-text">Post</span>
+                                <span id="submit-spinner" class="loading-spinner text-xs">Posting...</span>
+                            </button>
+                        </div>
+                        <div class="file-list-display text-[10px] text-blue-800 mt-1 hidden"></div>
+                    </div>
+                </div>
+            </form>
+        </details>
+    </div>
 </div>
 
 <hr class="border-skin-border-reply mb-4">
 
-<!-- Threads Loop -->
-<div class="space-y-6">
+<!-- Threads -->
+<div>
     {% for thread in threads %}
-    <div class="thread" id="t{{ thread.model.id }}">
+    <div class="thread-container" id="t{{ thread.model.id }}">
         <!-- OP Post -->
-        <div class="post op block overflow-hidden">
+        <div class="post op">
             <!-- File Info -->
             {% for img in thread.images %}
-            <div class="file-info text-xs text-skin-muted mb-1">
-                File: <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
-                ({{ (img.size / 1024) }} KB, {{ img.width }}x{{ img.height }})
+            <div class="file-info">
+                File: <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline text-blue-800 font-bold">{{ img.filename }}</a>
+                <span class="text-gray-500">({{ (img.size / 1024) }} KB, {{ img.width }}x{{ img.height }})</span>
             </div>
             <a class="file-link" href="{{ cdn_url }}/{{ img.url }}">
-                <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="file-thumb border border-skin-border-reply" loading="lazy">
+                <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="file-thumb border border-[#B7C5D9]">
             </a>
             {% endfor %}
 
             <!-- Meta -->
-            <div class="post-meta text-xs text-skin-muted mb-2">
+            <div class="mb-2">
                 <input type="checkbox">
                 {% if let Some(subject) = thread.model.subject %}
-                <span class="subject text-skin-subject font-bold">{{ subject }}</span>
+                <span class="subject">{{ subject }}</span>
                 {% endif %}
 
-                <span class="name text-skin-name font-bold">Anonymous</span>
+                <span class="name">Anonymous</span>
 
                 {% if let Some(cc) = thread.model.country_code %}
                 <span class="fi fi-{{ cc|lower }}" title="{{ cc }}"></span>
                 {% endif %}
 
-                <span>{{ thread.model.created_at.format("%d/%m/%y(%a)%H:%M:%S") }}</span>
+                <span class="text-skin-text">{{ thread.model.created_at.format("%d/%m/%y(%a)%H:%M:%S") }}</span>
 
-                <a href="/{{ board.slug }}/thread/{{ thread.model.id }}" class="text-skin-text hover:text-skin-red">No.{{ thread.model.id }}</a>
+                <a href="/{{ board.slug }}/thread/{{ thread.model.id }}" class="text-skin-link hover:text-skin-red">No.{{ thread.model.id }}</a>
 
-                <span class="reply-btn cursor-pointer text-skin-text hover:underline" data-id="{{ thread.model.id }}">[Reply]</span>
+                <span class="text-skin-link cursor-pointer hover:underline reply-btn" data-id="{{ thread.model.id }}">[Reply]</span>
 
-                <a href="/{{ board.slug }}/thread/{{ thread.model.id }}" class="text-skin-text hover:underline">[Open]</a>
+                <a href="/{{ board.slug }}/thread/{{ thread.model.id }}" class="font-bold text-blue-800 hover:underline ml-2">Open</a>
 
                 {% if admin_role > 0 %}
-                <span class="text-skin-muted text-[10px] ml-1">[{{ thread.model.ip_address }}]</span>
+                <span class="text-gray-500 text-[10px] ml-1">[{{ thread.model.ip_address }}]</span>
                 {% endif %}
             </div>
 
             <!-- Content -->
-            <blockquote class="post-message text-sm text-skin-text mb-2 ml-4">
+            <blockquote class="postMessage">
                 {% for line in thread.model.content.lines() %}
                 {% if line.trim().starts_with(">") && !line.trim().starts_with(">>") %}
                 <span class="greentext">{{ line }}</span><br>
                 {% else if line.trim().starts_with(">>") %}
                 {% let ref_id = line.trim().replace(">>", "") %}
-                <a href="#p{{ ref_id }}" class="text-skin-link hover:underline quote-link">&gt;&gt;{{ ref_id }}</a><br>
+                <a href="/{{ board.slug }}/thread/{{ thread.model.id }}#p{{ ref_id }}" class="text-skin-link hover:underline">&gt;&gt;{{ ref_id }}</a><br>
                 {% else %}
                 {{ line }}<br>
                 {% endif %}
@@ -94,49 +116,50 @@
             </blockquote>
         </div>
 
-        <!-- Replies (Last 3) -->
+        <!-- Replies -->
         <div class="replies mt-1">
             {% if thread.omitted_posts > 0 %}
-            <div class="text-skin-muted text-xs ml-4 mb-1">
-                {{ thread.omitted_posts }} posts and {{ thread.omitted_images }} images omitted. <a href="/{{ board.slug }}/thread/{{ thread.model.id }}" class="text-skin-link hover:underline">Click here</a> to view.
+            <div class="omitted-posts">
+                <span class="text-gray-500">{{ thread.omitted_posts }} posts and {{ thread.omitted_images }} images omitted. </span>
+                <a href="/{{ board.slug }}/thread/{{ thread.model.id }}" class="text-blue-800 font-bold hover:underline">Click here to view.</a>
             </div>
             {% endif %}
 
             {% for post in thread.replies %}
-            <div class="post-container table" id="p{{ post.model.id }}">
-                <div class="side-arrows table-cell align-top pr-1 text-[10px] text-skin-muted">>></div>
-                <div class="post reply table-cell">
-                    <div class="post-meta text-xs text-skin-muted mb-1">
+            <div class="post-container" id="p{{ post.model.id }}">
+                <div class="side-arrows">>></div>
+                <div class="post reply">
+                    <!-- Reply Meta -->
+                    <div class="mb-1 text-xs">
                         <input type="checkbox">
-                        <span class="name text-skin-name font-bold">Anonymous</span>
+                        <span class="name">Anonymous</span>
                         {% if let Some(cc) = post.model.country_code %}
                         <span class="fi fi-{{ cc|lower }}"></span>
                         {% endif %}
                         <span>{{ post.model.created_at.format("%d/%m/%y(%a)%H:%M:%S") }}</span>
-                        <a href="#p{{ post.model.id }}" class="text-skin-text hover:text-skin-red">No.{{ post.model.id }}</a>
-                        <span class="reply-btn cursor-pointer text-skin-text hover:underline" data-id="{{ post.model.id }}">[Reply]</span>
+                        <a href="/{{ board.slug }}/thread/{{ thread.model.id }}#p{{ post.model.id }}" class="text-skin-link hover:text-skin-red">No.{{ post.model.id }}</a>
                         {% if admin_role > 0 %}
-                        <span class="text-skin-muted text-[10px]">[{{ post.model.ip_address }}]</span>
+                        <span class="text-gray-500 text-[9px]">[{{ post.model.ip_address }}]</span>
                         {% endif %}
                     </div>
 
                     <!-- Post Image -->
                     {% for img in post.images %}
-                    <div class="file-info text-[10px] text-skin-muted mb-1">
+                    <div class="file-info text-[10px]">
                         <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
                     </div>
                     <a class="file-link" href="{{ cdn_url }}/{{ img.url }}">
-                        <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="file-thumb border border-skin-border-reply !mb-1 !mr-2 !w-32 !h-32 object-cover" loading="lazy">
+                        <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="file-thumb !mb-1 !mr-2 !w-32 !h-32">
                     </a>
                     {% endfor %}
 
-                    <blockquote class="post-message text-sm text-skin-text">
+                    <blockquote class="postMessage">
                         {% for line in post.model.content.lines() %}
                         {% if line.trim().starts_with(">") && !line.trim().starts_with(">>") %}
                         <span class="greentext">{{ line }}</span><br>
                         {% else if line.trim().starts_with(">>") %}
                         {% let ref_id = line.trim().replace(">>", "") %}
-                        <a href="#p{{ ref_id }}" class="text-skin-link hover:underline quote-link">&gt;&gt;{{ ref_id }}</a><br>
+                        <a href="/{{ board.slug }}/thread/{{ thread.model.id }}#p{{ ref_id }}" class="text-skin-link hover:underline">&gt;&gt;{{ ref_id }}</a><br>
                         {% else %}
                         {{ line }}<br>
                         {% endif %}
@@ -146,23 +169,8 @@
             </div>
             {% endfor %}
         </div>
-        <div class="clear-both"></div>
-        <hr class="border-skin-border-reply my-4">
     </div>
     {% endfor %}
-</div>
-
-<!-- Floating Reply Box (Used by JS) -->
-<div id="quick-reply" class="fixed top-10 right-4 w-[300px] bg-skin-reply-bg border border-skin-border-reply shadow-md hidden p-1 z-50">
-    <div class="bg-skin-header text-xs p-1 flex justify-between cursor-move select-none" id="qr-header">
-        <span class="font-bold">Quick Reply</span>
-        <button onclick="document.getElementById('quick-reply').classList.add('hidden')" class="hover:text-skin-red">X</button>
-    </div>
-    <form hx-post="/{{ board.slug }}/submit" hx-encoding="multipart/form-data" class="flex flex-col gap-1 p-1">
-        <input type="hidden" name="thread_id" id="qr-thread-id"> <!-- Handled by JS -->
-        <textarea id="reply-box" name="content" class="w-full h-24 text-sm p-1 border border-skin-border-reply" placeholder="Comment"></textarea>
-        <button type="submit" class="bg-skin-base border border-skin-border px-2 py-0.5 text-xs font-bold self-end">Post</button>
-    </form>
 </div>
 
 {% endblock %}
