@@ -2,161 +2,163 @@
 
 {% block admin_nav %}
 {% if admin_role > 0 %}
-<a href="/admin/dashboard" class="text-red-500 font-bold border border-red-500/50 rounded px-2 py-0.5 text-[10px] hover:bg-red-500 hover:text-white transition uppercase">Admin Panel</a>
+<span class="text-skin-muted">[</span><a href="/admin/dashboard" class="text-skin-red font-bold hover:underline">ADMIN</a><span class="text-skin-muted">]</span>
 {% endif %}
 {% endblock %}
 
 {% block content %}
 
-<!-- Board Header -->
-<div class="text-center mb-8 pt-4">
-    <h2 class="text-3xl text-skin-accent font-bold tracking-tight">/{{ board.slug }}/ <span class="text-skin-text font-normal text-lg ml-2">{{ board.name }}</span></h2>
-    <p class="text-xs text-skin-muted mt-1">{{ board.description }}</p>
+<!-- Board Banner / Title -->
+<div class="text-center mb-6">
+    <h1 class="text-3xl font-bold text-skin-text tracking-tight text-skin-subject">/{{ board.slug }}/ - {{ board.name }}</h1>
 </div>
 
-<!-- Collapsible Post Form -->
-<div class="flex justify-center mb-10">
-    <div class="w-full max-w-xl">
-        <details class="group bg-skin-surface border border-skin-border rounded shadow-sm open:shadow-lg transition-all duration-300">
-            <summary class="list-none flex items-center justify-center p-3 cursor-pointer font-bold text-skin-text hover:text-skin-accent select-none transition-colors">
-                <span class="mr-2 text-skin-muted">[</span>
-                <span>Створити новий тред</span>
-                <span class="ml-2 text-skin-muted">]</span>
-            </summary>
+<!-- Post Form (Center, Collapsible) -->
+<div class="flex justify-center mb-8">
+    <details id="post-form-details" class="bg-skin-reply-bg border border-skin-border-reply p-1" open>
+        <summary class="text-center text-sm font-bold cursor-pointer select-none">Start a New Thread</summary>
+        <form hx-post="/{{ board.slug }}/submit"
+              hx-encoding="multipart/form-data"
+              hx-target="body"
+              class="flex flex-col gap-1 p-2 w-[400px]">
 
-            <div class="p-4 border-t border-skin-border bg-skin-base/50">
-                <form hx-post="/{{ board.slug }}/submit"
-                      hx-encoding="multipart/form-data"
-                      hx-target="body"
-                      hx-indicator="#form-spinner"
-                      class="flex flex-col gap-3">
+            <input type="text" name="subject" placeholder="Subject" class="p-1 w-full">
+            <textarea name="content" rows="4" placeholder="Comment" class="p-1 w-full" required></textarea>
 
-                    <div class="flex flex-col gap-1">
-                        <input type="text" name="subject" placeholder="Тема (опціонально)" class="w-full p-2 text-sm rounded border border-skin-border bg-skin-input focus:ring-1 focus:ring-skin-accent transition-shadow placeholder-skin-muted/50">
-                    </div>
-                    <div>
-                        <textarea name="content" rows="5" placeholder="Ваше повідомлення..." class="w-full p-2 text-sm rounded border border-skin-border bg-skin-input focus:ring-1 focus:ring-skin-accent transition-shadow resize-y placeholder-skin-muted/50" required></textarea>
-                    </div>
-
-                    <div class="flex justify-between items-center gap-2 mt-1">
-                        <div class="flex-grow">
-                            <label class="flex items-center gap-2 w-full cursor-pointer bg-skin-input border border-skin-border rounded p-1.5 hover:border-skin-accent transition-colors group">
-                                <div class="bg-skin-header text-white text-[10px] font-bold px-2 py-1 rounded group-hover:bg-skin-accent transition-colors">
-                                    ФАЙЛИ
-                                </div>
-                                <span class="text-[10px] text-skin-muted truncate select-none" data-default="Макс. 5 (до 2МБ)">Макс. 5 (до 2МБ)</span>
-                                <input type="file" name="file" multiple accept="image/*" class="hidden">
-                            </label>
-                        </div>
-
-                        <button type="submit" class="flex items-center gap-2 self-end bg-skin-primary text-white px-6 py-2 rounded text-sm font-bold hover:bg-skin-primary-hover shadow-sm transition-colors uppercase disabled:opacity-50">
-                            <span>Надіслати</span>
-                            <span id="form-spinner" class="htmx-indicator loading loading-spinner loading-xs"></span>
-                        </button>
-                    </div>
-                </form>
+            <div class="flex items-center gap-2">
+                <input type="file" name="file" multiple id="file-input" class="hidden">
+                <button type="button" onclick="document.getElementById('file-input').click()" class="bg-white border border-skin-border px-2 py-0.5 text-xs hover:bg-gray-100" id="file-btn-label">Choose File</button>
+                <button type="submit" class="ml-auto bg-skin-base border border-skin-border px-4 py-0.5 text-sm font-bold hover:bg-white">Post</button>
             </div>
-        </details>
-    </div>
+        </form>
+    </details>
 </div>
 
-<hr class="border-skin-border mb-8 opacity-50">
+<hr class="border-skin-border-reply mb-4">
 
-<div id="board-container" class="flex flex-col gap-6 min-h-[50vh]">
-    {% for item in threads %}
-    <div class="bg-skin-surface border border-skin-border rounded-lg p-4 shadow-sm hover:border-skin-accent/30 transition-colors">
-        <div class="flex flex-col sm:flex-row gap-4">
-            <!-- OP Images -->
-            <div class="shrink-0 w-full sm:w-[150px]">
-                {% if !item.images.is_empty() %}
-                <div class="grid grid-cols-2 gap-2 mb-3 select-none">
-                    {% for img in item.images %}
-                    <a href="{{ cdn_url }}/{{ img.url }}" class="lightbox-trigger block relative aspect-square bg-skin-base border border-skin-border rounded overflow-hidden group">
-                        <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="w-full h-full object-cover transition-opacity duration-200 group-hover:opacity-90" loading="lazy" alt="img">
-                        <div class="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[9px] px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity truncate">
-                            {{ (img.size / 1024) }}KB
-                        </div>
-                    </a>
-                    {% endfor %}
-                </div>
+<!-- Threads -->
+<div class="space-y-6">
+    {% for thread in threads %}
+    <div class="thread" id="t{{ thread.model.id }}">
+        <!-- OP Post -->
+        <div class="post op block overflow-hidden">
+            <!-- File Info -->
+            {% for img in thread.images %}
+            <div class="file-info text-xs text-skin-muted mb-1">
+                File: <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
+                ({{ (img.size / 1024) }} KB, {{ img.width }}x{{ img.height }})
+            </div>
+            <a class="file-link" href="{{ cdn_url }}/{{ img.url }}">
+                <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="file-thumb border border-skin-border-reply" loading="lazy">
+            </a>
+            {% endfor %}
+
+            <!-- Meta -->
+            <div class="post-meta text-xs text-skin-muted mb-2">
+                <input type="checkbox">
+                {% if let Some(subject) = thread.model.subject %}
+                <span class="subject text-skin-subject font-bold">{{ subject }}</span>
+                {% endif %}
+
+                <span class="name text-skin-name font-bold">Anonymous</span>
+
+                {% if let Some(cc) = thread.model.country_code %}
+                <span class="fi fi-{{ cc|lower }}" title="{{ cc }}"></span>
+                {% endif %}
+
+                <span>{{ thread.model.created_at.format("%d/%m/%y(%a)%H:%M:%S") }}</span>
+
+                <a href="/{{ board.slug }}/thread/{{ thread.model.id }}" class="text-skin-text hover:text-skin-red">No.{{ thread.model.id }}</a>
+
+                <span class="reply-btn cursor-pointer text-skin-text hover:underline" data-id="{{ thread.model.id }}">[Reply]</span>
+
+                <a href="/{{ board.slug }}/thread/{{ thread.model.id }}" class="text-skin-text hover:underline">[Open]</a>
+
+                {% if admin_role > 0 %}
+                <span class="text-skin-muted text-[10px] ml-1">[{{ thread.model.ip_address }}]</span>
                 {% endif %}
             </div>
 
-            <!-- Thread Content -->
-            <div class="grow min-w-0">
-                <div class="text-xs text-skin-muted mb-2 flex flex-wrap items-center gap-2">
-                    <a href="/{{ item.model.board_slug }}/thread/{{ item.model.id }}" class="font-bold text-skin-accent text-sm hover:underline">/{{ item.model.board_slug }}/{{ item.model.id }}</a>
-
-                    <!-- Metadata -->
-                    <div class="flex items-center justify-between text-xs text-skin-muted border-skin-border/40 pb-1">
-                        <div class="flex items-center gap-2">
-                            <div class="flex items-center">
-                                {% if let Some(cc) = item.model.country_code %}
-                                <span class="fi fi-{{ cc|lower }} rounded-[2px] shadow-sm mr-1"></span>
-                                {% endif %}
-                                <span class="font-bold text-[#15803d]">Анонім</span>
-                            </div>
-                            <span class="opacity-70">{{ item.model.created_at.format("%d.%m.%y %H:%M") }}</span>
-
-                            <!-- Admin Board Thread Controls -->
-                            {% if admin_role > 0 %}
-                            <div class="flex items-center gap-1 ml-2 border-l border-skin-border pl-2">
-                                <span class="font-mono text-[10px] bg-skin-base px-1 border border-skin-border rounded text-skin-text" title="Session: {{ item.model.session_id }}">{{ item.model.ip_address }}</span>
-                                {% if admin_role >= 2 %}
-                                <form action="/admin/ban" method="POST" onsubmit="return confirm('BAN OP?');">
-                                    <input type="hidden" name="ip" value="{{ item.model.ip_address }}">
-                                    <input type="hidden" name="session" value="{{ item.model.session_id }}">
-                                    <input type="hidden" name="reason" value="Board Thread #{{ item.model.id }}">
-                                    <input type="hidden" name="duration_hours" value="24">
-                                    <button class="text-red-500 font-bold text-[10px] hover:underline">[BAN]</button>
-                                </form>
-                                {% endif %}
-                            </div>
-                            {% endif %}
-                        </div>
-                    </div>
-
-                    <a href="/{{ item.model.board_slug }}/thread/{{ item.model.id }}" class="ml-auto bg-skin-primary/10 text-skin-primary px-2 py-0.5 rounded text-[10px] font-bold hover:bg-skin-primary hover:text-white transition-colors">ВІДПОВІСТИ</a>
-                </div>
-
-                {% if let Some(subject) = item.model.subject %}
-                <h3 class="font-bold text-skin-text text-base mb-1">{{ subject }}</h3>
+            <!-- Content -->
+            <blockquote class="post-message text-sm text-skin-text mb-2 ml-4">
+                {% for line in thread.model.content.lines() %}
+                {% if line.trim().starts_with(">") && !line.trim().starts_with(">>") %}
+                <span class="greentext">{{ line }}</span><br>
+                {% else if line.trim().starts_with(">>") %}
+                {% let ref_id = line.trim().replace(">>", "") %}
+                <a href="#p{{ ref_id }}" class="text-skin-link hover:underline quote-link">&gt;&gt;{{ ref_id }}</a><br>
+                {% else %}
+                {{ line }}<br>
                 {% endif %}
+                {% endfor %}
+            </blockquote>
+        </div>
 
-                <div class="text-sm text-skin-text leading-relaxed whitespace-pre-wrap break-words font-sans">
-                    {% for line in item.model.content.lines() %}
-                    {% if line.trim().starts_with(">") %}
-                    <span class="text-[#789922]">{{ line }}</span><br>
-                    {% else %}
-                    {{ line }}<br>
-                    {% endif %}
-                    {% endfor %}
-                </div>
+        <!-- Replies (Last 3) -->
+        <div class="replies mt-1">
+            {% if thread.model.reply_count > 3 %}
+            <div class="text-skin-muted text-xs ml-4 mb-1">
+                {{ thread.model.reply_count - 3 }} posts omitted. <a href="/{{ board.slug }}/thread/{{ thread.model.id }}" class="text-skin-link hover:underline">Click to view.</a>
+            </div>
+            {% endif %}
 
-                <!-- Latest Replies -->
-                {% if !item.replies.is_empty() %}
-                <div class="mt-3 pl-3 border-l-2 border-skin-border/30 space-y-2">
-                    {% for reply in item.replies %}
-                    <div class="text-xs text-skin-muted bg-skin-base/60 p-2 rounded flex gap-2 items-start">
-                        <span class="opacity-50">>></span>
-                        <div class="truncate grow">{{ reply.model.content }}</div>
+            {% for post in thread.replies %}
+            <div class="post-container table" id="p{{ post.model.id }}">
+                <div class="side-arrows table-cell align-top pr-1 text-[10px] text-skin-muted">>></div>
+                <div class="post reply table-cell">
+                    <div class="post-meta text-xs text-skin-muted mb-1">
+                        <input type="checkbox">
+                        <span class="name text-skin-name font-bold">Anonymous</span>
+                        {% if let Some(cc) = post.model.country_code %}
+                        <span class="fi fi-{{ cc|lower }}"></span>
+                        {% endif %}
+                        <span>{{ post.model.created_at.format("%d/%m/%y(%a)%H:%M:%S") }}</span>
+                        <a href="#p{{ post.model.id }}" class="text-skin-text hover:text-skin-red">No.{{ post.model.id }}</a>
+                        <span class="reply-btn cursor-pointer text-skin-text hover:underline" data-id="{{ post.model.id }}">[Reply]</span>
                         {% if admin_role > 0 %}
-                        <div class="flex items-center gap-1 shrink-0">
-                            <span class="font-mono text-[9px] bg-skin-surface px-1 border border-skin-border rounded">{{ reply.model.ip_address }}</span>
-                        </div>
+                        <span class="text-skin-muted text-[10px]">[{{ post.model.ip_address }}]</span>
                         {% endif %}
                     </div>
+
+                    <!-- Post Image -->
+                    {% for img in post.images %}
+                    <div class="file-info text-[10px] text-skin-muted mb-1">
+                        <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
+                    </div>
+                    <a class="file-link" href="{{ cdn_url }}/{{ img.url }}">
+                        <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="file-thumb border border-skin-border-reply !mb-1 !mr-2 !w-32 !h-32 object-cover" loading="lazy">
+                    </a>
                     {% endfor %}
+
+                    <blockquote class="post-message text-sm text-skin-text">
+                        {% for line in post.model.content.lines() %}
+                        {% if line.trim().starts_with(">") && !line.trim().starts_with(">>") %}
+                        <span class="greentext">{{ line }}</span><br>
+                        {% else if line.trim().starts_with(">>") %}
+                        {% let ref_id = line.trim().replace(">>", "") %}
+                        <a href="#p{{ ref_id }}" class="text-skin-link hover:underline quote-link">&gt;&gt;{{ ref_id }}</a><br>
+                        {% else %}
+                        {{ line }}<br>
+                        {% endif %}
+                        {% endfor %}
+                    </blockquote>
                 </div>
-                {% endif %}
             </div>
+            {% endfor %}
         </div>
+        <div class="clear-both"></div>
+        <hr class="border-skin-border-reply my-4">
     </div>
     {% endfor %}
 </div>
 
-<div id="lightbox" class="fixed inset-0 z-[100] bg-black/95 hidden flex items-center justify-center cursor-zoom-out">
-    <img id="lightbox-img" src="" class="max-w-[95vw] max-h-[95vh] object-contain shadow-2xl rounded">
+<!-- Floating Reply Box (Used by JS) -->
+<div id="quick-reply" class="fixed top-10 right-4 w-[300px] bg-skin-reply-bg border border-skin-border-reply shadow-md hidden p-1 z-50">
+    <div class="bg-skin-header text-xs p-1 flex justify-between cursor-move" id="qr-header">
+        <span>Quick Reply</span>
+        <button onclick="document.getElementById('quick-reply').classList.add('hidden')">X</button>
+    </div>
+    <textarea id="reply-box" class="w-full h-24 text-sm p-1 border border-skin-border-reply"></textarea>
 </div>
 
 {% endblock %}

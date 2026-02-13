@@ -3,12 +3,15 @@ const { fontFamily } = require('tailwindcss/defaultTheme');
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ["../templates/**/*.{html,js}"],
-  darkMode: ['class', '[data-theme="dark"]'], // Enable class-based dark mode
+  darkMode: ['class', '[data-theme="dark"]'],
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'Arial', 'Helvetica', 'sans-serif', ...fontFamily.sans],
+        sans: ['arial', 'helvetica', 'sans-serif', ...fontFamily.sans],
         mono: ['"JetBrains Mono"', 'monospace'],
+      },
+      fontSize: {
+        'xxs': '0.65rem',
       },
       colors: {
         skin: {
@@ -19,14 +22,20 @@ module.exports = {
 
           text: 'var(--color-text-base)',
           muted: 'var(--color-text-muted)',
-          accent: 'var(--color-text-accent)',
+
           link: 'var(--color-text-link)',
-          green: 'var(--color-text-green)', // For greentext
-          red: 'var(--color-text-red)',     // For sage/admin
+          'link-hover': 'var(--color-text-link-hover)',
+
+          subject: 'var(--color-text-subject)',
+          name: 'var(--color-text-name)',
+          trip: 'var(--color-text-trip)',
+
+          green: 'var(--color-text-green)',
+          red: 'var(--color-text-red)',
 
           border: 'var(--color-border)',
-          primary: 'var(--color-primary)',
-          'primary-hover': 'var(--color-primary-hover)',
+          'reply-bg': 'var(--color-bg-reply)',
+          'reply-border': 'var(--color-border-reply)',
         }
       },
       boxShadow: {
@@ -39,7 +48,7 @@ module.exports = {
     require("daisyui")
   ],
   daisyui: {
-    themes: [], // Disable daisyUI default themes to use our custom CSS variables
+    themes: [],
     logs: false,
   }
 }

@@ -5,9 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kryivka.org</title>
     <link rel="stylesheet" href="/assets/css/main.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.3.2/css/flag-icons.min.css" />
     <link rel="stylesheet" href="/assets/css/sweetalert2.min.css">
 
@@ -17,52 +14,53 @@
     <!-- Main Logic -->
     <script src="/assets/js/core.min.js" defer></script>
 </head>
-<body class="antialiased min-h-screen flex flex-col font-sans bg-skin-base text-skin-text">
+<body class="bg-skin-surface text-skin-text font-sans text-[13px]">
 
-<!-- Navbar -->
-<nav class="bg-skin-header text-gray-300 text-xs shadow-sm sticky top-0 z-50 border-b border-skin-border/10">
-    <div class="container mx-auto px-2 h-10 flex items-center justify-between">
-        <div class="flex items-center overflow-x-auto whitespace-nowrap scrollbar-hide mask-fade mr-2">
-            <a href="/" class="font-bold text-white mr-3 hover:text-skin-accent transition tracking-wide">KRYIVKA</a>
-            <span class="text-gray-600 mr-1">[</span>
-            <div class="flex gap-2 font-mono text-gray-400">
-                <a href="/b" class="hover:text-white hover:underline">b</a> /
-                <a href="/pol" class="hover:text-white hover:underline">pol</a> /
-                <a href="/tech" class="hover:text-white hover:underline">tech</a> /
-                <a href="/a" class="hover:text-white hover:underline">a</a> /
-                <a href="/sex" class="hover:text-white hover:underline">sex</a>
-            </div>
-            <span class="text-gray-600 ml-1">]</span>
+<!-- Simple Text Header -->
+<div class="border-b border-skin-border-reply mb-2 p-1 text-[13px]">
+    <div class="flex flex-wrap justify-between items-center">
+        <div class="flex gap-1">
+            <span class="text-skin-muted">[</span>
+            <a href="/" class="hover:underline font-bold">Home</a>
+            <span class="text-skin-muted">/</span>
+            <a href="/b" class="hover:underline">b</a>
+            <span class="text-skin-muted">/</span>
+            <a href="/pol" class="hover:underline">pol</a>
+            <span class="text-skin-muted">/</span>
+            <a href="/tech" class="hover:underline">tech</a>
+            <span class="text-skin-muted">/</span>
+            <a href="/a" class="hover:underline">a</a>
+            <span class="text-skin-muted">/</span>
+            <a href="/sex" class="hover:underline">sex</a>
+            <span class="text-skin-muted">]</span>
         </div>
 
-        <div class="flex items-center gap-3 shrink-0">
-            <!-- Admin Nav Slot (Overridden by templates with admin context) -->
+        <div class="flex gap-2">
             {% block admin_nav %}{% endblock %}
 
-            <button id="theme-toggle" class="hover:text-skin-accent focus:outline-none transition-colors" title="Перемикач теми">
-                <svg id="icon-light" class="w-4 h-4 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                <svg id="icon-dark" class="w-4 h-4 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
-            </button>
+            <span class="text-skin-muted">[</span>
+            <button id="theme-toggle" class="hover:underline cursor-pointer">Theme</button>
+            <span class="text-skin-muted">]</span>
         </div>
     </div>
-</nav>
+</div>
 
-<!-- Content -->
-<main class="container mx-auto px-2 md:px-4 flex-grow max-w-7xl mt-6">
+<!-- Main Content -->
+<main class="px-2 pb-10">
     {% block content %}{% endblock %}
 </main>
 
-<!-- Footer -->
-<footer class="mt-12 py-8 text-center text-xs text-skin-muted border-t border-skin-border/50 bg-skin-surface/30">
-    <div class="flex justify-center gap-6 font-medium mb-4">
-        <a href="/about" class="hover:text-skin-accent transition-colors">Про нас</a>
-        <a href="/rules" class="hover:text-skin-accent transition-colors">Правила</a>
-        <a href="#" class="hover:text-skin-accent transition-colors">API</a>
+<footer class="mt-8 pb-4 text-center text-xs text-skin-muted border-t border-skin-border-reply pt-2">
+    <div class="mb-2">
+        <a href="/about" class="hover:underline">About</a> •
+        <a href="/rules" class="hover:underline">Rules</a>
     </div>
-    <div class="opacity-50">
-        &copy; 2026 Kryivka.org. Всі права належать коту Борису.
-    </div>
+    <div>Copyright © 2026 Kryivka.org</div>
 </footer>
+
+<!-- Icons for Theme Toggle (Hidden) -->
+<svg id="icon-light" class="hidden"></svg>
+<svg id="icon-dark" class="hidden"></svg>
 
 </body>
 </html>

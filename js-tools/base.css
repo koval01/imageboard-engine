@@ -3,78 +3,155 @@
 @tailwind utilities;
 
 @layer base {
-    /* Theme: "Warm Shelter" (Neutral, Clean, Modern) */
+    /* Theme: "Yotsuba B" (The classic Peach look) */
     :root {
-        /* Light Mode */
-        --color-bg-base: #faf9f6;    /* Off-white, like paper */
-        --color-bg-surface: #ffffff;  /* Pure white */
-        --color-bg-header: #27272a;   /* Dark Zinc */
+        /* Backgrounds */
+        --color-bg-base: #eef2ff;    /* Light Blueish/Gray fallback */
+        --color-bg-surface: #f0e0d6;  /* Peach Main Background */
+        --color-bg-reply: #d6daf0;    /* Blueish Reply */
+        --color-bg-header: #d6daf0;   /* Header matches reply */
         --color-bg-input: #ffffff;
 
-        --color-text-base: #3f3f46;   /* Zinc-700 - Softer than black */
-        --color-text-muted: #71717a;  /* Zinc-500 */
-        --color-text-accent: #d97706; /* Amber-600 - Warm accent */
-        --color-text-link: #ea580c;   /* Orange-600 */
-        --color-text-green: #15803d;  /* Green-700 */
-        --color-text-red: #be123c;    /* Rose-700 */
+        /* Text */
+        --color-text-base: #000000;
+        --color-text-muted: #707070;
 
-        --color-border: #e4e4e7;      /* Zinc-200 */
-        --color-primary: #d97706;     /* Amber-600 */
-        --color-primary-hover: #b45309;
+        --color-text-link: #34345c;   /* Dark Blue Links */
+        --color-text-link-hover: #d00; /* Red on hover */
+
+        --color-text-subject: #cc1105; /* Red Subject */
+        --color-text-name: #117743;    /* Green Name */
+        --color-text-trip: #228854;
+
+        --color-text-green: #789922;  /* Greentext */
+        --color-text-red: #ff0000;    /* Admin/Sage */
+
+        /* Borders */
+        --color-border: #d9d9d9;
+        --color-border-reply: #b7c5d9;
     }
 
-    /* Dark Mode */
+    /* Dark Mode: "Tomorrow" */
     [data-theme="dark"] {
-        --color-bg-base: #18181b;     /* Zinc-950 */
-        --color-bg-surface: #27272a;  /* Zinc-800 */
-        --color-bg-header: #09090b;   /* Black */
-        --color-bg-input: #3f3f46;    /* Zinc-700 */
+        --color-bg-base: #1d1f21;
+        --color-bg-surface: #1d1f21;
+        --color-bg-reply: #282a2e;
+        --color-bg-header: #282a2e;
+        --color-bg-input: #373b41;
 
-        --color-text-base: #e4e4e7;   /* Zinc-200 */
-        --color-text-muted: #a1a1aa;  /* Zinc-400 */
-        --color-text-accent: #fbbf24; /* Amber-400 */
-        --color-text-link: #fb923c;   /* Orange-400 */
-        --color-text-green: #a3e635;  /* Lime-400 */
-        --color-text-red: #f87171;    /* Red-400 */
+        --color-text-base: #c5c8c6;
+        --color-text-muted: #969896;
 
-        --color-border: #3f3f46;      /* Zinc-700 */
-        --color-primary: #f59e0b;     /* Amber-500 */
-        --color-primary-hover: #d97706;
+        --color-text-link: #81a2be;
+        --color-text-link-hover: #c5c8c6;
+
+        --color-text-subject: #b294bb;
+        --color-text-name: #b5bd68;
+        --color-text-trip: #8abeb7;
+
+        --color-text-green: #b5bd68;
+        --color-text-red: #cc6666;
+
+        --color-border: #373b41;
+        --color-border-reply: #4e5359;
     }
 }
 
 body {
-    background-color: var(--color-bg-base);
+    background-color: var(--color-bg-surface);
     color: var(--color-text-base);
-    transition: background-color 0.2s ease, color 0.2s ease;
+    font-size: 13px; /* Smaller text like classic boards */
+    font-family: arial, helvetica, sans-serif;
 }
 
-/* Custom Imageboard Elements */
+a {
+    text-decoration: none;
+    color: var(--color-text-link);
+}
+
+a:hover {
+    color: var(--color-text-link-hover);
+}
+
+/* Custom Elements */
 .greentext {
     color: var(--color-text-green);
     font-family: inherit;
 }
 
 .post-link {
-    color: var(--color-text-link);
-    text-decoration: none;
-    font-weight: 500;
-}
-
-.post-link:hover {
     text-decoration: underline;
 }
 
 /* Form Elements Styling */
 input, textarea, select {
     background-color: var(--color-bg-input);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--color-border-reply);
     color: var(--color-text-base);
+    font-size: 13px;
 }
 
 input:focus, textarea:focus, select:focus {
-    outline: 2px solid var(--color-text-accent);
-    border-color: transparent;
+    outline: 1px solid var(--color-border-reply);
+}
+
+/* 4chan-style Post Container */
+.post-container {
+    display: flex;
+    margin-bottom: 4px;
+    overflow: hidden;
+}
+
+.side-arrows {
+    color: var(--color-text-muted);
+    font-size: 10px;
+    margin-right: 2px;
+    display: none; /* Hidden on mobile/default, show on hover? */
+}
+
+.post {
+    padding: 4px 8px;
+    display: inline-block; /* Hug content */
+    max-width: 100%;
+}
+
+.post.reply {
+    background-color: var(--color-bg-reply);
+    border: 1px solid var(--color-border-reply);
+    border-radius: 2px;
+}
+
+.post.op {
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
+.file-thumb {
+    float: left;
+    margin: 2px 20px 10px 0;
+    max-width: 250px;
+    max-height: 250px;
+}
+
+.file-expanded {
+    max-width: 98vw;
+    max-height: 98vh;
+    display: block;
+    margin: 10px 0;
+}
+
+/* Quote Preview Popup */
+#quote-preview {
+    position: absolute;
+    z-index: 999;
+    border: 1px solid var(--color-border-reply);
+    background-color: var(--color-bg-reply);
+    padding: 5px;
+    display: none;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+    font-size: 13px;
+    pointer-events: none;
 }
 
 /* Scrollbar Utility */
@@ -87,18 +164,5 @@ input:focus, textarea:focus, select:focus {
 }
 
 .swal2-container {
-    backdrop-filter: blur(16px);
-}
-
-/* Timer Animation */
-.timer-anim {
-    stroke-dasharray: 56.5;
-    stroke-dashoffset: 0;
-    animation: burnout 15s linear infinite;
-    transform-origin: center;
-}
-
-@keyframes burnout {
-    from { stroke-dashoffset: 0; }
-    to { stroke-dashoffset: 56.5; }
+    backdrop-filter: blur(4px);
 }

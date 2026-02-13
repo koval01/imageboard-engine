@@ -67,7 +67,7 @@ struct RulesTemplate {}
 #[template(path = "board.html")]
 struct BoardTemplate {
     board: boards::Model,
-    threads: Vec<ThreadItem>, // Passed directly
+    threads: Vec<ThreadItem>,
     cdn_url: String,
     admin_role: i32,
 }
@@ -78,7 +78,7 @@ struct ThreadTemplate {
     board: boards::Model,
     thread: threads::Model,
     op_images: Vec<images::Model>,
-    replies: Vec<PostItem>, // Passed directly
+    replies: Vec<PostItem>,
     cdn_url: String,
     admin_role: i32,
 }
@@ -125,7 +125,6 @@ async fn parse_multipart_form(
             }
 
             if !data.is_empty() {
-                // Pass DB to upload_image
                 match storage.upload_image(data, filename, db).await {
                     Ok(img) => processed_images.push(img),
                     Err(e) => return Err(format!("Upload failed: {}", e)),
@@ -254,7 +253,7 @@ pub async fn view_board_handler(
 
         return HtmlTemplate(BoardTemplate {
             board,
-            threads: thread_items, // No JSON, direct struct
+            threads: thread_items,
             cdn_url,
             admin_role: session.role,
         }).into_response();
@@ -274,7 +273,7 @@ pub async fn view_thread_handler(
 
     let board = boards::Entity::find_by_id(&slug).one(db).await.unwrap();
 
-    if let Some(board) = board {
+    if let Some(_board) = board {
         let thread = threads::Entity::find_by_id(thread_id).one(db).await.unwrap();
         if let Some(thread) = thread {
             let op_images = thread.find_related(images::Entity).all(db).await.unwrap();
@@ -296,7 +295,7 @@ pub async fn view_thread_handler(
             }
 
             return HtmlTemplate(ThreadTemplate {
-                board,
+                board: _board,
                 thread,
                 op_images,
                 replies: posts_with_images,
@@ -320,7 +319,7 @@ pub async fn create_thread_handler(
     let state_read = state.read().await;
     let ip = get_client_ip(&headers, &addr);
     let country_code = resolve_country_code(ip.clone(), &state_read.ip_cache).await;
-    let db = &state_read.pool; // Extract db reference
+    let db = &state_read.pool;
 
     let is_banned = crate::model::bans::Entity::find()
         .filter(
@@ -338,7 +337,6 @@ pub async fn create_thread_handler(
         }).into_response();
     }
 
-    // Pass db to parse_multipart_form
     let parsed = match parse_multipart_form(multipart, &state_read.storage, db).await {
         Ok(p) => p,
         Err(e) => return HtmlTemplate(crate::handler::ErrorTemplate { message: e }).into_response(),
@@ -348,7 +346,6 @@ pub async fn create_thread_handler(
         return Redirect::to(&format!("/{}", slug)).into_response();
     }
 
-    // Insert Thread
     let new_thread = threads::ActiveModel {
         board_slug: Set(slug.clone()),
         subject: Set(parsed.subject),
@@ -371,7 +368,7 @@ pub async fn create_thread_handler(
                 thumbnail_url: Set(img.thumbnail_url),
                 filename: Set(img.filename),
                 storage_key: Set(img.storage_key),
-                hash: Set(img.hash), // Save Hash
+                hash: Set(img.hash),
                 width: Set(img.width),
                 height: Set(img.height),
                 size: Set(img.size),
@@ -397,9 +394,8 @@ pub async fn reply_handler(
     let state_read = state.read().await;
     let ip = get_client_ip(&headers, &addr);
     let country_code = resolve_country_code(ip.clone(), &state_read.ip_cache).await;
-    let db = &state_read.pool; // Extract db reference
+    let db = &state_read.pool;
 
-    // Pass db to parse_multipart_form
     let parsed = match parse_multipart_form(multipart, &state_read.storage, db).await {
         Ok(p) => p,
         Err(e) => return HtmlTemplate(crate::handler::ErrorTemplate { message: e }).into_response(),
