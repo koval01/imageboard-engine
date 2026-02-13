@@ -15,7 +15,7 @@ const obfuscationResult = JavaScriptObfuscator.obfuscate(sourceCode, {
     controlFlowFlatteningThreshold: 0.75,
     deadCodeInjection: false,
     debugProtection: false,
-    disableConsoleOutput: false, // Changed to false so we can see errors
+    disableConsoleOutput: false,
     identifierNamesGenerator: 'mangled-shuffled',
     log: false,
     numbersToExpressions: true,
@@ -29,15 +29,18 @@ const obfuscationResult = JavaScriptObfuscator.obfuscate(sourceCode, {
     stringArrayThreshold: 0.75,
     target: 'browser',
     unicodeEscapeSequence: false,
-    // CRITICAL FIX: Reserve these strings so they aren't broken
     reservedStrings: [
         'htmx:configRequest',
-        'htmx:afterSwap',
-        'X-K-Proof',
+        'htmx:afterRequest',
+        'htmx:responseError',
+        'htmx:confirm',
+        'X-PoW-Nonce',
         'client_key',
         'post',
-        '__kr_hydrate',
-        '__kr_config'
+        'data-pow-nonce',
+        'data-thumb',
+        'data-theme',
+        'theme'
     ]
 });
 
