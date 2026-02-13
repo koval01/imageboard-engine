@@ -33,6 +33,8 @@ pub struct AppState {
     pub config: Config,
     pub storage: StorageService,
     pub ip_cache: Cache<String, String>,
+    // Key: "IP_TYPE" (e.g. "127.0.0.1_thread"), Value: Timestamp (u64)
+    pub rate_limit_cache: Cache<String, u64>,
 }
 
 #[tokio::main]
@@ -46,9 +48,16 @@ async fn main() -> Result<()> {
 
     let storage = StorageService::init(&config).await;
 
+    // Cache for IP Geolocation
     let ip_cache = Cache::builder()
         .max_capacity(10_000)
         .time_to_live(Duration::from_secs(60 * 60 * 24))
+        .build();
+
+    // Cache for Rate Limiting
+    let rate_limit_cache = Cache::builder()
+        .max_capacity(10_000)
+        .time_to_live(Duration::from_secs(60 * 5)) // Keep entry for 5 mins
         .build();
 
     if config.storage_type == StorageType::Local {
@@ -74,6 +83,7 @@ async fn main() -> Result<()> {
         config,
         storage,
         ip_cache,
+        rate_limit_cache,
     }));
 
     route::serve(app_state).await?;

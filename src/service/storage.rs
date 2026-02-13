@@ -109,6 +109,30 @@ impl StorageService {
         Ok(())
     }
 
+    pub async fn delete_file(&self, key: &str) -> Result<()> {
+        match self.storage_type {
+            StorageType::S3 => {
+                let client = self.s3_client.as_ref().unwrap();
+                client
+                    .delete_object()
+                    .bucket(&self.s3_bucket)
+                    .key(key)
+                    .send()
+                    .await
+                    .context("Failed to delete from S3")?;
+            }
+            StorageType::Local => {
+                let file_path = self.local_path.join(key);
+                if file_path.exists() {
+                    fs::remove_file(file_path)
+                        .await
+                        .context("Failed to delete local file")?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub async fn upload_image(
         &self,
         file_bytes: Bytes,

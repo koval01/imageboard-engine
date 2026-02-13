@@ -14,45 +14,10 @@
     <span class="text-gray-500 text-sm ml-2">/{{ board.slug }}/ - {{ board.name }}</span>
 </div>
 
-<!-- Thread Reply Form (Visible) -->
-<div class="flex justify-center mb-6">
-    <div class="bg-[#EEF2FF] border border-[#B7C5D9] p-1 rounded-sm">
-        <form hx-post="/{{ board.slug }}/thread/{{ thread.id }}/reply"
-              hx-encoding="multipart/form-data"
-              hx-target="#new-posts"
-              hx-swap="beforebegin"
-              hx-indicator="#reply-spinner"
-              class="flex flex-col gap-1 p-2 w-[460px]">
-
-            <div class="grid grid-cols-[60px_1fr] gap-1">
-                <span class="bg-[#0F0C5D] text-white text-xs font-bold px-1 py-0.5 h-fit">Comment</span>
-                <textarea id="reply-box" name="content" rows="4" class="w-full" required></textarea>
-            </div>
-
-            <div class="grid grid-cols-[60px_1fr] items-center gap-1 mt-1">
-                <span class="bg-[#0F0C5D] text-white text-xs font-bold px-1 py-0.5">File</span>
-                <div class="flex flex-col">
-                    <div class="flex gap-2">
-                        <input type="file" name="file" multiple id="file-input" class="hidden">
-                        <button type="button" onclick="document.getElementById('file-input').click()" class="bg-white border border-[#aaa] px-2 py-0.5 text-xs hover:bg-gray-100 cursor-pointer">Browse...</button>
-                        <button type="submit" class="bg-[#EEF2FF] border border-[#B7C5D9] px-4 py-0.5 text-sm font-bold hover:bg-white cursor-pointer ml-auto min-w-[80px]">
-                            <span class="btn-text">Post</span>
-                            <span id="reply-spinner" class="loading-spinner text-xs">Posting...</span>
-                        </button>
-                    </div>
-                    <div class="file-list-display text-[10px] text-blue-800 mt-1 hidden"></div>
-                </div>
-            </div>
-        </form>
-    </div>
-</div>
-
-<hr class="border-skin-border-reply mb-4">
-
 <!-- The Thread -->
 <div class="thread" id="t{{ thread.id }}">
     <!-- OP -->
-    <div class="post op block overflow-hidden">
+    <div class="post op block overflow-hidden bg-skin-surface p-2 rounded-sm border-b border-skin-border-reply mb-4">
         {% for img in op_images %}
         <div class="file-info text-xs mb-1">
             File: <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline text-blue-800 font-bold">{{ img.filename }}</a>
@@ -80,14 +45,14 @@
             <span class="text-gray-500 text-[10px] ml-1">[{{ thread.ip_address }}]</span>
             {% if admin_role >= 2 %}
             <form action="/admin/delete" method="POST" class="inline" onsubmit="return confirm('Delete Thread?');">
-                <input type="hidden" name="post_id" value="{{ thread.id }}">
+                <input type="hidden" name="thread_id" value="{{ thread.id }}">
                 <button class="text-red-700 font-bold hover:underline ml-1">[DEL]</button>
             </form>
             {% endif %}
             {% endif %}
         </div>
 
-        <blockquote class="postMessage">
+        <blockquote class="postMessage text-base">
             {% for line in thread.content.lines() %}
             {% if line.trim().starts_with(">") && !line.trim().starts_with(">>") %}
             <span class="greentext">{{ line }}</span><br>
@@ -102,7 +67,7 @@
     </div>
 
     <!-- Replies -->
-    <div class="replies mt-2">
+    <div class="replies space-y-1">
         {% for post in replies %}
         <div class="post-container" id="p{{ post.model.id }}">
             <div class="side-arrows">>></div>
@@ -150,27 +115,59 @@
             </div>
         </div>
         {% endfor %}
-        <!-- HTMX will inject new posts here -->
+
+        <!-- New posts injected here -->
         <div id="new-posts"></div>
     </div>
 </div>
 
-<hr class="border-skin-border-reply my-4">
+<hr class="border-skin-border-reply my-8">
+
+<!-- Thread Reply Form (Bottom) -->
+<div class="flex justify-center mb-10">
+    <div class="bg-skin-reply-bg border border-skin-border-reply p-3 rounded-lg shadow-md max-w-lg w-full">
+        <h3 class="text-center font-bold text-skin-text mb-2">Reply to Thread</h3>
+        <form hx-post="/{{ board.slug }}/thread/{{ thread.id }}/reply"
+              hx-encoding="multipart/form-data"
+              hx-target="#new-posts"
+              hx-swap="beforebegin"
+              hx-indicator="#reply-spinner"
+              class="flex flex-col gap-2">
+
+            <!-- Comment -->
+            <div>
+                <textarea id="reply-box" name="content" rows="5" class="w-full p-2 text-sm border border-skin-border-input rounded bg-skin-input text-skin-text" required placeholder="Write a reply..."></textarea>
+            </div>
+
+            <!-- File Upload & Submit -->
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div class="flex flex-col">
+                    <div class="flex items-center gap-2">
+                        <input type="file" name="file" multiple id="file-input" class="hidden">
+                        <button type="button" onclick="document.getElementById('file-input').click()" class="bg-skin-surface border border-skin-border-input px-3 py-1 text-xs hover:bg-gray-200 cursor-pointer rounded">
+                            📎 Attach File
+                        </button>
+                    </div>
+                    <div class="file-list-display text-[10px] text-skin-link mt-1 hidden"></div>
+                </div>
+
+                <button type="submit" class="bg-skin-header border border-skin-border-reply px-6 py-1 text-sm font-bold hover:bg-skin-surface cursor-pointer rounded shadow-sm text-skin-text min-w-[100px] flex justify-center items-center h-8">
+                    <span class="btn-text">Post</span>
+                    <span id="reply-spinner" class="loading-spinner hidden">
+                        <svg class="animate-spin h-4 w-4 text-skin-text" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div class="text-center text-sm font-bold pb-8">
     <a href="/{{ board.slug }}" class="hover:underline text-blue-800">Return to /{{ board.slug }}/</a>
     <div class="mt-2">[<a href="#" onclick="window.scrollTo(0,0); return false;" class="hover:underline">Top</a>]</div>
-</div>
-
-<!-- Floating Quick Reply (Hidden by default, shown by JS) -->
-<div id="quick-reply" class="fixed top-10 right-4 w-[300px] bg-[#EEF2FF] border border-[#B7C5D9] shadow-lg hidden z-50 p-1">
-    <div class="bg-[#d6daf0] text-xs p-1 flex justify-between cursor-move select-none mb-1 font-bold" id="qr-header">
-        <span>Quick Reply</span>
-        <button onclick="document.getElementById('quick-reply').classList.add('hidden')" class="hover:text-red-600">X</button>
-    </div>
-    <form hx-post="/{{ board.slug }}/thread/{{ thread.id }}/reply" hx-encoding="multipart/form-data" hx-target="#new-posts" hx-swap="beforebegin" class="flex flex-col gap-1">
-        <textarea id="qr-box" name="content" class="w-full h-24 text-sm p-1 border border-[#aaa]" placeholder="Comment"></textarea>
-        <button type="submit" class="bg-white border border-[#B7C5D9] px-2 py-0.5 text-xs font-bold self-end hover:bg-gray-100">Post</button>
-    </form>
 </div>
 
 {% endblock %}

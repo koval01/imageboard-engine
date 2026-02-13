@@ -15,7 +15,7 @@ use jsonwebtoken::{encode, Header, EncodingKey};
 use std::net::SocketAddr;
 
 use crate::{
-    model::{admins, bans, admin_logs, posts, threads, SessionClaims},
+    model::{admins, bans, admin_logs, posts, threads, images, SessionClaims},
     AppState,
     handler::{HtmlTemplate, middleware::CurrentSession},
     security::{get_client_ip, get_user_agent},
@@ -215,7 +215,8 @@ pub async fn admin_ban_action(
 
 #[derive(Deserialize)]
 pub struct DeletePayload {
-    post_id: i32,
+    post_id: Option<i32>,
+    thread_id: Option<i32>,
 }
 
 pub async fn admin_delete_post_action(
@@ -229,15 +230,73 @@ pub async fn admin_delete_post_action(
 
     let state = state.read().await;
     let db = &state.pool;
+    let storage = &state.storage;
 
-    let _ = posts::Entity::delete_by_id(payload.post_id).exec(db).await;
+    // 1. Identify what to delete and get potential image keys *before* deleting
+    let mut image_keys_to_check = Vec::new();
+    let mut log_target = String::new();
+
+    if let Some(pid) = payload.post_id {
+        log_target = format!("Post {}", pid);
+        if let Ok(Some(post)) = posts::Entity::find_by_id(pid).one(db).await {
+            // Find images linked to this post
+            let imgs = images::Entity::find()
+                .filter(images::Column::PostId.eq(pid))
+                .all(db).await.unwrap_or_default();
+            for img in imgs {
+                image_keys_to_check.push((img.storage_key, img.url, img.thumbnail_url));
+            }
+            // Delete post (cascades DB deletion)
+            let _ = posts::Entity::delete_by_id(pid).exec(db).await;
+        }
+    } else if let Some(tid) = payload.thread_id {
+        log_target = format!("Thread {}", tid);
+        if let Ok(Some(thread)) = threads::Entity::find_by_id(tid).one(db).await {
+            // Find all images in thread (OP + Replies)
+            // Note: SeaORM Cascade deletes will wipe them, so fetch first
+            // Thread OP images
+            let op_imgs = images::Entity::find()
+                .filter(images::Column::ThreadId.eq(tid))
+                .all(db).await.unwrap_or_default();
+            for img in op_imgs {
+                image_keys_to_check.push((img.storage_key, img.url, img.thumbnail_url));
+            }
+            // Reply images
+            let posts = posts::Entity::find()
+                .filter(posts::Column::ThreadId.eq(tid))
+                .all(db).await.unwrap_or_default();
+            for p in posts {
+                let p_imgs = images::Entity::find()
+                    .filter(images::Column::PostId.eq(p.id))
+                    .all(db).await.unwrap_or_default();
+                for img in p_imgs {
+                    image_keys_to_check.push((img.storage_key, img.url, img.thumbnail_url));
+                }
+            }
+            // Delete thread
+            let _ = threads::Entity::delete_by_id(tid).exec(db).await;
+        }
+    }
+
+    // 2. Garbage Collection: Check if keys still exist in DB. If not, delete from Storage.
+    for (key, main_url, thumb_url) in image_keys_to_check {
+        let count = images::Entity::find()
+            .filter(images::Column::StorageKey.eq(&key))
+            .count(db).await.unwrap_or(0);
+
+        if count == 0 {
+            // No references left, delete physical files
+            let _ = storage.delete_file(&main_url).await;
+            let _ = storage.delete_file(&thumb_url).await;
+        }
+    }
 
     // Log Action
     let log = admin_logs::ActiveModel {
         admin_username: Set(format!("Role_{}", session.role)),
         action: Set("DELETE".to_string()),
-        target_id: Set(Some(payload.post_id.to_string())),
-        details: Set(Some("Post deleted".to_string())),
+        target_id: Set(Some(log_target)),
+        details: Set(Some("Content deleted".to_string())),
         created_at: Set(Utc::now().naive_utc()),
         ..Default::default()
     };

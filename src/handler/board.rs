@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::net::SocketAddr;
 use axum::{
     extract::{Path, State, Extension, Multipart, ConnectInfo},
-    response::{IntoResponse, Redirect},
+    response::{IntoResponse, Redirect, Response},
     http::HeaderMap,
 };
 use sea_orm::{EntityTrait, QueryOrder, Set, ActiveModelTrait, ModelTrait, QueryFilter, ColumnTrait, QuerySelect, LoaderTrait, PaginatorTrait, RelationTrait, DatabaseConnection};
@@ -29,6 +29,9 @@ struct ParsedForm {
 pub struct PostItem {
     pub model: posts::Model,
     pub images: Vec<images::Model>,
+    pub cdn_url: String, // Added to pass to partial
+    pub admin_role: i32, // Added to pass to partial
+    pub board_slug: String, // Context for links
 }
 
 #[derive(Clone)]
@@ -87,6 +90,13 @@ struct ThreadTemplate {
     admin_role: i32,
 }
 
+// --- Partial Templates (HTMX Responses) ---
+#[derive(Template)]
+#[template(path = "partials/post.html")]
+struct PostPartialTemplate {
+    post: PostItem,
+}
+
 async fn parse_multipart_form(
     mut multipart: Multipart,
     storage: &StorageService,
@@ -138,6 +148,22 @@ async fn parse_multipart_form(
     }
 
     Ok(ParsedForm { subject, content, images: processed_images })
+}
+
+// Rate Limiter: 1 post per 60 seconds per IP
+async fn check_rate_limit(ip: &str, cache: &moka::future::Cache<String, u64>) -> Result<(), String> {
+    let key = format!("rate_limit:{}", ip);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+
+    if let Some(last_post) = cache.get(&key).await {
+        if now < last_post + 60 {
+            let wait = (last_post + 60) - now;
+            return Err(format!("You are posting too fast. Wait {} seconds.", wait));
+        }
+    }
+
+    cache.insert(key, now).await;
+    Ok(())
 }
 
 
@@ -263,6 +289,9 @@ pub async fn view_board_handler(
                 replies.push(PostItem {
                     model: posts_raw[j].clone(),
                     images: post_images_raw[j].clone(),
+                    cdn_url: cdn_url.clone(),
+                    admin_role: session.role,
+                    board_slug: slug.clone(),
                 });
             }
 
@@ -317,6 +346,9 @@ pub async fn view_thread_handler(
                 posts_with_images.push(PostItem {
                     model: post,
                     images: post_images_vec[i].clone(),
+                    cdn_url: cdn_url.clone(),
+                    admin_role: session.role,
+                    board_slug: slug.clone(),
                 });
             }
 
@@ -341,12 +373,17 @@ pub async fn create_thread_handler(
     headers: HeaderMap,
     Path(slug): Path<String>,
     multipart: Multipart,
-) -> impl IntoResponse {
+) -> Response {
     let state_read = state.read().await;
     let ip = get_client_ip(&headers, &addr);
-    let country_code = resolve_country_code(ip.clone(), &state_read.ip_cache).await;
     let db = &state_read.pool;
 
+    // 1. Rate Limit
+    if let Err(msg) = check_rate_limit(&ip, &state_read.rate_limit_cache).await {
+        return HtmlTemplate(crate::handler::ErrorTemplate { message: msg }).into_response();
+    }
+
+    // 2. Ban Check
     let is_banned = crate::model::bans::Entity::find()
         .filter(
             sea_orm::Condition::any()
@@ -363,13 +400,15 @@ pub async fn create_thread_handler(
         }).into_response();
     }
 
+    let country_code = resolve_country_code(ip.clone(), &state_read.ip_cache).await;
+
     let parsed = match parse_multipart_form(multipart, &state_read.storage, db).await {
         Ok(p) => p,
         Err(e) => return HtmlTemplate(crate::handler::ErrorTemplate { message: e }).into_response(),
     };
 
     if parsed.content.trim().is_empty() && parsed.images.is_empty() {
-        return Redirect::to(&format!("/{}", slug)).into_response();
+        return HtmlTemplate(crate::handler::ErrorTemplate { message: "Cannot submit empty thread".into() }).into_response();
     }
 
     let new_thread = threads::ActiveModel {
@@ -403,10 +442,10 @@ pub async fn create_thread_handler(
             };
             let _ = image_model.insert(db).await;
         }
-        return Redirect::to(&format!("/{}", slug)).into_response();
+        return Redirect::to(&format!("/{}/thread/{}", slug, thread.id)).into_response();
     }
 
-    Redirect::to(&format!("/{}", slug)).into_response()
+    HtmlTemplate(crate::handler::ErrorTemplate { message: "Failed to create thread".into() }).into_response()
 }
 
 pub async fn reply_handler(
@@ -416,11 +455,37 @@ pub async fn reply_handler(
     headers: HeaderMap,
     Path((slug, thread_id)): Path<(String, i32)>,
     multipart: Multipart,
-) -> impl IntoResponse {
+) -> Response {
     let state_read = state.read().await;
     let ip = get_client_ip(&headers, &addr);
-    let country_code = resolve_country_code(ip.clone(), &state_read.ip_cache).await;
     let db = &state_read.pool;
+
+    // 1. Rate Limit
+    if let Err(msg) = check_rate_limit(&ip, &state_read.rate_limit_cache).await {
+        return (
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            HtmlTemplate(crate::handler::ErrorTemplate { message: msg })
+        ).into_response();
+    }
+
+    // 2. Ban Check (Simplified reuse)
+    let is_banned = crate::model::bans::Entity::find()
+        .filter(
+            sea_orm::Condition::any()
+                .add(crate::model::bans::Column::IpAddress.eq(&ip))
+                .add(crate::model::bans::Column::SessionId.eq(&session.id))
+        )
+        .filter(crate::model::bans::Column::ExpiresAt.gt(Utc::now().naive_utc()))
+        .one(db).await.unwrap_or(None);
+
+    if let Some(ban) = is_banned {
+        return HtmlTemplate(crate::handler::ErrorTemplate {
+            message: format!("BANNED. Reason: {}. Expires: {}",
+                             ban.reason.unwrap_or_default(), ban.expires_at)
+        }).into_response();
+    }
+
+    let country_code = resolve_country_code(ip.clone(), &state_read.ip_cache).await;
 
     let parsed = match parse_multipart_form(multipart, &state_read.storage, db).await {
         Ok(p) => p,
@@ -428,7 +493,7 @@ pub async fn reply_handler(
     };
 
     if parsed.content.trim().is_empty() && parsed.images.is_empty() {
-        return Redirect::to(&format!("/{}/thread/{}", slug, thread_id)).into_response();
+        return HtmlTemplate(crate::handler::ErrorTemplate { message: "Cannot reply empty".into() }).into_response();
     }
 
     let new_post = posts::ActiveModel {
@@ -441,32 +506,49 @@ pub async fn reply_handler(
         ..Default::default()
     };
 
-    if let Ok(post) = new_post.insert(db).await {
-        for img in parsed.images {
-            let image_model = images::ActiveModel {
-                post_id: Set(Some(post.id)),
-                url: Set(img.url),
-                thumbnail_url: Set(img.thumbnail_url),
-                filename: Set(img.filename),
-                storage_key: Set(img.storage_key),
-                hash: Set(img.hash),
-                width: Set(img.width),
-                height: Set(img.height),
-                size: Set(img.size),
-                created_at: Set(Utc::now().naive_utc()),
+    match new_post.insert(db).await {
+        Ok(post) => {
+            let mut saved_images = Vec::new();
+            for img in parsed.images {
+                let image_model = images::ActiveModel {
+                    post_id: Set(Some(post.id)),
+                    url: Set(img.url.clone()),
+                    thumbnail_url: Set(img.thumbnail_url.clone()),
+                    filename: Set(img.filename.clone()),
+                    storage_key: Set(img.storage_key.clone()),
+                    hash: Set(img.hash.clone()),
+                    width: Set(img.width),
+                    height: Set(img.height),
+                    size: Set(img.size),
+                    created_at: Set(Utc::now().naive_utc()),
+                    ..Default::default()
+                };
+                if let Ok(m) = image_model.insert(db).await {
+                    saved_images.push(m);
+                }
+            }
+
+            // Bump Thread
+            let thread = threads::ActiveModel {
+                id: Set(thread_id),
+                updated_at: Set(Utc::now().naive_utc()),
                 ..Default::default()
             };
-            let _ = image_model.insert(db).await;
+            let _ = thread.update(db).await;
+
+            // Render PARTIAL instead of redirect
+            HtmlTemplate(PostPartialTemplate {
+                post: PostItem {
+                    model: post,
+                    images: saved_images,
+                    cdn_url: state_read.config.cdn_url.clone(),
+                    admin_role: session.role,
+                    board_slug: slug,
+                }
+            }).into_response()
+        },
+        Err(e) => {
+            HtmlTemplate(crate::handler::ErrorTemplate { message: format!("Database error: {}", e) }).into_response()
         }
-
-        // Bump Thread
-        let thread = threads::ActiveModel {
-            id: Set(thread_id),
-            updated_at: Set(Utc::now().naive_utc()),
-            ..Default::default()
-        };
-        let _ = thread.update(db).await;
     }
-
-    Redirect::to(&format!("/{}/thread/{}", slug, thread_id)).into_response()
 }

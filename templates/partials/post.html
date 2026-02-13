@@ -1,0 +1,41 @@
+<div class="post-container" id="p{{ post.model.id }}">
+    <div class="side-arrows">>></div>
+    <div class="post reply">
+        <!-- Reply Meta -->
+        <div class="mb-1 text-xs">
+            <input type="checkbox">
+            <span class="name">Anonymous</span>
+            {% if let Some(cc) = post.model.country_code %}
+            <span class="fi fi-{{ cc|lower }}"></span>
+            {% endif %}
+            <span>{{ post.model.created_at.format("%d/%m/%y(%a)%H:%M:%S") }}</span>
+            <a href="/{{ post.board_slug }}/thread/{{ post.model.thread_id }}#p{{ post.model.id }}" class="text-skin-link hover:text-skin-red">No.{{ post.model.id }}</a>
+            {% if post.admin_role > 0 %}
+            <span class="text-gray-500 text-[9px]">[{{ post.model.ip_address }}]</span>
+            {% endif %}
+        </div>
+
+        <!-- Post Image -->
+        {% for img in post.images %}
+        <div class="file-info text-[10px]">
+            <a href="{{ post.cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline">{{ img.filename }}</a>
+        </div>
+        <a class="file-link" href="{{ post.cdn_url }}/{{ img.url }}">
+            <img src="{{ post.cdn_url }}/{{ img.thumbnail_url }}" class="file-thumb !mb-1 !mr-2 !w-32 !h-32">
+        </a>
+        {% endfor %}
+
+        <blockquote class="postMessage">
+            {% for line in post.model.content.lines() %}
+            {% if line.trim().starts_with(">") && !line.trim().starts_with(">>") %}
+            <span class="greentext">{{ line }}</span><br>
+            {% else if line.trim().starts_with(">>") %}
+            {% let ref_id = line.trim().replace(">>", "") %}
+            <a href="/{{ post.board_slug }}/thread/{{ post.model.thread_id }}#p{{ ref_id }}" class="text-skin-link hover:underline">&gt;&gt;{{ ref_id }}</a><br>
+            {% else %}
+            {{ line }}<br>
+            {% endif %}
+            {% endfor %}
+        </blockquote>
+    </div>
+</div>
