@@ -3,166 +3,207 @@
 @tailwind utilities;
 
 @layer base {
-    /* Theme: "Yotsuba B" (The classic Peach look) */
+    /* Theme: "Yotsuba B" (Classic Blue/Peach) */
     :root {
-        /* Backgrounds */
-        --color-bg-base: #eef2ff;    /* Light Blueish/Gray fallback */
-        --color-bg-surface: #f0e0d6;  /* Peach Main Background */
-        --color-bg-reply: #d6daf0;    /* Blueish Reply */
-        --color-bg-header: #d6daf0;   /* Header matches reply */
-        --color-bg-input: #ffffff;
+        --bg-body: #eef2ff;
+        --bg-post-reply: #d6daf0;
+        --bg-header: #d6daf0;
+        --bg-input: #ffffff;
+        --bg-highlight: #d1d5ef; /* Target highlight */
 
-        /* Text */
-        --color-text-base: #000000;
-        --color-text-muted: #707070;
+        --text-color: #000000;
+        --text-subject: #0F0C5D;
+        --text-name: #117743;
+        --text-poster-name: #117743; /* Admin/Mod color usually same or red/purple */
+        --text-link: #34345C;
+        --text-link-hover: #d00;
+        --text-quote: #789922; /* Greentext */
 
-        --color-text-link: #34345c;   /* Dark Blue Links */
-        --color-text-link-hover: #d00; /* Red on hover */
+        --border-reply: #b7c5d9;
+        --border-input: #a9a9a9;
 
-        --color-text-subject: #cc1105; /* Red Subject */
-        --color-text-name: #117743;    /* Green Name */
-        --color-text-trip: #228854;
-
-        --color-text-green: #789922;  /* Greentext */
-        --color-text-red: #ff0000;    /* Admin/Sage */
-
-        /* Borders */
-        --color-border: #d9d9d9;
-        --color-border-reply: #b7c5d9;
+        --shadow-popover: 2px 2px 5px rgba(0,0,0,0.2);
     }
 
-    /* Dark Mode: "Tomorrow" */
+    /* Theme: "Tomorrow" (Dark) */
     [data-theme="dark"] {
-        --color-bg-base: #1d1f21;
-        --color-bg-surface: #1d1f21;
-        --color-bg-reply: #282a2e;
-        --color-bg-header: #282a2e;
-        --color-bg-input: #373b41;
+        --bg-body: #1d1f21;
+        --bg-post-reply: #282a2e;
+        --bg-header: #282a2e;
+        --bg-input: #373b41;
+        --bg-highlight: #3e4044;
 
-        --color-text-base: #c5c8c6;
-        --color-text-muted: #969896;
+        --text-color: #c5c8c6;
+        --text-subject: #b294bb;
+        --text-name: #b5bd68;
+        --text-link: #81a2be;
+        --text-link-hover: #c5c8c6;
+        --text-quote: #b5bd68;
 
-        --color-text-link: #81a2be;
-        --color-text-link-hover: #c5c8c6;
-
-        --color-text-subject: #b294bb;
-        --color-text-name: #b5bd68;
-        --color-text-trip: #8abeb7;
-
-        --color-text-green: #b5bd68;
-        --color-text-red: #cc6666;
-
-        --color-border: #373b41;
-        --color-border-reply: #4e5359;
+        --border-reply: #1d1f21;
+        --border-input: #1d1f21;
     }
 }
 
 body {
-    background-color: var(--color-bg-surface);
-    color: var(--color-text-base);
-    font-size: 13px; /* Smaller text like classic boards */
-    font-family: arial, helvetica, sans-serif;
+    background-color: var(--bg-body);
+    color: var(--text-color);
+    font-family: arial,helvetica,sans-serif;
+    font-size: 13px;
+    margin: 0;
+    padding-bottom: 40px;
 }
 
+/* Links */
 a {
+    color: var(--text-link);
     text-decoration: none;
-    color: var(--color-text-link);
+    cursor: pointer;
 }
-
 a:hover {
-    color: var(--color-text-link-hover);
-}
-
-/* Custom Elements */
-.greentext {
-    color: var(--color-text-green);
-    font-family: inherit;
-}
-
-.post-link {
+    color: var(--text-link-hover);
     text-decoration: underline;
 }
 
-/* Form Elements Styling */
-input, textarea, select {
-    background-color: var(--color-bg-input);
-    border: 1px solid var(--color-border-reply);
-    color: var(--color-text-base);
+/* Typography */
+.subject {
+    color: var(--text-subject);
+    font-weight: 700;
+    font-size: 10pt;
+}
+.name {
+    color: var(--text-name);
+    font-weight: 700;
+}
+.postMessage {
     font-size: 13px;
+    line-height: 1.4;
+    margin: 1em 0;
+}
+.greentext {
+    color: var(--text-quote);
 }
 
-input:focus, textarea:focus, select:focus {
-    outline: 1px solid var(--color-border-reply);
+/* Post Layout */
+.thread {
+    margin: 0;
+    clear: both;
 }
 
-/* 4chan-style Post Container */
-.post-container {
-    display: flex;
-    margin-bottom: 4px;
-    overflow: hidden;
+.postContainer {
+    display: block;
+    margin: 4px 0;
 }
 
-.side-arrows {
-    color: var(--color-text-muted);
-    font-size: 10px;
-    margin-right: 2px;
-    display: none; /* Hidden on mobile/default, show on hover? */
+.opContainer {
+    display: block;
 }
 
 .post {
-    padding: 4px 8px;
     display: inline-block; /* Hug content */
+    padding: 4px 8px;
+    overflow: hidden;
+    position: relative;
     max-width: 100%;
 }
 
 .post.reply {
-    background-color: var(--color-bg-reply);
-    border: 1px solid var(--color-border-reply);
+    background-color: var(--bg-post-reply);
+    border: 1px solid var(--border-reply);
     border-radius: 2px;
+    margin-left: 20px;
+    display: table; /* Fit content */
 }
 
 .post.op {
+    display: block;
     background: transparent;
     border: none;
-    padding: 0;
 }
 
-.file-thumb {
+.post:target {
+    background-color: var(--bg-highlight) !important;
+    border: 1px solid var(--text-link-hover) !important; /* Visual feedback */
+}
+
+.sideArrows {
+    color: #b7c5d9;
     float: left;
-    margin: 2px 20px 10px 0;
+    margin-right: 2px;
+    margin-top: 0;
+    margin-left: 2px;
+    font-size: 10px;
+}
+[data-theme="dark"] .sideArrows { color: #4e5359; }
+
+/* Images */
+.file {
+    display: block;
+    margin-bottom: 5px;
+}
+.fileText {
+    font-size: 11px;
+    margin-bottom: 2px;
+    margin-left: 20px;
+}
+.fileThumb {
+    float: left;
+    margin-left: 20px;
+    margin-right: 20px;
+    margin-bottom: 10px;
+}
+.fileThumb img {
+    border: none;
+    float: left;
     max-width: 250px;
     max-height: 250px;
+    object-fit: cover;
 }
 
-.file-expanded {
+/* Image Expansion */
+.fileThumb.expanded img {
     max-width: 98vw;
     max-height: 98vh;
+    width: auto;
+    height: auto;
     display: block;
-    margin: 10px 0;
 }
 
-/* Quote Preview Popup */
+/* Form Elements */
+input[type="text"], input[type="password"], textarea, select {
+    background-color: var(--bg-input);
+    color: var(--text-color);
+    border: 1px solid var(--border-input);
+    font-size: 13px;
+    padding: 2px 4px;
+}
+input:focus, textarea:focus {
+    border: 1px solid var(--text-link);
+    outline: none;
+}
+
+/* Quote Preview */
 #quote-preview {
     position: absolute;
-    z-index: 999;
-    border: 1px solid var(--color-border-reply);
-    background-color: var(--color-bg-reply);
+    background-color: var(--bg-post-reply);
+    border: 1px solid var(--border-reply);
     padding: 5px;
     display: none;
-    box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
-    font-size: 13px;
+    z-index: 999;
+    box-shadow: var(--shadow-popover);
+    border-radius: 2px;
     pointer-events: none;
 }
 
-/* Scrollbar Utility */
-.scrollbar-hide::-webkit-scrollbar {
-    display: none;
+/* Misc */
+.omitted-posts {
+    color: #707070;
+    font-size: 12px;
+    margin-left: 20px;
+    margin-top: 10px;
 }
-.scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-}
-
-.swal2-container {
-    backdrop-filter: blur(4px);
+hr {
+    border: none;
+    border-top: 1px solid var(--border-reply);
+    height: 0;
 }
