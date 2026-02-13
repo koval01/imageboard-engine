@@ -11,21 +11,31 @@
         return null;
     }
 
+    // --- Helper: UUID Generator ---
+    function generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
     // --- Helper: PoW Solver (SHA-256) ---
     async function solvePoW(sessionId) {
         const encoder = new TextEncoder();
+        const salt = generateUUID(); // Unique salt per request
         let nonce = 0;
+
         while (true) {
-            // Format: session_id + nonce
-            // Target: Starts with 0x00 0x00 (approx 65k hashes, ~200ms on modern CPU)
-            const input = sessionId + nonce.toString();
+            // Format: session_id + salt + nonce
+            // Target: Starts with 0x00 0x00
+            const input = sessionId + salt + nonce.toString();
             const buffer = encoder.encode(input);
             const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
             const hashArray = new Uint8Array(hashBuffer);
 
             // Check if first 2 bytes are 0
             if (hashArray[0] === 0 && hashArray[1] === 0) {
-                return nonce.toString();
+                return { nonce: nonce.toString(), salt: salt };
             }
             nonce++;
         }
@@ -79,8 +89,6 @@
         inputs.forEach(input => {
             input.addEventListener('change', (e) => {
                 const files = Array.from(e.target.files);
-                // Look for a sibling container to show names
-                // Structure: <input> <button> ... <div class="file-list-display">
                 const container = e.target.parentElement.parentElement;
                 const listDisplay = container.querySelector('.file-list-display');
 
@@ -103,6 +111,7 @@
     function initFormHandling() {
         // 1. Intercept Confirmation to compute PoW
         document.body.addEventListener('htmx:confirm', async (evt) => {
+            // Apply to ALL post requests (including admin actions via hx-post)
             if (evt.detail.verb === 'post') {
                 evt.preventDefault(); // Pause request execution
 
@@ -113,16 +122,27 @@
                     return;
                 }
 
-                // UI Feedback
+                // UI Feedback: Disable button inside the form
                 document.body.style.cursor = 'wait';
-                const submitBtn = evt.target.querySelector('button[type="submit"]');
-                if(submitBtn) submitBtn.disabled = true;
+                const form = evt.detail.elt.tagName === 'FORM' ? evt.detail.elt : evt.detail.elt.closest('form');
+                const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+
+                if(submitBtn) {
+                    submitBtn.disabled = true;
+                    // Optional: change text if inside a span
+                    const txtSpan = submitBtn.querySelector('.btn-text');
+                    if(txtSpan) {
+                        txtSpan.setAttribute('data-original', txtSpan.innerText);
+                        txtSpan.innerText = 'Verifying...';
+                    }
+                }
 
                 try {
-                    const nonce = await solvePoW(clientKey);
+                    const powData = await solvePoW(clientKey);
 
-                    // Attach nonce to element attribute so configRequest can read it synchronously
-                    evt.detail.elt.setAttribute('data-pow-nonce', nonce);
+                    // Attach data to element attributes so configRequest can read it synchronously
+                    evt.detail.elt.setAttribute('data-pow-nonce', powData.nonce);
+                    evt.detail.elt.setAttribute('data-pow-salt', powData.salt);
 
                     // Resume request
                     evt.detail.issueRequest();
@@ -136,7 +156,13 @@
                     });
                 } finally {
                     document.body.style.cursor = 'default';
-                    if(submitBtn) submitBtn.disabled = false;
+                    if(submitBtn) {
+                        submitBtn.disabled = false;
+                        const txtSpan = submitBtn.querySelector('.btn-text');
+                        if(txtSpan && txtSpan.getAttribute('data-original')) {
+                            txtSpan.innerText = txtSpan.getAttribute('data-original');
+                        }
+                    }
                 }
             }
         });
@@ -145,10 +171,15 @@
         document.body.addEventListener('htmx:configRequest', (evt) => {
             if (evt.detail.verb === 'post') {
                 const nonce = evt.detail.elt.getAttribute('data-pow-nonce');
-                if (nonce) {
+                const salt = evt.detail.elt.getAttribute('data-pow-salt');
+
+                if (nonce && salt) {
                     evt.detail.headers['X-PoW-Nonce'] = nonce;
+                    evt.detail.headers['X-PoW-Salt'] = salt;
+
                     // Clean up
                     evt.detail.elt.removeAttribute('data-pow-nonce');
+                    evt.detail.elt.removeAttribute('data-pow-salt');
                 }
             }
         });
@@ -158,20 +189,24 @@
             if (evt.detail.successful && evt.detail.verb === 'post') {
                 const form = evt.detail.elt.closest('form');
                 if (form) {
-                    form.reset();
-                    // Clear file list display
-                    const listDisplay = form.querySelector('.file-list-display');
-                    if(listDisplay) {
-                        listDisplay.innerHTML = '';
-                        listDisplay.classList.add('hidden');
+                    // Only reset if it's a posting form, not an admin button
+                    if(form.querySelector('textarea') || form.querySelector('input[type="text"]')) {
+                        form.reset();
+
+                        // Clear file list display
+                        const listDisplay = form.querySelector('.file-list-display');
+                        if(listDisplay) {
+                            listDisplay.innerHTML = '';
+                            listDisplay.classList.add('hidden');
+                        }
+
+                        // Remove saved draft
+                        const key = DRAFT_PREFIX + window.location.pathname;
+                        localStorage.removeItem(key);
                     }
 
-                    // Remove saved draft
-                    const key = DRAFT_PREFIX + window.location.pathname;
-                    localStorage.removeItem(key);
-
-                    // Scroll to new posts if on thread page
-                    if(window.location.pathname.includes('/thread/')) {
+                    // Scroll to new posts if on thread page and it was a reply
+                    if(window.location.pathname.includes('/thread/') && evt.detail.target.id === 'new-posts') {
                         const newPosts = document.getElementById('new-posts');
                         if(newPosts) newPosts.scrollIntoView({ behavior: 'smooth' });
                     }

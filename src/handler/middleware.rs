@@ -107,7 +107,7 @@ pub async fn session_middleware(
 
 
 pub async fn bot_guard_middleware(
-    State(_): State<Arc<RwLock<AppState>>>,
+    State(state): State<Arc<RwLock<AppState>>>,
     req: Request,
     next: Next,
 ) -> Result<Response, Response> {
@@ -115,8 +115,12 @@ pub async fn bot_guard_middleware(
     if req.method() == axum::http::Method::POST {
         let headers = req.headers();
 
-        // 2. Get the PoW Nonce sent by JS
+        // 2. Get the PoW Data
         let nonce = headers.get("X-PoW-Nonce")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+
+        let salt = headers.get("X-PoW-Salt")
             .and_then(|h| h.to_str().ok())
             .unwrap_or("");
 
@@ -124,24 +128,58 @@ pub async fn bot_guard_middleware(
         let session_id = if let Some(sess) = req.extensions().get::<CurrentSession>() {
             sess.id.clone()
         } else {
-            return Err((StatusCode::FORBIDDEN, "No Session").into_response());
+            // Wait, extensions might not be populated yet if this middleware runs BEFORE session middleware
+            // But usually custom middleware runs inside out. Let's assume order is correct.
+            // If Session Middleware hasn't run, we can't verify properly.
+            // *Correction*: In src/route.rs, we layered bot_guard *before* session.
+            // Axum middleware executes Top -> Bottom for request, Bottom -> Top for response.
+            // We need session ID here.
+            // **We rely on the Cookie directly here because extension isn't set yet.**
+            let jar = CookieJar::from_headers(headers);
+            if let Some(cookie) = jar.get("client_key") {
+                cookie.value().to_string()
+            } else {
+                return Err((StatusCode::FORBIDDEN, "No Client Key Cookie").into_response());
+            }
         };
 
-        // 4. Verify Proof of Work
-        // Difficulty: Hash must start with "0000" (approx 65k iterations, ~200ms for user, expensive for bot)
-        // Format: SHA256(session_id + nonce)
-        let input = format!("{}{}", session_id, nonce);
+        if nonce.is_empty() || salt.is_empty() {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({ "error": "Missing Proof of Work headers. Enable JS." }))
+            ).into_response());
+        }
+
+        // 4. Replay Attack Check (Uniqueness)
+        let state_read = state.read().await;
+        let cache_key = format!("pow:{}", salt);
+        if state_read.rate_limit_cache.get(&cache_key).await.is_some() {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({ "error": "Replay attack detected. Do not resubmit forms." }))
+            ).into_response());
+        }
+
+        // 5. Verify Proof of Work
+        // Input: session_id + salt + nonce
+        // Target: Starts with 0x00, 0x00 (16 zero bits)
+        let input = format!("{}{}{}", session_id, salt, nonce);
         let mut hasher = Sha256::new();
         hasher.update(input.as_bytes());
         let result = hasher.finalize();
 
-        // Check if first 2 bytes are 0 (0x00, 0x00) -> equivalent to hex "0000..."
+        // Check difficulty
         if result[0] != 0 || result[1] != 0 {
             return Err((
                 StatusCode::FORBIDDEN,
-                Json(json!({ "error": "Invalid Proof of Work. Please enable JavaScript." }))
+                Json(json!({ "error": "Invalid Proof of Work computation." }))
             ).into_response());
         }
+
+        // 6. Mark Salt as Used (Prevent Replay)
+        // Store current timestamp, expire in 10 mins
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        state_read.rate_limit_cache.insert(cache_key, now).await;
     }
 
     Ok(next.run(req).await)

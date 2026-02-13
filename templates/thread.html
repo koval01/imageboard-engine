@@ -44,7 +44,7 @@
             {% if admin_role > 0 %}
             <span class="text-gray-500 text-[10px] ml-1">[{{ thread.ip_address }}]</span>
             {% if admin_role >= 2 %}
-            <form action="/admin/delete" method="POST" class="inline" onsubmit="return confirm('Delete Thread?');">
+            <form hx-post="/admin/delete" hx-confirm="Delete Thread?" hx-swap="none" class="inline">
                 <input type="hidden" name="thread_id" value="{{ thread.id }}">
                 <button class="text-red-700 font-bold hover:underline ml-1">[DEL]</button>
             </form>
@@ -84,7 +84,7 @@
 
                     {% if admin_role > 0 %}
                     <span class="text-gray-500 text-[9px]">[{{ post.model.ip_address }}]</span>
-                    <form action="/admin/delete" method="POST" class="inline" onsubmit="return confirm('Delete?');">
+                    <form hx-post="/admin/delete" hx-confirm="Delete Post?" hx-swap="none" class="inline">
                         <input type="hidden" name="post_id" value="{{ post.model.id }}">
                         <button class="text-red-700 font-bold hover:underline ml-1">[D]</button>
                     </form>

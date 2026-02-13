@@ -51,12 +51,14 @@
                 <td class="p-2 border border-skin-border-reply truncate max-w-xs" title="{{ post.content }}">{{ post.content }}</td>
                 <td class="p-2 border border-skin-border-reply font-mono text-xs">{{ post.ip_address }}</td>
                 <td class="p-2 border border-skin-border-reply flex gap-1">
-                    <form action="/admin/delete" method="POST" onsubmit="return confirm('Delete?');">
+                    <!-- HTMX Post for PoW -->
+                    <form hx-post="/admin/delete" hx-confirm="Delete this post?" hx-swap="none">
                         <input type="hidden" name="post_id" value="{{ post.id }}">
                         <button class="text-red-600 font-bold hover:underline cursor-pointer">[DEL]</button>
                     </form>
                     {% if admin.role >= 2 %}
-                    <form action="/admin/ban" method="POST" onsubmit="return confirm('Ban user?');">
+                    <!-- HTMX Post for PoW -->
+                    <form hx-post="/admin/ban" hx-confirm="Ban user?" hx-swap="none">
                         <input type="hidden" name="ip" value="{{ post.ip_address }}">
                         <input type="hidden" name="session" value="{{ post.session_id }}">
                         <input type="hidden" name="reason" value="Dashboard Ban">
