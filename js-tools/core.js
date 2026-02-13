@@ -49,19 +49,10 @@
     function initTheme() {
         const html = document.documentElement;
         const toggleBtn = document.getElementById('theme-toggle');
-        const iconLight = document.getElementById('icon-light');
-        const iconDark = document.getElementById('icon-dark');
 
         function applyTheme(theme) {
             html.setAttribute('data-theme', theme);
             localStorage.setItem('theme', theme);
-            if (theme === 'dark') {
-                iconLight?.classList.remove('hidden');
-                iconDark?.classList.add('hidden');
-            } else {
-                iconLight?.classList.add('hidden');
-                iconDark?.classList.remove('hidden');
-            }
         }
         const saved = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         applyTheme(saved);
@@ -88,7 +79,7 @@
             img.style.height = "";
         } else {
             // Expand
-            // Save thumb source
+            // Save thumb source if not saved
             if(!img.getAttribute('data-thumb')) img.setAttribute('data-thumb', img.src);
 
             img.src = anchor.href; // Switch to full res
@@ -105,16 +96,19 @@
     function insertReply(id) {
         const box = document.getElementById('reply-box');
         const formDetails = document.getElementById('post-form-details');
+        const quickReply = document.getElementById('quick-reply');
 
-        if (formDetails && !formDetails.open) formDetails.open = true;
+        // Use Quick Reply if available (not hidden) or scroll to form
+        if (quickReply && !quickReply.classList.contains('hidden')) {
+            // Logic for QR is simplified here
+        } else if (formDetails) {
+            if (!formDetails.open) formDetails.open = true;
+        }
 
         if (box) {
             const ref = '>>' + id + '\n';
             box.value += (box.value.length > 0 && box.value.slice(-1) !== '\n') ? '\n' + ref : ref;
             box.focus();
-
-            // Scroll to form if it's sticky at top, or just focus
-            // window.scrollTo(0, document.body.scrollHeight); // Traditional boards usually don't scroll automatically
         }
     }
 
@@ -134,12 +128,11 @@
 
                 if (post) {
                     const clone = post.cloneNode(true);
-                    // Cleanup clone classes for popup
+                    // Extract just the post content part
                     const inner = clone.querySelector('.post');
                     if(inner) {
-                        popup.innerHTML = inner.outerHTML;
+                        popup.innerHTML = inner.innerHTML;
                         popup.style.display = 'block';
-                        // Position logic
                         popup.style.top = (e.pageY + 20) + 'px';
                         popup.style.left = (e.pageX + 20) + 'px';
                     }
@@ -201,7 +194,7 @@
         document.body.addEventListener('change', (e) => {
             if (e.target.type === 'file') {
                 const btn = document.getElementById('file-btn-label');
-                if(btn) btn.innerText = e.target.files.length > 0 ? e.target.files.length + ' files' : 'Select Files';
+                if(btn) btn.innerText = e.target.files.length > 0 ? e.target.files.length + ' files' : 'Choose File';
             }
         });
     });

@@ -8,12 +8,12 @@
 
 {% block content %}
 
-<!-- Board Banner / Title -->
+<!-- Board Title -->
 <div class="text-center mb-6">
     <h1 class="text-3xl font-bold text-skin-text tracking-tight text-skin-subject">/{{ board.slug }}/ - {{ board.name }}</h1>
 </div>
 
-<!-- Post Form (Center, Collapsible) -->
+<!-- Post Form -->
 <div class="flex justify-center mb-8">
     <details id="post-form-details" class="bg-skin-reply-bg border border-skin-border-reply p-1" open>
         <summary class="text-center text-sm font-bold cursor-pointer select-none">Start a New Thread</summary>
@@ -27,8 +27,8 @@
 
             <div class="flex items-center gap-2">
                 <input type="file" name="file" multiple id="file-input" class="hidden">
-                <button type="button" onclick="document.getElementById('file-input').click()" class="bg-white border border-skin-border px-2 py-0.5 text-xs hover:bg-gray-100" id="file-btn-label">Choose File</button>
-                <button type="submit" class="ml-auto bg-skin-base border border-skin-border px-4 py-0.5 text-sm font-bold hover:bg-white">Post</button>
+                <button type="button" onclick="document.getElementById('file-input').click()" class="bg-white border border-skin-border px-2 py-0.5 text-xs hover:bg-gray-100 cursor-pointer" id="file-btn-label">Choose File</button>
+                <button type="submit" class="ml-auto bg-skin-base border border-skin-border px-4 py-0.5 text-sm font-bold hover:bg-white cursor-pointer">Post</button>
             </div>
         </form>
     </details>
@@ -36,7 +36,7 @@
 
 <hr class="border-skin-border-reply mb-4">
 
-<!-- Threads -->
+<!-- Threads Loop -->
 <div class="space-y-6">
     {% for thread in threads %}
     <div class="thread" id="t{{ thread.model.id }}">
@@ -96,9 +96,9 @@
 
         <!-- Replies (Last 3) -->
         <div class="replies mt-1">
-            {% if thread.reply_count > 3 %}
+            {% if thread.omitted_posts > 0 %}
             <div class="text-skin-muted text-xs ml-4 mb-1">
-                {{ thread.reply_count - 3 }} posts omitted. <a href="/{{ board.slug }}/thread/{{ thread.model.id }}" class="text-skin-link hover:underline">Click to view.</a>
+                {{ thread.omitted_posts }} posts and {{ thread.omitted_images }} images omitted. <a href="/{{ board.slug }}/thread/{{ thread.model.id }}" class="text-skin-link hover:underline">Click here</a> to view.
             </div>
             {% endif %}
 
@@ -154,11 +154,15 @@
 
 <!-- Floating Reply Box (Used by JS) -->
 <div id="quick-reply" class="fixed top-10 right-4 w-[300px] bg-skin-reply-bg border border-skin-border-reply shadow-md hidden p-1 z-50">
-    <div class="bg-skin-header text-xs p-1 flex justify-between cursor-move" id="qr-header">
-        <span>Quick Reply</span>
-        <button onclick="document.getElementById('quick-reply').classList.add('hidden')">X</button>
+    <div class="bg-skin-header text-xs p-1 flex justify-between cursor-move select-none" id="qr-header">
+        <span class="font-bold">Quick Reply</span>
+        <button onclick="document.getElementById('quick-reply').classList.add('hidden')" class="hover:text-skin-red">X</button>
     </div>
-    <textarea id="reply-box" class="w-full h-24 text-sm p-1 border border-skin-border-reply"></textarea>
+    <form hx-post="/{{ board.slug }}/submit" hx-encoding="multipart/form-data" class="flex flex-col gap-1 p-1">
+        <input type="hidden" name="thread_id" id="qr-thread-id"> <!-- Handled by JS -->
+        <textarea id="reply-box" name="content" class="w-full h-24 text-sm p-1 border border-skin-border-reply" placeholder="Comment"></textarea>
+        <button type="submit" class="bg-skin-base border border-skin-border px-2 py-0.5 text-xs font-bold self-end">Post</button>
+    </form>
 </div>
 
 {% endblock %}

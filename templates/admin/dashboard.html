@@ -6,6 +6,18 @@
         <a href="/" class="text-skin-link font-bold hover:underline">Back to Site</a>
     </div>
 
+    <!-- Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 text-sm">
+        <div class="bg-skin-reply-bg p-3 border border-skin-border-reply rounded">
+            <div class="text-skin-muted font-bold uppercase text-[10px]">Total Posts</div>
+            <div class="text-xl font-bold">{{ total_posts }}</div>
+        </div>
+        <div class="bg-skin-reply-bg p-3 border border-skin-border-reply rounded">
+            <div class="text-skin-muted font-bold uppercase text-[10px]">Total Bans</div>
+            <div class="text-xl font-bold">{{ total_bans }}</div>
+        </div>
+    </div>
+
     {% if admin.role >= 3 %}
     <div class="bg-skin-reply-bg p-4 rounded border border-skin-border-reply mb-6">
         <h3 class="font-bold mb-2">Data Export</h3>
@@ -15,33 +27,33 @@
                 <option value="session">By Session</option>
             </select>
             <input type="text" name="value" placeholder="Target Value" class="p-1 border text-sm">
-            <button type="submit" class="bg-skin-border px-3 py-1 text-sm font-bold hover:bg-white">Download</button>
+            <button type="submit" class="bg-skin-border border px-3 py-1 text-sm font-bold hover:bg-white cursor-pointer">Download</button>
         </form>
     </div>
     {% endif %}
 
     <div class="overflow-x-auto">
-        <table class="w-full text-sm text-left border border-skin-border-reply">
+        <table class="w-full text-sm text-left border border-skin-border-reply border-collapse">
             <thead class="bg-skin-reply-bg">
             <tr>
-                <th class="p-2 border">ID</th>
-                <th class="p-2 border">Board</th>
-                <th class="p-2 border">Content</th>
-                <th class="p-2 border">IP</th>
-                <th class="p-2 border">Actions</th>
+                <th class="p-2 border border-skin-border-reply">ID</th>
+                <th class="p-2 border border-skin-border-reply">Board</th>
+                <th class="p-2 border border-skin-border-reply">Content</th>
+                <th class="p-2 border border-skin-border-reply">IP</th>
+                <th class="p-2 border border-skin-border-reply">Actions</th>
             </tr>
             </thead>
             <tbody>
             {% for (post, slug) in recent_posts %}
             <tr class="hover:bg-skin-reply-bg">
-                <td class="p-2 border">{{ post.id }}</td>
-                <td class="p-2 border">/{{ slug }}/</td>
-                <td class="p-2 border truncate max-w-xs" title="{{ post.content }}">{{ post.content }}</td>
-                <td class="p-2 border font-mono text-xs">{{ post.ip_address }}</td>
-                <td class="p-2 border flex gap-1">
+                <td class="p-2 border border-skin-border-reply">{{ post.id }}</td>
+                <td class="p-2 border border-skin-border-reply">/{{ slug }}/</td>
+                <td class="p-2 border border-skin-border-reply truncate max-w-xs" title="{{ post.content }}">{{ post.content }}</td>
+                <td class="p-2 border border-skin-border-reply font-mono text-xs">{{ post.ip_address }}</td>
+                <td class="p-2 border border-skin-border-reply flex gap-1">
                     <form action="/admin/delete" method="POST" onsubmit="return confirm('Delete?');">
                         <input type="hidden" name="post_id" value="{{ post.id }}">
-                        <button class="text-red-600 font-bold hover:underline">[DEL]</button>
+                        <button class="text-red-600 font-bold hover:underline cursor-pointer">[DEL]</button>
                     </form>
                     {% if admin.role >= 2 %}
                     <form action="/admin/ban" method="POST" onsubmit="return confirm('Ban user?');">
@@ -49,7 +61,7 @@
                         <input type="hidden" name="session" value="{{ post.session_id }}">
                         <input type="hidden" name="reason" value="Dashboard Ban">
                         <input type="hidden" name="duration_hours" value="24">
-                        <button type="submit" class="text-red-600 font-bold hover:underline ml-2">[BAN]</button>
+                        <button type="submit" class="text-red-600 font-bold hover:underline ml-2 cursor-pointer">[BAN]</button>
                     </form>
                     {% endif %}
                 </td>

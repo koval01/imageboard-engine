@@ -36,7 +36,10 @@ pub struct ThreadItem {
     pub model: threads::Model,
     pub images: Vec<images::Model>,
     pub replies: Vec<PostItem>,
-    pub reply_count: usize, // Added field
+    pub reply_count: usize,
+    pub image_count: usize,
+    pub omitted_posts: usize,
+    pub omitted_images: usize,
 }
 
 // --- Home Page Structs ---
@@ -234,16 +237,32 @@ pub async fn view_board_handler(
                 .unwrap();
 
             let reply_count = posts_raw.len();
+            let post_images_raw = posts_raw.load_many(images::Entity, db).await.unwrap();
+            let mut image_count = 0;
+            for imgs in &post_images_raw {
+                image_count += imgs.len();
+            }
 
             // Preview last 3 posts
-            let preview_posts_raw = posts_raw.into_iter().rev().take(3).rev().collect::<Vec<_>>();
-            let post_images = preview_posts_raw.load_many(images::Entity, db).await.unwrap();
+            let preview_len = 3;
+            let start_idx = if reply_count > preview_len { reply_count - preview_len } else { 0 };
+
+            let mut omitted_posts = 0;
+            let mut omitted_images = 0;
+
+            if reply_count > preview_len {
+                omitted_posts = reply_count - preview_len;
+                for k in 0..start_idx {
+                    omitted_images += post_images_raw[k].len();
+                }
+            }
 
             let mut replies = Vec::new();
-            for (j, post) in preview_posts_raw.into_iter().enumerate() {
+            // Iterate from start_idx to end
+            for j in start_idx..reply_count {
                 replies.push(PostItem {
-                    model: post,
-                    images: post_images[j].clone(),
+                    model: posts_raw[j].clone(),
+                    images: post_images_raw[j].clone(),
                 });
             }
 
@@ -252,6 +271,9 @@ pub async fn view_board_handler(
                 images: thread_images[i].clone(),
                 replies,
                 reply_count,
+                image_count,
+                omitted_posts,
+                omitted_images
             });
         }
 
@@ -336,7 +358,7 @@ pub async fn create_thread_handler(
 
     if let Some(ban) = is_banned {
         return HtmlTemplate(crate::handler::ErrorTemplate {
-            message: format!("Ви забанені. Причина: {}. Спливає: {}",
+            message: format!("BANNED. Reason: {}. Expires: {}",
                              ban.reason.unwrap_or_default(), ban.expires_at)
         }).into_response();
     }

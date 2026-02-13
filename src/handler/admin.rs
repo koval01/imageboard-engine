@@ -33,6 +33,8 @@ struct AdminDashboardTemplate {
     admin: admins::Model,
     recent_posts: Vec<(posts::Model, String)>, // Post + BoardSlug
     recent_bans: Vec<bans::Model>,
+    total_posts: u64,
+    total_bans: u64,
 }
 
 #[derive(Template)]
@@ -136,6 +138,9 @@ pub async fn admin_dashboard(
         .await
         .unwrap();
 
+    let total_posts = posts::Entity::find().count(db).await.unwrap_or(0);
+    let total_bans = bans::Entity::find().count(db).await.unwrap_or(0);
+
     let role_name = match session.role {
         1 => "Janitor",
         2 => "Moderator",
@@ -154,7 +159,9 @@ pub async fn admin_dashboard(
     HtmlTemplate(AdminDashboardTemplate {
         admin: admin_view_model,
         recent_posts,
-        recent_bans
+        recent_bans,
+        total_posts,
+        total_bans,
     }).into_response()
 }
 
