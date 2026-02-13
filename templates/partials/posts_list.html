@@ -1,3 +1,16 @@
 {% for post in posts %}
 {% include "partials/post.html" %}
 {% endfor %}
+
+<!-- OOB Swap to update the poller with the new Last ID -->
+{% if let Some(cursor) = next_cursor %}
+<div id="poll-trigger"
+     hx-swap-oob="true"
+     hx-get="/{{ board_slug }}/thread/{{ thread_id }}/poll"
+     hx-vals='{"after": {{ cursor }}}'
+     hx-trigger="every 10s"
+     hx-target="#new-posts"
+     hx-swap="beforeend"
+     class="hidden">
+</div>
+{% endif %}

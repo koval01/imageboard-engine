@@ -20,7 +20,6 @@ use crate::{
     security::get_client_ip,
 };
 
-// --- CACHE ENUM DEFINITION ---
 #[derive(Clone)]
 pub enum CacheData {
     Home(Vec<BoardStat>, Vec<(images::Model, String)>, Vec<threads::Model>),
@@ -54,7 +53,6 @@ pub struct ThreadItem {
     pub omitted_images: usize,
 }
 
-// --- Home Page Structs ---
 #[derive(Clone)]
 pub struct BoardStat {
     pub model: boards::Model,
@@ -79,7 +77,6 @@ struct AboutTemplate {}
 #[template(path = "rules.html")]
 struct RulesTemplate {}
 
-// --- Board & Thread Templates ---
 #[derive(Template)]
 #[template(path = "board.html")]
 struct BoardTemplate {
@@ -101,7 +98,6 @@ struct ThreadTemplate {
     last_post_id: i32,
 }
 
-// --- Partial Templates (HTMX Responses) ---
 #[derive(Template)]
 #[template(path = "partials/post.html")]
 struct PostPartialTemplate {
@@ -112,6 +108,10 @@ struct PostPartialTemplate {
 #[template(path = "partials/posts_list.html")]
 struct PostsListPartialTemplate {
     posts: Vec<PostItem>,
+    // Data needed to update the HTMX polling cursor
+    next_cursor: Option<i32>,
+    board_slug: String,
+    thread_id: i32,
 }
 
 async fn parse_multipart_form(
@@ -167,7 +167,6 @@ async fn parse_multipart_form(
     Ok(ParsedForm { subject, content, images: processed_images })
 }
 
-// Rate Limiter: 1 post per 60 seconds per IP
 async fn check_rate_limit(ip: &str, cache: &moka::future::Cache<String, u64>) -> Result<(), String> {
     let key = format!("rate_limit:{}", ip);
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
@@ -183,9 +182,6 @@ async fn check_rate_limit(ip: &str, cache: &moka::future::Cache<String, u64>) ->
     Ok(())
 }
 
-
-// --- HANDLERS ---
-
 pub async fn home_handler(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
@@ -193,7 +189,6 @@ pub async fn home_handler(
     let state_read = state.read().await;
     let cache_key = "home_view".to_string();
 
-    // 1. Try Cache
     if let Some(CacheData::Home(c_boards, c_images, c_threads)) = state_read.db_cache.get(&cache_key).await {
         return HtmlTemplate(HomeTemplate {
             boards: c_boards,
@@ -204,7 +199,6 @@ pub async fn home_handler(
         });
     }
 
-    // 2. Query DB
     let db = &state_read.pool;
     let cdn_url = state_read.config.cdn_url.clone();
 
@@ -258,7 +252,6 @@ pub async fn home_handler(
         .await
         .unwrap_or_default();
 
-    // 3. Save to Cache
     state_read.db_cache.insert(
         cache_key,
         CacheData::Home(boards_stats.clone(), recent_images.clone(), recent_threads.clone())
@@ -294,7 +287,6 @@ pub async fn view_board_handler(
     let board = boards::Entity::find_by_id(&slug).one(db).await.unwrap();
 
     if let Some(board) = board {
-        // 1. Try Cache for Threads List
         let cached_threads = if let Some(CacheData::Board(items)) = state_read.db_cache.get(&cache_key).await {
             Some(items)
         } else {
@@ -304,7 +296,6 @@ pub async fn view_board_handler(
         let thread_items = if let Some(items) = cached_threads {
             items
         } else {
-            // 2. Query DB (Heavy)
             let threads_raw = threads::Entity::find()
                 .filter(threads::Column::BoardSlug.eq(&slug))
                 .order_by_desc(threads::Column::UpdatedAt)
@@ -331,7 +322,6 @@ pub async fn view_board_handler(
                     image_count += imgs.len();
                 }
 
-                // Preview last 3 posts
                 let preview_len = 3;
                 let start_idx = if reply_count > preview_len { reply_count - preview_len } else { 0 };
 
@@ -351,7 +341,7 @@ pub async fn view_board_handler(
                         model: posts_raw[j].clone(),
                         images: post_images_raw[j].clone(),
                         cdn_url: cdn_url.clone(),
-                        admin_role: 0, // Placeholder, updated below per request
+                        admin_role: 0,
                         board_slug: slug.clone(),
                     });
                 }
@@ -367,12 +357,10 @@ pub async fn view_board_handler(
                 });
             }
 
-            // 3. Save to Cache
             state_read.db_cache.insert(cache_key, CacheData::Board(items.clone())).await;
             items
         };
 
-        // 4. Update Role Context on retrieved/cached items
         let final_threads = thread_items.into_iter().map(|mut t| {
             t.replies.iter_mut().for_each(|r| r.admin_role = session.role);
             t
@@ -402,7 +390,6 @@ pub async fn view_thread_handler(
     let board = boards::Entity::find_by_id(&slug).one(db).await.unwrap();
 
     if let Some(_board) = board {
-        // 1. Try Cache
         let cached_data = if let Some(CacheData::Thread(th, op, reps)) = state_read.db_cache.get(&cache_key).await {
             Some((th, op, reps))
         } else {
@@ -412,7 +399,6 @@ pub async fn view_thread_handler(
         let (thread, op_images, replies) = if let Some(d) = cached_data {
             d
         } else {
-            // 2. Query DB
             let thread = threads::Entity::find_by_id(thread_id).one(db).await.unwrap();
             if let Some(thread) = thread {
                 let op_images = thread.find_related(images::Entity).all(db).await.unwrap();
@@ -431,12 +417,11 @@ pub async fn view_thread_handler(
                         model: post,
                         images: post_images_vec[i].clone(),
                         cdn_url: cdn_url.clone(),
-                        admin_role: 0, // Placeholder
+                        admin_role: 0,
                         board_slug: slug.clone(),
                     });
                 }
 
-                // 3. Save to Cache
                 state_read.db_cache.insert(
                     cache_key,
                     CacheData::Thread(thread.clone(), op_images.clone(), posts_with_images.clone())
@@ -450,7 +435,6 @@ pub async fn view_thread_handler(
 
         let last_post_id = replies.last().map(|p| p.model.id).unwrap_or(0);
 
-        // 4. Update Role Context
         let final_replies = replies.into_iter().map(|mut p| {
             p.admin_role = session.role;
             p
@@ -545,7 +529,6 @@ pub async fn create_thread_handler(
             let _ = image_model.insert(db).await;
         }
 
-        // Invalidate Home & Board caches immediately
         state_read.db_cache.invalidate("home_view").await;
         state_read.db_cache.invalidate(&format!("board_{}", slug)).await;
 
@@ -676,10 +659,7 @@ pub async fn poll_new_posts_handler(
     let db = &state.pool;
     let cdn_url = state.config.cdn_url.clone();
 
-    // Polling is light and frequent, NO CACHING here to ensure real-time updates.
-    // However, if volume is insane, we could cache the "latest post ID" for a thread
-    // and only query DB if it changed, but simple query is fine for now.
-
+    // No cache for polling updates (real-time)
     let new_posts = posts::Entity::find()
         .filter(posts::Column::ThreadId.eq(thread_id))
         .filter(posts::Column::Id.gt(query.after))
@@ -691,6 +671,8 @@ pub async fn poll_new_posts_handler(
     if new_posts.is_empty() {
         return "".into_response();
     }
+
+    let last_id = new_posts.last().map(|p| p.id).unwrap_or(query.after);
 
     let post_images_vec = new_posts.load_many(images::Entity, db).await.unwrap();
     let mut posts_with_images = Vec::new();
@@ -706,6 +688,9 @@ pub async fn poll_new_posts_handler(
     }
 
     HtmlTemplate(PostsListPartialTemplate {
-        posts: posts_with_images
+        posts: posts_with_images,
+        next_cursor: Some(last_id),
+        board_slug: slug,
+        thread_id: thread_id
     }).into_response()
 }
