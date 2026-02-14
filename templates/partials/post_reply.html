@@ -1,0 +1,51 @@
+<div class="post-container mb-2 last:mb-0" id="p{{ post.model.id }}">
+  <div class="side-arrows text-skin-muted align-top table-cell pr-2 text-xs select-none">>></div>
+  <div class="post reply bg-skin-reply-bg border border-skin-border-reply rounded shadow-sm p-2 ml-4 table-cell w-full">
+    <!-- Header -->
+    <div class="mb-1 text-xs text-skin-muted flex gap-2 items-center border-b border-skin-border-reply/30 pb-1">
+      <input type="checkbox">
+      <span class="name text-skin-name font-bold">Anonymous</span>
+      {% if let Some(cc) = post.model.country_code %}
+      <span class="fi fi-{{ cc|lower }}"></span>
+      {% endif %}
+      <span>{{ post.model.created_at.format("%d/%m %H:%M") }}</span>
+      <a href="/{{ post.board_slug }}/thread/{{ post.model.thread_id }}#p{{ post.model.id }}" class="text-skin-link hover:text-skin-red font-mono">No.{{ post.model.id }}</a>
+      <span class="text-skin-link cursor-pointer hover:underline reply-btn bg-white px-1 border border-skin-border-reply rounded" data-id="{{ post.model.id }}">Reply</span>
+
+      <!-- Admin Tools -->
+      {% if post.admin_role > 0 %}
+      <span class="text-gray-500 text-[9px] font-mono ml-auto">[{{ post.model.ip_address }}]</span>
+      {% if post.admin_role >= 2 %}
+      <form hx-post="/admin/delete" hx-confirm="Delete Post?" hx-swap="delete" hx-target="#p{{ post.model.id }}" class="inline" data-no-reset="true">
+        <input type="hidden" name="post_id" value="{{ post.model.id }}">
+        <button class="text-red-700 font-bold hover:underline ml-1 cursor-pointer">[D]</button>
+      </form>
+      {% endif %}
+      {% endif %}
+
+      <!-- Report -->
+      {% if post.admin_role <= 1 %}
+      <form hx-post="/report" hx-swap="none" data-no-reset="true" class="inline">
+        <input type="hidden" name="post_id" value="{{ post.model.id }}">
+        <input type="hidden" name="reason" value="">
+        <button data-action="report" class="text-skin-accent hover:underline ml-1 cursor-pointer" title="Report">⚠</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <!-- Content -->
+    <div class="flex gap-2 items-start">
+      <!-- Image (Inline for replies usually) -->
+      {% if !post.images.is_empty() %}
+      {% for img in post.images %}
+      <a class="file-link block shrink-0" href="{{ post.cdn_url }}/{{ img.url }}">
+        <img src="{{ post.cdn_url }}/{{ img.thumbnail_url }}" class="file-thumb border border-skin-border-reply rounded w-20 h-20 object-cover">
+      </a>
+      {% endfor %}
+      {% endif %}
+
+      {% let content = post.model.content %}
+      {% include "partials/post_content.html" %}
+    </div>
+  </div>
+</div>

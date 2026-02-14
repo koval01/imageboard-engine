@@ -1,0 +1,38 @@
+<div class="flex justify-center mb-10">
+    <div class="bg-skin-reply-bg border border-skin-border-reply p-3 rounded-lg shadow-md max-w-lg w-full">
+        <h3 class="text-center font-bold text-skin-text mb-2">Reply to Thread</h3>
+        <form hx-post="/{{ board.slug }}/thread/{{ thread.id }}/reply"
+              hx-encoding="multipart/form-data"
+              hx-target="#new-posts"
+              hx-swap="beforebegin"
+              hx-indicator="#reply-spinner"
+              class="flex flex-col gap-2">
+
+            <div>
+                <textarea id="reply-box" name="content" rows="5" class="w-full p-2 text-sm border border-skin-border-input rounded bg-skin-input text-skin-text focus:outline-none focus:border-skin-link" required placeholder="Write a reply..."></textarea>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div class="flex flex-col">
+                    <div class="flex items-center gap-2">
+                        <input type="file" name="file" multiple id="file-input-reply" class="hidden">
+                        <button type="button" onclick="document.getElementById('file-input-reply').click()" class="bg-skin-surface border border-skin-border-input px-3 py-1 text-xs hover:opacity-80 cursor-pointer rounded text-skin-text">
+                            📎 File
+                        </button>
+                    </div>
+                    <div class="file-list-display text-[10px] text-skin-link mt-1 hidden"></div>
+                </div>
+
+                <button type="submit" class="bg-skin-header border border-skin-border-reply px-6 py-1 text-sm font-bold hover:bg-skin-surface cursor-pointer rounded shadow-sm text-skin-text min-w-[100px] flex justify-center items-center h-8 transition-colors">
+                    <span class="btn-text">Reply</span>
+                    <span id="reply-spinner" class="loading-spinner hidden">
+                        <svg class="animate-spin h-4 w-4 text-skin-text" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>

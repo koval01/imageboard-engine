@@ -1,0 +1,17 @@
+{% if !images.is_empty() %}
+<div class="flex flex-col gap-2 shrink-0">
+  {% for img in images %}
+  <div class="group relative">
+    <div class="file-info text-[10px] mb-1 truncate max-w-[200px]">
+      <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline text-skin-link font-bold" title="{{ img.filename }}">{{ img.filename }}</a>
+      <span class="text-skin-muted">({{ (img.size / 1024)|round }} KB)</span>
+    </div>
+    <a class="file-link block" href="{{ cdn_url }}/{{ img.url }}">
+      <img src="{{ cdn_url }}/{{ img.thumbnail_url }}"
+           class="file-thumb border border-skin-border-reply rounded shadow-sm max-w-[250px] max-h-[250px] hover:opacity-90 transition-opacity"
+           loading="lazy">
+    </a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

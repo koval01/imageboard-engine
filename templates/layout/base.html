@@ -18,7 +18,7 @@
 
     <style>
         /* Toast Transitions */
-        .toast-enter-active, .toast-leave-active { transition: all 0.5s ease; }
+        .toast-enter-active, .toast-leave-active { transition: all 0.3s ease; }
         .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateX(30px); }
         /* Loader Overlay */
         .loader-overlay { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(2px); z-index: 9999; }
@@ -28,7 +28,8 @@
 <body class="bg-skin-surface text-skin-text font-sans text-[13px]">
 
 <div id="app">
-    <!-- Global Loader -->
+    <!-- Global Loader (Wrapped in raw for Vue) -->
+    {% raw %}
     <div v-if="isLoading" class="loader-overlay fixed inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-300">
         <div class="bg-skin-header p-4 rounded-lg shadow-lg border border-skin-border flex flex-col items-center gap-2">
             <svg class="animate-spin h-8 w-8 text-skin-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -39,60 +40,29 @@
         </div>
     </div>
 
-    <!-- Toast Notifications -->
-    <div class="fixed top-4 right-4 z-[10000] flex flex-col gap-2">
+    <!-- Toast Notifications (Wrapped in raw for Vue) -->
+    <div class="fixed top-4 right-4 z-[10000] flex flex-col gap-2 pointer-events-none">
         <transition-group name="toast">
             <div v-for="toast in toasts" :key="toast.id"
-                 :class="['p-3 rounded shadow-lg border text-sm font-bold min-w-[250px] cursor-pointer',
-                 toast.type === 'error' ? 'bg-red-100 border-red-400 text-red-800' : 'bg-green-100 border-green-400 text-green-800']"
+                 class="pointer-events-auto p-3 rounded shadow-lg border text-sm font-bold min-w-[250px] cursor-pointer"
+                 :class="toast.type === 'error' ? 'bg-red-100 border-red-400 text-red-800' : 'bg-green-100 border-green-400 text-green-800'"
                  @click="removeToast(toast.id)">
-                {% raw %}{{ toast.message }}{% endraw %}
+                {{ toast.message }}
             </div>
         </transition-group>
     </div>
+    {% endraw %}
 
     <!-- Header -->
-    <div class="border-b border-skin-border-reply mb-2 p-1 text-[13px]">
-        <div class="flex flex-wrap justify-between items-center">
-            <div class="flex gap-1">
-                <span class="text-skin-muted">[</span>
-                <a href="/" class="hover:underline font-bold">Home</a>
-                <span class="text-skin-muted">/</span>
-                <a href="/b" class="hover:underline">b</a>
-                <span class="text-skin-muted">/</span>
-                <a href="/pol" class="hover:underline">pol</a>
-                <span class="text-skin-muted">/</span>
-                <a href="/tech" class="hover:underline">tech</a>
-                <span class="text-skin-muted">/</span>
-                <a href="/a" class="hover:underline">a</a>
-                <span class="text-skin-muted">/</span>
-                <a href="/sex" class="hover:underline">sex</a>
-                <span class="text-skin-muted">]</span>
-            </div>
-
-            <div class="flex gap-2">
-                {% block admin_nav %}{% endblock %}
-                <span class="text-skin-muted">[</span>
-                <button id="theme-toggle" class="hover:underline cursor-pointer">Theme</button>
-                <span class="text-skin-muted">]</span>
-            </div>
-        </div>
-    </div>
+    {% include "partials/header.html" %}
 
     <!-- Main Content -->
     <main class="px-2 pb-10">
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="mt-8 pb-4 text-center text-xs text-skin-muted border-t border-skin-border-reply pt-2">
-        <div class="mb-2">
-            <a href="/about" class="hover:underline">About</a> •
-            <a href="/rules" class="hover:underline">Rules</a>
-        </div>
-        <div>Copyright © 2026 Kryivka.org</div>
-        <!-- This placeholder is replaced by the server middleware with the actual processing time -->
-        <div class="text-[10px] opacity-50 mt-1" id="proc-time"><!-- PROC_TIME --></div>
-    </footer>
+    <!-- Footer -->
+    {% include "partials/footer.html" %}
 </div>
 
 <script>
@@ -104,29 +74,28 @@
             const toasts = ref([]);
             let toastId = 0;
 
-            // Global exposure for non-Vue JS to trigger toasts
+            // Global exposure for non-Vue JS (HTMX/Core.js) to trigger toasts
             window.showToast = (message, type = 'success') => {
                 const id = toastId++;
                 toasts.value.push({ id, message, type });
                 setTimeout(() => {
                     toasts.value = toasts.value.filter(t => t.id !== id);
-                }, 3000);
+                }, 4000);
             };
 
-            // Event Listeners for HTMX
-            window.addEventListener('htmx:beforeRequest', () => isLoading.value = true);
-            window.addEventListener('htmx:afterRequest', () => isLoading.value = false);
-            window.addEventListener('htmx:responseError', () => {
+            // HTMX Integration
+            document.body.addEventListener('htmx:beforeRequest', () => { isLoading.value = true; });
+            document.body.addEventListener('htmx:afterRequest', () => { isLoading.value = false; });
+            document.body.addEventListener('htmx:responseError', () => {
                 isLoading.value = false;
                 window.showToast("Server Error", "error");
             });
-            window.addEventListener('htmx:sendError', () => {
+            document.body.addEventListener('htmx:sendError', () => {
                 isLoading.value = false;
                 window.showToast("Network Error", "error");
             });
 
-            // HTMX: Update timing after request using custom header
-            // This handles updating the timer on subsequent HTMX interactions
+            // Processing Time Update via HTMX headers
             document.body.addEventListener('htmx:afterOnLoad', function(evt) {
                 const xhr = evt.detail.xhr;
                 const timing = xhr.getResponseHeader('X-Processing-Time');

@@ -2,7 +2,7 @@
 
 {% block admin_nav %}
 {% if admin_role > 0 %}
-<span class="text-skin-muted">[</span><a href="/admin/dashboard" class="text-red-700 font-bold hover:underline">АДМІН</a><span class="text-skin-muted">]</span>
+<span class="text-skin-muted">[</span><a href="/admin/dashboard" class="text-red-700 font-bold hover:underline">ADMIN</a><span class="text-skin-muted">]</span>
 {% endif %}
 {% endblock %}
 
@@ -10,144 +10,40 @@
 
 <!-- Return Link -->
 <div class="mb-4 text-lg font-bold border-b border-skin-border-reply pb-1">
-    <a href="/{{ board.slug }}" class="hover:underline text-blue-800">Назад</a>
+    <a href="/{{ board.slug }}" class="hover:underline text-blue-800">Back</a>
     <span class="text-gray-500 text-sm ml-2">/{{ board.slug }}/ - {{ board.name }}</span>
 </div>
 
-<!-- The Thread -->
-<div class="thread" id="t{{ thread.id }}">
-    <!-- OP -->
-    <div class="post op block overflow-hidden bg-skin-surface p-4 rounded-lg border border-skin-border-reply mb-4 shadow-sm relative">
-        <div class="mb-2 flex flex-wrap gap-2 items-center border-b border-skin-border-reply/50 pb-2 text-sm text-skin-muted">
-            <input type="checkbox">
-            {% if let Some(subject) = thread.subject %}
-            <span class="subject text-skin-subject text-base">{{ subject }}</span>
-            {% endif %}
-            <span class="name text-skin-name">Анонім</span>
-            {% if let Some(cc) = thread.country_code %}
-            <span class="fi fi-{{ cc|lower }}"></span>
-            {% endif %}
-            <span class="text-skin-text">{{ thread.created_at.format("%d/%m/%y(%a)%H:%M") }}</span>
-            <a href="#t{{ thread.id }}" class="text-skin-link hover:text-skin-red">No.{{ thread.id }}</a>
-            <span class="text-skin-link cursor-pointer hover:underline reply-btn bg-skin-base px-1 border rounded" data-id="{{ thread.id }}">Reply</span>
+<!-- OP -->
+{% include "partials/post_op.html" %}
 
-            {% if admin_role > 0 %}
-            <span class="text-gray-500 text-[10px] font-mono ml-auto">[{{ thread.ip_address }}]</span>
-            {% if admin_role >= 2 %}
-            <form hx-post="/admin/delete" hx-confirm="Видалити тред?" hx-swap="none" class="inline" data-no-reset="true">
-                <input type="hidden" name="thread_id" value="{{ thread.id }}">
-                <button class="text-red-700 font-bold hover:underline ml-1">[DEL]</button>
-            </form>
-            {% endif %}
-            {% endif %}
+<!-- Replies -->
+<div class="replies space-y-2 mt-4" id="replies-container">
+    {% for post in replies %}
+    {% include "partials/post_reply.html" %}
+    {% endfor %}
 
-            {% if admin_role <= 1 %}
-            <form hx-post="/report" hx-swap="none" data-no-reset="true">
-                <input type="hidden" name="post_id" value="{{ thread.id }}">
-                <input type="hidden" name="reason" value="">
-                <button data-action="report" class="text-skin-accent hover:underline ml-1 cursor-pointer" title="Поскаржитися">⚠</button>
-            </form>
-            {% endif %}
-        </div>
+    <!-- Injection Point for HTMX -->
+    <div id="new-posts"></div>
 
-        <div class="flex gap-4">
-            <div class="flex flex-col gap-2 shrink-0">
-                {% for img in op_images %}
-                <div>
-                    <div class="file-info text-[10px] mb-1 truncate max-w-[200px]">
-                        <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline text-skin-link font-bold">{{ img.filename }}</a>
-                        <span class="text-skin-muted">({{ (img.size / 1024) }} KB)</span>
-                    </div>
-                    <a class="file-link block" href="{{ cdn_url }}/{{ img.url }}">
-                        <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="file-thumb border border-skin-border-reply rounded shadow-sm max-w-[250px] max-h-[250px]">
-                    </a>
-                </div>
-                {% endfor %}
-            </div>
-
-            <blockquote class="postMessage text-base leading-relaxed text-skin-text flex-1">
-                {% for line in thread.content.lines() %}
-                {% if line.trim().starts_with(">") && !line.trim().starts_with(">>") %}
-                <span class="greentext">{{ line }}</span><br>
-                {% else if line.trim().starts_with(">>") %}
-                {% let ref_id = line.trim().replace(">>", "") %}
-                <a href="#p{{ ref_id }}" class="text-skin-link hover:underline quote-link">&gt;&gt;{{ ref_id }}</a><br>
-                {% else %}
-                {{ line }}<br>
-                {% endif %}
-                {% endfor %}
-            </blockquote>
-        </div>
-    </div>
-
-    <!-- Replies -->
-    <div class="replies space-y-2" id="replies-container">
-        {% for post in replies %}
-        {% include "partials/post.html" %}
-        {% endfor %}
-
-        <!-- Injection Point -->
-        <div id="new-posts"></div>
-
-        <!-- Auto Refresh Trigger -->
-        <div id="poll-trigger"
-             hx-get="/{{ board.slug }}/thread/{{ thread.id }}/poll"
-             hx-vals='{"after": {{ last_post_id }}}'
-             hx-trigger="every 10s"
-             hx-target="#new-posts"
-             hx-swap="beforeend"
-             class="hidden">
-        </div>
+    <!-- Auto Refresh Trigger -->
+    <div id="poll-trigger"
+         hx-get="/{{ board.slug }}/thread/{{ thread.id }}/poll"
+         hx-vals='{"after": {{ last_post_id }}}'
+         hx-trigger="every 10s"
+         hx-target="#new-posts"
+         hx-swap="beforeend"
+         class="hidden">
     </div>
 </div>
 
 <hr class="border-skin-border-reply my-8">
 
-<!-- Thread Reply Form (Bottom) -->
-<div class="flex justify-center mb-10">
-    <div class="bg-skin-reply-bg border border-skin-border-reply p-3 rounded-lg shadow-md max-w-lg w-full">
-        <h3 class="text-center font-bold text-skin-text mb-2">Відповісти в тред</h3>
-        <form hx-post="/{{ board.slug }}/thread/{{ thread.id }}/reply"
-              hx-encoding="multipart/form-data"
-              hx-target="#new-posts"
-              hx-swap="beforebegin"
-              hx-indicator="#reply-spinner"
-              class="flex flex-col gap-2">
+<!-- Thread Reply Form -->
+{% include "partials/form_reply.html" %}
 
-            <!-- Comment -->
-            <div>
-                <textarea id="reply-box" name="content" rows="5" class="w-full p-2 text-sm border border-skin-border-input rounded bg-skin-input text-skin-text focus:outline-none focus:border-skin-link" required placeholder="Напишіть відповідь..."></textarea>
-            </div>
-
-            <!-- File Upload & Submit -->
-            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                <div class="flex flex-col">
-                    <div class="flex items-center gap-2">
-                        <input type="file" name="file" multiple id="file-input" class="hidden">
-                        <button type="button" onclick="document.getElementById('file-input').click()" class="bg-skin-surface border border-skin-border-input px-3 py-1 text-xs hover:opacity-80 cursor-pointer rounded text-skin-text">
-                            📎 Файл
-                        </button>
-                    </div>
-                    <div class="file-list-display text-[10px] text-skin-link mt-1 hidden"></div>
-                </div>
-
-                <button type="submit" class="bg-skin-header border border-skin-border-reply px-6 py-1 text-sm font-bold hover:bg-skin-surface cursor-pointer rounded shadow-sm text-skin-text min-w-[100px] flex justify-center items-center h-8 transition-colors">
-                    <span class="btn-text">Відповісти</span>
-                    <span id="reply-spinner" class="loading-spinner hidden">
-                        <svg class="animate-spin h-4 w-4 text-skin-text" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                    </span>
-                </button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div class="text-center text-sm font-bold pb-8">
-    <a href="/{{ board.slug }}" class="hover:underline text-blue-800">Назад до /{{ board.slug }}/</a>
-    <div class="mt-2 text-skin-link">[<a href="#" onclick="window.scrollTo(0,0); return false;" class="hover:underline">Вгору</a>]</div>
+<div class="text-center text-sm font-bold pb-8 mt-4">
+    <a href="/{{ board.slug }}" class="hover:underline text-blue-800">Back to /{{ board.slug }}/</a>
 </div>
 
 {% endblock %}

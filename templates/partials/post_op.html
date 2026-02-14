@@ -1,0 +1,47 @@
+<div class="thread-container bg-skin-surface p-4 rounded-lg shadow-post border border-skin-border-reply mb-8" id="t{{ thread.id }}">
+    <div class="post op block overflow-hidden relative">
+        <!-- Header -->
+        <div class="mb-3 text-sm flex flex-wrap gap-2 items-center text-skin-muted pb-2 border-b border-skin-border-reply/50">
+            <input type="checkbox">
+            {% if let Some(subject) = thread.subject %}
+            <span class="subject text-skin-subject text-base">{{ subject }}</span>
+            {% endif %}
+
+            <span class="name text-skin-name font-bold">Anonymous</span>
+
+            {% if let Some(cc) = thread.country_code %}
+            <span class="fi fi-{{ cc|lower }} rounded-sm shadow-sm" title="{{ cc }}"></span>
+            {% endif %}
+
+            <span class="text-xs">{{ thread.created_at.format("%d/%m/%y(%a)%H:%M") }}</span>
+
+            <a href="/{{ board.slug }}/thread/{{ thread.id }}" class="text-skin-link hover:text-skin-red font-mono">No.{{ thread.id }}</a>
+
+            <span class="text-skin-link cursor-pointer hover:underline reply-btn text-xs bg-skin-reply-bg px-1 rounded border border-skin-border-reply" data-id="{{ thread.id }}">Reply</span>
+
+            <a href="/{{ board.slug }}/thread/{{ thread.id }}" class="font-bold text-skin-accent hover:underline ml-auto text-xs uppercase tracking-wider">Open</a>
+
+            {% if admin_role > 0 %}
+            <span class="text-[10px] bg-red-100 text-red-800 px-1 rounded ml-1 border border-red-200">IP: {{ thread.ip_address }}</span>
+            {% if admin_role >= 2 %}
+            <form hx-post="/admin/delete" hx-confirm="Delete Thread?" hx-swap="delete" hx-target="#t{{ thread.id }}" class="inline" data-no-reset="true">
+                <input type="hidden" name="thread_id" value="{{ thread.id }}">
+                <button class="text-red-700 font-bold hover:underline ml-1">[DEL]</button>
+            </form>
+            {% endif %}
+            {% endif %}
+        </div>
+
+        <!-- Body -->
+        <div class="flex flex-col sm:flex-row gap-4">
+            {% let images = op_images %}
+            {% include "partials/image_grid.html" %}
+
+            {% let content = thread.content %}
+            {% include "partials/post_content.html" %}
+        </div>
+    </div>
+
+    <!-- Replies Slot -->
+    {% block replies_slot %}{% endblock %}
+</div>
