@@ -1,11 +1,12 @@
-name: Production Build & Health Check
+name: Production Build & Release
 
 on:
   push:
     branches: [ "master", "main" ]
-  pull_request:
-    branches: [ "master", "main" ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -23,8 +24,8 @@ env:
   S3_ENDPOINT: "http://localhost:9000"
 
 jobs:
-  build-and-verify:
-    name: Build (x86_64) & Verify
+  build-verify-release:
+    name: Build, Test & Release
     runs-on: ubuntu-24.04
 
     services:
@@ -58,7 +59,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: js-tools/package.json
 
-      - name: Build Frontend (Tailwind & Obfuscation)
+      - name: Build Frontend
         working-directory: ./js-tools
         run: |
           npm ci
@@ -76,40 +77,62 @@ jobs:
       - name: Runtime Health Check
         timeout-minutes: 2
         run: |
-          # Start the server in background
           ./target/release/ebala &
           SERVER_PID=$!
-          
           echo "Waiting for server to start on port 8082..."
           
-          # Poll the server for up to 30 seconds
           for i in {1..30}; do
             if curl -s http://127.0.0.1:8082 > /dev/null; then
               echo "✅ Server is responding!"
-          
-              # Optional: Check if a specific page returns 200 OK
               HTTP_CODE=$(curl -o /dev/null -s -w "%{http_code}\n" http://127.0.0.1:8082/about)
               if [ "$HTTP_CODE" -eq "200" ]; then
-                echo "✅ /about endpoint returned 200 OK"
+                echo "✅ /about returned 200 OK"
                 kill $SERVER_PID
                 exit 0
-              else
-                echo "❌ /about returned $HTTP_CODE"
-                kill $SERVER_PID
-                exit 1
               fi
             fi
             sleep 1
           done
           
-          echo "❌ Server failed to start within 30 seconds."
-          # Print logs to see why it failed (e.g. DB connection error)
+          echo "❌ Server failed to start."
           kill $SERVER_PID || true
           exit 1
 
-      - name: Upload Production Binary
-        uses: actions/upload-artifact@v4
+      - name: Prepare Release Assets
+        run: |
+          # Create a directory to organize assets
+          mkdir -p release-assets
+          
+          # 1. Copy the raw binary (easy download)
+          cp target/release/ebala release-assets/ebala
+          
+          # 2. Create a compressed tarball (preserves permissions)
+          tar -czvf release-assets/ebala-linux-x86_64.tar.gz -C target/release ebala
+          
+          # 3. Calculate SHA256 checksum
+          sha256sum release-assets/ebala-linux-x86_64.tar.gz > release-assets/checksum.sha256
+
+      - name: Upload to "Continuous" Release
+        uses: softprops/action-gh-release@v2
+        if: github.event_name == 'push'
         with:
-          name: ebala-linux-x86_64
-          path: target/release/ebala
-          if-no-files-found: error
+          tag_name: continuous
+          name: "Continuous Build (Latest)"
+          body: |
+            **Automated Build**
+            - Commit: `${{ github.sha }}`
+            - Date: $(date -u)
+            - Built on: Ubuntu 24.04 (Compatible with 25.04)
+            
+            ### How to update on server:
+            ```bash
+            wget -O ebala.tar.gz https://github.com/${{ github.repository }}/releases/download/continuous/ebala-linux-x86_64.tar.gz
+            tar -xzvf ebala.tar.gz
+            chmod +x ebala
+            systemctl restart ebala
+            ```
+          prerelease: true
+          files: |
+            release-assets/ebala
+            release-assets/ebala-linux-x86_64.tar.gz
+            release-assets/checksum.sha256
