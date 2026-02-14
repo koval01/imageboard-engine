@@ -30,6 +30,13 @@ use tower_http::cors::CorsLayer;
 
 use crate::handler::board::CacheData;
 
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 pub struct AppState {
     pub pool: DatabaseConnection,
     pub config: Config,
