@@ -522,6 +522,7 @@ pub async fn admin_logs_view(
 #[template(path = "admin/reports.html")]
 struct AdminReportsTemplate {
     reports: Vec<(reports::Model, Option<posts::Model>, Vec<images::Model>)>,
+    cdn_url: String, // Added cdn_url for image display
 }
 
 pub async fn admin_reports_view(
@@ -534,6 +535,7 @@ pub async fn admin_reports_view(
 
     let state = state.read().await;
     let db = &state.pool;
+    let cdn_url = state.config.cdn_url.clone();
 
     let reports_raw = reports::Entity::find()
         .filter(reports::Column::Status.eq("OPEN"))
@@ -559,5 +561,6 @@ pub async fn admin_reports_view(
 
     HtmlTemplate(AdminReportsTemplate {
         reports: full_reports,
+        cdn_url,
     }).into_response()
 }

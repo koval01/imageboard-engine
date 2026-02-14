@@ -12,17 +12,6 @@ pub struct SessionClaims {
     pub iat: usize,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CreateThreadSchema {
-    pub subject: Option<String>,
-    pub content: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CreatePostSchema {
-    pub content: String,
-}
-
 pub mod boards {
     use super::*;
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize)]
@@ -121,7 +110,7 @@ pub mod images {
         pub width: i32,
         pub height: i32,
         pub size: i64,
-        pub exif: Option<serde_json::Value>,
+        pub exif: Option<serde_json::Value>, // Added field
         pub created_at: NaiveDateTime,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -145,7 +134,7 @@ pub mod admins {
         pub id: i32,
         pub username: String,
         pub service_key: String,
-        pub role: i32, // 1=Janitor, 2=Mod, 3=Admin
+        pub role: i32,
         pub created_at: NaiveDateTime,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

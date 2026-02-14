@@ -33,7 +33,7 @@ pub struct ProcessedImage {
     pub height: i32,
     pub size: i64,
     pub hash: String,
-    pub exif: Option<serde_json::Value>,
+    pub exif: Option<serde_json::Value>, // Added field
 }
 
 // Configuration constants
@@ -67,7 +67,6 @@ impl StorageService {
             s3_client = Some(Client::new(&aws_config));
             s3_bucket = std::env::var("S3_BUCKET_NAME").expect("S3_BUCKET_NAME not set");
         } else {
-            // Ensure local directory exists
             fs::create_dir_all(&config.media_path)
                 .await
                 .expect("Failed to create media directory");
@@ -142,8 +141,7 @@ impl StorageService {
         original_filename: String,
         db: &DatabaseConnection,
     ) -> Result<ProcessedImage> {
-        // 1. Process Image (Resize & WebP Conversion & EXIF Extraction)
-        // We move bytes into the blocking thread.
+        // 1. Process Image & Extract EXIF (Blocking Task)
         let (full_img_bytes, thumb_img_bytes, width, height, exif_json) =
             tokio::task::spawn_blocking(move || {
                 // --- EXIF Extraction ---
@@ -152,7 +150,6 @@ impl StorageService {
                 let mut cursor = Cursor::new(&file_bytes);
 
                 if let Ok(exif) = exif_reader.read_from_container(&mut cursor) {
-                    // We only want specific forensic tags, not everything (e.g. MakerNote binary blobs)
                     let tags_of_interest = vec![
                         Tag::DateTimeOriginal,
                         Tag::DateTime,
@@ -170,9 +167,7 @@ impl StorageService {
 
                     for field in exif.fields() {
                         if tags_of_interest.contains(&field.tag) {
-                            // Convert value to string, handling possible display formatting
                             let val_str = field.display_value().with_unit(&exif).to_string();
-                            // Clean up any null terminators
                             let clean_val = val_str.trim_matches(char::from(0)).to_string();
                             exif_map.insert(
                                 field.tag.description().unwrap_or(field.tag.to_string().as_str()).to_string(),
@@ -188,14 +183,12 @@ impl StorageService {
                     Some(serde_json::Value::Object(exif_map))
                 };
 
-                // --- Image Processing ---
-                // Load from memory (this ignores/strips EXIF automatically when we later convert)
+                // --- Image Processing (Strips Metadata) ---
                 let img = image::load_from_memory(&file_bytes)
                     .context("Failed to load image from memory")?;
 
                 let (w, h) = img.dimensions();
 
-                // Resize logic
                 let processed_img = if w > MAX_WIDTH || h > MAX_HEIGHT {
                     img.resize(MAX_WIDTH, MAX_HEIGHT, FilterType::Lanczos3)
                 } else {
@@ -204,13 +197,11 @@ impl StorageService {
 
                 let (final_w, final_h) = processed_img.dimensions();
 
-                // WebP Encoding (Strip Metadata)
                 let encoder = Encoder::from_image(&processed_img)
                     .map_err(|e| anyhow!("WebP encoding failed: {:?}", e))?;
                 let webp_data = encoder.encode(IMAGE_QUALITY);
                 let main_bytes = webp_data.to_vec();
 
-                // Thumbnail Logic
                 let thumb_img = img.thumbnail(384, 384);
                 let thumb_encoder = Encoder::from_image(&thumb_img)
                     .map_err(|e| anyhow!("Thumbnail WebP encoding failed: {:?}", e))?;
@@ -227,10 +218,10 @@ impl StorageService {
             })
                 .await??;
 
-        // 2. Calculate Hash of the main processed image
+        // 2. Calculate Hash
         let hash = Self::calculate_hash(&full_img_bytes);
 
-        // 3. Deduplication: Check if this hash already exists in DB
+        // 3. Deduplication Check
         let existing_image = images::Entity::find()
             .filter(images::Column::Hash.eq(&hash))
             .one(db)
@@ -246,11 +237,11 @@ impl StorageService {
                 height: img.height,
                 size: img.size,
                 hash,
-                exif: img.exif, // Use existing EXIF if image is same
+                exif: img.exif, // Return existing exif
             });
         }
 
-        // 4. If unique, generate new keys and Upload
+        // 4. Save New Files
         let uuid = Uuid::new_v4();
         let key_main = format!("{}.webp", uuid);
         let key_thumb = format!("{}_thumb.webp", uuid);

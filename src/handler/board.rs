@@ -20,7 +20,6 @@ use crate::{
     security::get_client_ip,
 };
 
-// --- CACHE ENUM DEFINITION ---
 #[derive(Clone)]
 pub enum CacheData {
     Home(Vec<BoardStat>, Vec<(images::Model, String)>, Vec<threads::Model>),
@@ -54,7 +53,6 @@ pub struct ThreadItem {
     pub omitted_images: usize,
 }
 
-// --- Home Page Structs ---
 #[derive(Clone)]
 pub struct BoardStat {
     pub model: boards::Model,
@@ -68,7 +66,6 @@ struct HomeTemplate {
     recent_images: Vec<(images::Model, String)>,
     recent_threads: Vec<threads::Model>,
     cdn_url: String,
-    admin_role: i32,
 }
 
 #[derive(Template)]
@@ -79,7 +76,6 @@ struct AboutTemplate {}
 #[template(path = "rules.html")]
 struct RulesTemplate {}
 
-// --- Board & Thread Templates ---
 #[derive(Template)]
 #[template(path = "board.html")]
 struct BoardTemplate {
@@ -101,10 +97,6 @@ struct ThreadTemplate {
     last_post_id: i32,
 }
 
-// --- Partial Templates (HTMX Responses) ---
-
-// We keep this for individual post rendering if needed elsewhere,
-// but reply_handler will now use PostsListPartialTemplate
 #[derive(Template)]
 #[template(path = "partials/post.html")]
 struct PostPartialTemplate {
@@ -188,12 +180,8 @@ async fn check_rate_limit(ip: &str, cache: &moka::future::Cache<String, u64>) ->
     Ok(())
 }
 
-
-// --- HANDLERS ---
-
 pub async fn home_handler(
-    State(state): State<Arc<RwLock<AppState>>>,
-    Extension(session): Extension<CurrentSession>,
+    State(state): State<Arc<RwLock<AppState>>>
 ) -> impl IntoResponse {
     let state_read = state.read().await;
     let cache_key = "home_view".to_string();
@@ -203,8 +191,7 @@ pub async fn home_handler(
             boards: c_boards,
             recent_images: c_images,
             recent_threads: c_threads,
-            cdn_url: state_read.config.cdn_url.clone(),
-            admin_role: session.role,
+            cdn_url: state_read.config.cdn_url.clone()
         });
     }
 
@@ -270,8 +257,7 @@ pub async fn home_handler(
         boards: boards_stats,
         recent_images,
         recent_threads,
-        cdn_url,
-        admin_role: session.role,
+        cdn_url
     })
 }
 
