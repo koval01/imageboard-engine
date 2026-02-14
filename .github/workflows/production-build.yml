@@ -1,0 +1,115 @@
+name: Production Build & Health Check
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  DATABASE_URL: "postgres://postgres:password@localhost:5432/ebala_test"
+  JWT_SECRET: "ci-testing-secret-key-change-this"
+  JWT_EXPIRED_IN: "60m"
+  JWT_MAXAGE: "60"
+  S3_PUBLIC_URL: "http://localhost:9000/test-bucket"
+  STORAGE_TYPE: "local"
+  MEDIA_ROOT: "./media"
+  MEDIA_PORT: "8083"
+  S3_ACCESS_KEY: "dummy"
+  S3_SECRET_KEY: "dummy"
+  S3_BUCKET_NAME: "dummy"
+  S3_ENDPOINT: "http://localhost:9000"
+
+jobs:
+  build-and-verify:
+    name: Build (x86_64) & Verify
+    runs-on: ubuntu-24.04
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: ebala_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config libpq-dev
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: js-tools/package.json
+
+      - name: Build Frontend (Tailwind & Obfuscation)
+        working-directory: ./js-tools
+        run: |
+          npm ci
+          npm run build-all
+
+      - name: Setup Rust Cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Build Binary (Release)
+        run: cargo build --release --locked --verbose
+
+      - name: Create Media Directory
+        run: mkdir -p ./media
+
+      - name: Runtime Health Check
+        timeout-minutes: 2
+        run: |
+          # Start the server in background
+          ./target/release/ebala &
+          SERVER_PID=$!
+          
+          echo "Waiting for server to start on port 8082..."
+          
+          # Poll the server for up to 30 seconds
+          for i in {1..30}; do
+            if curl -s http://127.0.0.1:8082 > /dev/null; then
+              echo "✅ Server is responding!"
+          
+              # Optional: Check if a specific page returns 200 OK
+              HTTP_CODE=$(curl -o /dev/null -s -w "%{http_code}\n" http://127.0.0.1:8082/about)
+              if [ "$HTTP_CODE" -eq "200" ]; then
+                echo "✅ /about endpoint returned 200 OK"
+                kill $SERVER_PID
+                exit 0
+              else
+                echo "❌ /about returned $HTTP_CODE"
+                kill $SERVER_PID
+                exit 1
+              fi
+            fi
+            sleep 1
+          done
+          
+          echo "❌ Server failed to start within 30 seconds."
+          # Print logs to see why it failed (e.g. DB connection error)
+          kill $SERVER_PID || true
+          exit 1
+
+      - name: Upload Production Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ebala-linux-x86_64
+          path: target/release/ebala
+          if-no-files-found: error
