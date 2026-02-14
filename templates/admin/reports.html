@@ -53,10 +53,24 @@
                     {% if !imgs.is_empty() %}
                     <div class="flex flex-col gap-2">
                         {% for img in imgs %}
-                        <a href="/media/{{ img.url }}" target="_blank" class="block">
-                            <img src="/media/{{ img.thumbnail_url }}" class="w-32 h-32 object-cover rounded border border-skin-border">
-                        </a>
-                        <div class="text-[9px] text-skin-muted truncate w-32">{{ img.filename }}</div>
+                        <div class="flex flex-col mb-4 bg-white p-2 rounded border border-skin-border">
+                            <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="block mb-2">
+                                <img src="{{ cdn_url }}/{{ img.thumbnail_url }}" class="w-32 h-32 object-cover rounded border border-skin-border">
+                            </a>
+                            <div class="text-[9px] text-skin-muted truncate w-32 mb-1">{{ img.filename }}</div>
+
+                            <!-- EXIF Data Display -->
+                            {% if let Some(exif_data) = img.exif %}
+                            <details class="text-[10px] w-32">
+                                <summary class="cursor-pointer text-blue-600 font-bold hover:underline select-none">Metadata</summary>
+                                <div class="mt-1 p-1 bg-gray-100 rounded overflow-x-auto">
+                                    <pre class="whitespace-pre-wrap font-mono">{{ serde_json::to_string_pretty(&exif_data).unwrap() }}</pre>
+                                </div>
+                            </details>
+                            {% else %}
+                            <span class="text-[9px] text-gray-400">No Metadata</span>
+                            {% endif %}
+                        </div>
                         {% endfor %}
                     </div>
                     {% endif %}

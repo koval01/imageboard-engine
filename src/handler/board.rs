@@ -532,6 +532,7 @@ pub async fn create_thread_handler(
                 width: Set(img.width),
                 height: Set(img.height),
                 size: Set(img.size),
+                exif: Set(img.exif),
                 created_at: Set(Utc::now().naive_utc()),
                 ..Default::default()
             };
@@ -617,6 +618,7 @@ pub async fn reply_handler(
                     width: Set(img.width),
                     height: Set(img.height),
                     size: Set(img.size),
+                    exif: Set(img.exif.clone()),
                     created_at: Set(Utc::now().naive_utc()),
                     ..Default::default()
                 };
@@ -637,9 +639,6 @@ pub async fn reply_handler(
             state_read.db_cache.invalidate(&format!("board_{}", slug)).await;
             state_read.db_cache.invalidate(&format!("thread_{}", thread_id)).await;
 
-            // FIX: Return PostsListPartialTemplate with `next_cursor` to update
-            // the poller OOB. This prevents the poller from asking for the post
-            // we just inserted.
             HtmlTemplate(PostsListPartialTemplate {
                 posts: vec![PostItem {
                     model: post.clone(),

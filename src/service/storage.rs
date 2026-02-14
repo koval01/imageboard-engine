@@ -7,8 +7,10 @@ use aws_credential_types::Credentials;
 use aws_sdk_s3::{config::Region, Client};
 use bytes::Bytes;
 use image::{imageops::FilterType, GenericImageView};
+use exif::{Reader as ExifReader, Tag};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use sha2::{Digest, Sha256};
+use std::io::Cursor;
 use std::path::PathBuf;
 use tokio::fs;
 use uuid::Uuid;
@@ -31,6 +33,7 @@ pub struct ProcessedImage {
     pub height: i32,
     pub size: i64,
     pub hash: String,
+    pub exif: Option<serde_json::Value>,
 }
 
 // Configuration constants
@@ -139,9 +142,54 @@ impl StorageService {
         original_filename: String,
         db: &DatabaseConnection,
     ) -> Result<ProcessedImage> {
-        // 1. Process Image (Resize & WebP Conversion)
-        let (full_img_bytes, thumb_img_bytes, width, height) =
+        // 1. Process Image (Resize & WebP Conversion & EXIF Extraction)
+        // We move bytes into the blocking thread.
+        let (full_img_bytes, thumb_img_bytes, width, height, exif_json) =
             tokio::task::spawn_blocking(move || {
+                // --- EXIF Extraction ---
+                let mut exif_map = serde_json::Map::new();
+                let exif_reader = ExifReader::new();
+                let mut cursor = Cursor::new(&file_bytes);
+
+                if let Ok(exif) = exif_reader.read_from_container(&mut cursor) {
+                    // We only want specific forensic tags, not everything (e.g. MakerNote binary blobs)
+                    let tags_of_interest = vec![
+                        Tag::DateTimeOriginal,
+                        Tag::DateTime,
+                        Tag::Make,
+                        Tag::Model,
+                        Tag::Software,
+                        Tag::GPSLatitude,
+                        Tag::GPSLatitudeRef,
+                        Tag::GPSLongitude,
+                        Tag::GPSLongitudeRef,
+                        Tag::GPSAltitude,
+                        Tag::BodySerialNumber,
+                        Tag::LensModel,
+                    ];
+
+                    for field in exif.fields() {
+                        if tags_of_interest.contains(&field.tag) {
+                            // Convert value to string, handling possible display formatting
+                            let val_str = field.display_value().with_unit(&exif).to_string();
+                            // Clean up any null terminators
+                            let clean_val = val_str.trim_matches(char::from(0)).to_string();
+                            exif_map.insert(
+                                field.tag.description().unwrap_or(field.tag.to_string().as_str()).to_string(),
+                                serde_json::Value::String(clean_val)
+                            );
+                        }
+                    }
+                }
+
+                let exif_value = if exif_map.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::Value::Object(exif_map))
+                };
+
+                // --- Image Processing ---
+                // Load from memory (this ignores/strips EXIF automatically when we later convert)
                 let img = image::load_from_memory(&file_bytes)
                     .context("Failed to load image from memory")?;
 
@@ -156,7 +204,7 @@ impl StorageService {
 
                 let (final_w, final_h) = processed_img.dimensions();
 
-                // WebP Encoding
+                // WebP Encoding (Strip Metadata)
                 let encoder = Encoder::from_image(&processed_img)
                     .map_err(|e| anyhow!("WebP encoding failed: {:?}", e))?;
                 let webp_data = encoder.encode(IMAGE_QUALITY);
@@ -169,11 +217,12 @@ impl StorageService {
                 let thumb_data = thumb_encoder.encode(THUMB_QUALITY);
                 let thumb_bytes = thumb_data.to_vec();
 
-                Ok::<(Vec<u8>, Vec<u8>, u32, u32), anyhow::Error>((
+                Ok::<(Vec<u8>, Vec<u8>, u32, u32, Option<serde_json::Value>), anyhow::Error>((
                     main_bytes,
                     thumb_bytes,
                     final_w,
                     final_h,
+                    exif_value,
                 ))
             })
                 .await??;
@@ -197,6 +246,7 @@ impl StorageService {
                 height: img.height,
                 size: img.size,
                 hash,
+                exif: img.exif, // Use existing EXIF if image is same
             });
         }
 
@@ -217,6 +267,7 @@ impl StorageService {
             height: height as i32,
             size: full_img_bytes.len() as i64,
             hash,
+            exif: exif_json,
         })
     }
 }

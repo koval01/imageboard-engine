@@ -36,10 +36,9 @@ image = "0.25"
 webp = "0.3"
 bytes = "1.11"
 moka = { version = "0.12", features = ["future"] }
-base64 = "0.22"
-rand = "0.10"
 sha2 = "0.10"
 hex = "0.4"
+kamadak-exif = "0.6"
 tikv-jemallocator = "0.6"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]

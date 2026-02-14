@@ -23,7 +23,6 @@ pub struct CreatePostSchema {
     pub content: String,
 }
 
-// ... (Previous modules boards, threads, posts, images remain unchanged) ...
 pub mod boards {
     use super::*;
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize, Serialize)]
@@ -122,6 +121,7 @@ pub mod images {
         pub width: i32,
         pub height: i32,
         pub size: i64,
+        pub exif: Option<serde_json::Value>,
         pub created_at: NaiveDateTime,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
