@@ -4,7 +4,7 @@
   <div class="group relative">
     <div class="file-info text-[10px] mb-1 truncate max-w-[200px]">
       <a href="{{ cdn_url }}/{{ img.url }}" target="_blank" class="hover:underline text-skin-link font-bold" title="{{ img.filename }}">{{ img.filename }}</a>
-      <span class="text-skin-muted">({{ (img.size / 1024)|round }} KB)</span>
+      <span class="text-skin-muted">({{ img.size / 1024 }} KB)</span>
     </div>
     <a class="file-link block" href="{{ cdn_url }}/{{ img.url }}">
       <img src="{{ cdn_url }}/{{ img.thumbnail_url }}"
