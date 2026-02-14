@@ -17,9 +17,7 @@
 
             <a href="/{{ board.slug }}/thread/{{ thread.id }}" class="text-skin-link hover:text-skin-red font-mono">No.{{ thread.id }}</a>
 
-            <span class="text-skin-link cursor-pointer hover:underline reply-btn text-xs bg-skin-reply-bg px-1 rounded border border-skin-border-reply" data-id="{{ thread.id }}">Reply</span>
-
-            <a href="/{{ board.slug }}/thread/{{ thread.id }}" class="font-bold text-skin-accent hover:underline ml-auto text-xs uppercase tracking-wider">Open</a>
+            <a href="/{{ board.slug }}/thread/{{ thread.id }}" class="font-bold text-skin-accent hover:underline ml-auto text-xs uppercase tracking-wider rounded border border-skin-border-reply">Open</a>
 
             {% if admin_role > 0 %}
             <span class="text-[10px] bg-red-100 text-red-800 px-1 rounded ml-1 border border-red-200">IP: {{ thread.ip_address }}</span>
