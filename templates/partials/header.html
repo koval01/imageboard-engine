@@ -18,7 +18,9 @@
 
         <div class="flex gap-2">
             <!-- Admin Nav Injection Point -->
-            {% block admin_nav %}{% endblock %}
+            {% block admin_nav %}
+            <span class="text-skin-muted">[</span><a href="/admin/dashboard" class="text-red-700 font-bold hover:underline">ADMIN</a><span class="text-skin-muted">]</span>
+            {% endblock %}
 
             <span class="text-skin-muted">[</span>
             <button id="theme-toggle" class="hover:underline cursor-pointer">Theme</button>
