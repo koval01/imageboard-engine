@@ -78,15 +78,14 @@ pub async fn session_middleware(
     mut req: Request,
     next: Next,
 ) -> Result<Response, Response> {
-    // 0. Performance Optimization: Skip heavy logic for static assets
-    // CRITICAL FIX: We MUST insert a dummy session because downstream handlers/middleware might expect it.
+    // 0. Performance Optimization & Safety
+    // Ensure we ALWAYS insert the extension, even for static files.
     if req.uri().path().starts_with("/assets") || req.uri().path().ends_with(".webp") || req.uri().path().ends_with(".ico") {
-        let guest_session = CurrentSession {
+        req.extensions_mut().insert(CurrentSession {
             id: "static_guest".to_string(),
             role: 0,
             version: 0,
-        };
-        req.extensions_mut().insert(guest_session);
+        });
         return Ok(next.run(req).await);
     }
 

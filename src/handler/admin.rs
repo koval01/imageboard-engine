@@ -12,6 +12,7 @@ use tokio::sync::RwLock;
 use sha2::{Sha256, Digest};
 use std::net::SocketAddr;
 use sea_orm::sea_query::Expr;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, ActiveModelTrait, Set, PaginatorTrait, QueryOrder};
 use crate::{
     model::{admins, bans, admin_logs, posts, threads, images, reports},
     AppState,
@@ -54,13 +55,18 @@ struct AdminReportsTemplate {
 #[derive(Deserialize)]
 pub struct LoginPayload { key: String }
 
-pub async fn admin_login_page() -> impl IntoResponse {
-    HtmlTemplate(AdminLoginTemplate { error: None })
+pub async fn admin_login_page(
+    Extension(session): Extension<CurrentSession>, // Added Extension
+) -> Response {
+    if session.role > 0 {
+        return Redirect::to("/admin/dashboard").into_response();
+    }
+    HtmlTemplate(AdminLoginTemplate { error: None }).into_response()
 }
 
 pub async fn admin_login_action(
     State(state): State<Arc<RwLock<AppState>>>,
-    // Mutable session to update state for the middleware
+    // We take the current session (guest) so we can upgrade it
     Extension(mut session): Extension<CurrentSession>,
     Form(payload): Form<LoginPayload>,
 ) -> Response {
@@ -78,13 +84,11 @@ pub async fn admin_login_action(
         .unwrap_or(None);
 
     if let Some(admin) = admin {
-        // We modify the session object here.
-        // The Middleware runs *after* this handler returns the response.
-        // It detects the change in 'session' extension and issues the new Cookie.
         session.role = admin.role;
         session.version = admin.token_version;
 
         let mut response = Redirect::to("/admin/dashboard").into_response();
+        // Insert the modified session into the response so middleware sees the change
         response.extensions_mut().insert(session);
         return response;
     }
@@ -95,11 +99,12 @@ pub async fn admin_login_action(
 pub async fn admin_logout_action(
     Extension(mut session): Extension<CurrentSession>,
 ) -> Response {
-    // Reset to guest
+    // Downgrade session
     session.role = 0;
-    session.version = 1;
+    session.version = 1; // Reset to default version
 
     let mut response = Redirect::to("/admin").into_response();
+    // Pass updated session to middleware to overwrite the cookie
     response.extensions_mut().insert(session);
     response
 }
@@ -200,7 +205,7 @@ pub async fn admin_ban_action(
     let db = &state.pool;
     let storage = &state.storage;
 
-    // 1. Insert Ban (Revokes Session)
+    // 1. Insert Ban
     let expires = Utc::now().naive_utc() + Duration::hours(payload.duration_hours);
     let ban = bans::ActiveModel {
         ip_address: Set(Some(payload.ip.clone())),
@@ -217,11 +222,14 @@ pub async fn admin_ban_action(
 
     // 2. Delete posts from this IP if requested
     if payload.delete_posts.unwrap_or(false) {
+        // Find all posts by this IP to delete images
         let posts_to_del = posts::Entity::find()
             .filter(posts::Column::IpAddress.eq(&payload.ip))
             .all(db).await.unwrap_or_default();
 
         for p in posts_to_del {
+            // Re-use logic from delete action (simplified here)
+            // Fetch images and delete from S3/Local
             let imgs = images::Entity::find().filter(images::Column::PostId.eq(p.id)).all(db).await.unwrap_or_default();
             for img in imgs {
                 let _ = storage.delete_file(&img.url).await;
@@ -230,6 +238,7 @@ pub async fn admin_ban_action(
             let _ = posts::Entity::delete_by_id(p.id).exec(db).await;
         }
 
+        // Also threads by this IP
         let threads_to_del = threads::Entity::find()
             .filter(threads::Column::IpAddress.eq(&payload.ip))
             .all(db).await.unwrap_or_default();
@@ -244,7 +253,7 @@ pub async fn admin_ban_action(
         }
     }
 
-    // 3. Close Reports
+    // 3. Close Report if exists
     if let Some(rid) = payload.report_id {
         let _ = reports::Entity::update_many()
             .col_expr(reports::Column::Status, Expr::value("RESOLVED"))
@@ -252,6 +261,7 @@ pub async fn admin_ban_action(
             .exec(db).await;
     }
 
+    // Also close any other open reports for this IP
     let _ = reports::Entity::update_many()
         .col_expr(reports::Column::Status, Expr::value("RESOLVED"))
         .filter(reports::Column::IpAddress.eq(&payload.ip))
@@ -268,6 +278,7 @@ pub async fn admin_ban_action(
     };
     let _ = log.insert(db).await;
 
+    // HTMX response: Remove the table row if triggered from a list
     "".into_response()
 }
 
@@ -361,8 +372,11 @@ pub async fn admin_delete_post_action(
     };
     let _ = log.insert(db).await;
 
+    // Return empty response with client-side swap to remove element
     "".into_response()
 }
+
+// --- REPORTING SYSTEM ---
 
 #[derive(Deserialize)]
 pub struct ReportPayload {
@@ -381,6 +395,7 @@ pub async fn create_report(
     let db = &state_read.pool;
     let ip = get_client_ip(&headers, &addr);
 
+    // Limit check? (Simple check if this IP already reported this post)
     let exists = reports::Entity::find()
         .filter(reports::Column::PostId.eq(payload.post_id))
         .filter(reports::Column::IpAddress.eq(&ip))
@@ -406,7 +421,7 @@ pub async fn create_report(
 #[derive(Deserialize)]
 pub struct ResolveReportPayload {
     report_id: i32,
-    status: String,
+    status: String, // RESOLVED, REJECTED
 }
 
 pub async fn resolve_report(
@@ -424,12 +439,13 @@ pub async fn resolve_report(
         .filter(reports::Column::Id.eq(payload.report_id))
         .exec(db).await;
 
+    // Return empty string to remove the report row from dashboard via HTMX
     "".into_response()
 }
 
 #[derive(Deserialize)]
 pub struct ExportQuery {
-    target_type: String,
+    target_type: String, // "ip" or "session"
     value: String,
 }
 

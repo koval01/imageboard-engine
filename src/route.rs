@@ -1,12 +1,14 @@
 use std::sync::Arc;
 use anyhow::Result;
 use axum::{
-    middleware::from_fn_with_state,
+    middleware::{self, from_fn_with_state},
     routing::{get, post},
     Router,
+    response::Response,
+    http::StatusCode,
 };
 use tokio::sync::RwLock;
-use tower_http::{services::ServeDir, trace::TraceLayer};
+use tower_http::{services::ServeDir, trace::TraceLayer, catch_panic::CatchPanicLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, fmt};
 
 use crate::{
@@ -17,6 +19,33 @@ use crate::{
     },
     AppState,
 };
+
+// SECURITY: Global error sanitizer
+// This ensures that if Axum throws a framework error (like "Missing extension"),
+// the user only sees a generic error page, not internal class names.
+async fn sanitize_error_response(req: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    let response = next.run(req).await;
+
+    if response.status() == StatusCode::INTERNAL_SERVER_ERROR {
+        // In Debug mode, we might want to see the real error for development
+        #[cfg(debug_assertions)]
+        {
+            return response;
+        }
+
+        // In Release mode, completely swallow the body and return a generic error
+        #[cfg(not(debug_assertions))]
+        {
+            let (parts, _) = response.into_parts();
+            return Response::from_parts(
+                parts,
+                Body::from("<!DOCTYPE html><html><body style='font-family:sans-serif;text-align:center;padding:50px;'><h1>500 Internal Server Error</h1><p>Something went wrong.</p></body></html>")
+            );
+        }
+    }
+
+    response
+}
 
 pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
     tracing_subscriber::registry()
@@ -29,7 +58,7 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
                     }
                     #[cfg(not(debug_assertions))]
                     {
-                        "error".into()
+                        "info".into()
                     }
                 }),
         )
@@ -48,7 +77,7 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
         .route("/{slug}/submit", post(create_thread_handler))
         .route("/{slug}/thread/{id}", get(view_thread_handler))
         .route("/{slug}/thread/{id}/reply", post(reply_handler))
-        .route("/{slug}/thread/{id}/poll", get(poll_new_posts_handler)) // Polling Route
+        .route("/{slug}/thread/{id}/poll", get(poll_new_posts_handler))
         .route("/report", post(create_report))
         .route("/admin", get(crate::handler::admin::admin_login_page))
         .route("/admin/login", post(crate::handler::admin::admin_login_action))
@@ -61,9 +90,18 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
         .route("/admin/logs", get(crate::handler::admin::admin_logs_view))
         .route("/admin/reports", get(crate::handler::admin::admin_reports_view))
         .nest_service("/assets", ServeDir::new(format!("{}/assets", assets_path.to_str().unwrap())))
+        // MIDDLEWARE ORDER IS BOTTOM-TO-TOP for Response, TOP-TO-BOTTOM for Request
+        // 1. Sanitize Errors (Outermost - catches everything)
+        .layer(middleware::from_fn(sanitize_error_response))
+        // 2. Catch Panics (Prevents server crashes from killing the connection)
+        .layer(CatchPanicLayer::new())
+        // 3. Bot Guard (Checks headers/PoW)
         .layer(from_fn_with_state(app_state.clone(), bot_guard_middleware))
+        // 4. Session (Injects User Data - CRITICAL: Must be before handlers)
         .layer(from_fn_with_state(app_state.clone(), session_middleware))
-        .layer(axum::middleware::from_fn(response_time_middleware))
+        // 5. Response Time (Header injection)
+        .layer(middleware::from_fn(response_time_middleware))
+        // 6. Logging
         .layer(TraceLayer::new_for_http())
         .with_state(app_state);
 

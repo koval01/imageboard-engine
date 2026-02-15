@@ -73,6 +73,7 @@ struct HomeTemplate {
     recent_images: Vec<(images::Model, String)>,
     recent_threads: Vec<threads::Model>,
     cdn_url: String,
+    admin_role: i32, // Added field
 }
 
 #[derive(Template)]
@@ -190,7 +191,8 @@ async fn check_rate_limit(ip: &str, cache: &moka::future::Cache<String, u64>) ->
 }
 
 pub async fn home_handler(
-    State(state): State<Arc<RwLock<AppState>>>
+    State(state): State<Arc<RwLock<AppState>>>,
+    Extension(session): Extension<CurrentSession>, // Added Extension here
 ) -> impl IntoResponse {
     let state_read = state.read().await;
     let cache_key = "home_view".to_string();
@@ -200,7 +202,8 @@ pub async fn home_handler(
             boards: c_boards,
             recent_images: c_images,
             recent_threads: c_threads,
-            cdn_url: state_read.config.cdn_url.clone()
+            cdn_url: state_read.config.cdn_url.clone(),
+            admin_role: session.role, // Pass role to template
         });
     }
 
@@ -266,7 +269,8 @@ pub async fn home_handler(
         boards: boards_stats,
         recent_images,
         recent_threads,
-        cdn_url
+        cdn_url,
+        admin_role: session.role, // Pass role to template
     })
 }
 
