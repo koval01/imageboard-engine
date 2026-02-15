@@ -16,6 +16,9 @@ pub struct Config {
     pub media_port: u16,
 }
 
+pub const BUMP_LIMIT: u64 = 500;
+pub const THREAD_AGE_LIMIT_DAYS: i64 = 30;
+
 impl Config {
     pub fn init() -> Self {
         let storage_type_str = std::env::var("STORAGE_TYPE").unwrap_or_else(|_| "local".to_string());
@@ -34,7 +37,6 @@ impl Config {
                 .unwrap(),
             cdn_url: std::env::var("S3_PUBLIC_URL").expect("S3_PUBLIC_URL must be set"),
             storage_type,
-            // Default to "./media" for dev, but can be set to "/srv/media" in prod env
             media_path: std::env::var("MEDIA_ROOT").unwrap_or_else(|_| "./media".to_string()),
             media_port: std::env::var("MEDIA_PORT")
                 .unwrap_or_else(|_| "8083".to_string())

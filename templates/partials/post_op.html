@@ -21,6 +21,15 @@
 
             {% if admin_role > 0 %}
             <span class="text-[10px] bg-red-100 text-red-800 px-1 rounded ml-1 border border-red-200">IP: {{ thread.ip_address }}</span>
+
+            {% if is_bump_limit %}
+            <span class="text-[10px] bg-yellow-100 text-yellow-800 px-1 rounded ml-1 border border-yellow-200 font-bold" title="Bump limit reached (Autosage)">⚠ LIMIT</span>
+            {% endif %}
+
+            {% if is_time_limit %}
+            <span class="text-[10px] bg-gray-200 text-gray-800 px-1 rounded ml-1 border border-gray-300 font-bold" title="Thread too old (Autosage)">⏳ OLD</span>
+            {% endif %}
+
             {% if admin_role >= 2 %}
             <form hx-post="/admin/delete" hx-confirm="Delete Thread?" hx-swap="delete" hx-target="#t{{ thread.id }}" class="inline" data-no-reset="true">
                 <input type="hidden" name="thread_id" value="{{ thread.id }}">

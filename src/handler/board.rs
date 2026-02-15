@@ -5,7 +5,11 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     http::HeaderMap,
 };
-use sea_orm::{EntityTrait, QueryOrder, Set, ActiveModelTrait, ModelTrait, QueryFilter, ColumnTrait, QuerySelect, LoaderTrait, PaginatorTrait, RelationTrait, DatabaseConnection};
+use sea_orm::{
+    EntityTrait, QueryOrder, Set, ActiveModelTrait, ModelTrait,
+    QueryFilter, ColumnTrait, QuerySelect, LoaderTrait, PaginatorTrait,
+    RelationTrait, DatabaseConnection
+};
 use tokio::sync::RwLock;
 use askama::Template;
 use chrono::Utc;
@@ -18,6 +22,7 @@ use crate::{
     handler::HtmlTemplate,
     service::{ProcessedImage, StorageService, resolve_country_code},
     security::get_client_ip,
+    config::{BUMP_LIMIT, THREAD_AGE_LIMIT_DAYS},
 };
 
 #[derive(Clone)]
@@ -51,6 +56,8 @@ pub struct ThreadItem {
     pub image_count: usize,
     pub omitted_posts: usize,
     pub omitted_images: usize,
+    pub is_bump_limit: bool,
+    pub is_time_limit: bool,
 }
 
 #[derive(Clone)]
@@ -95,6 +102,8 @@ struct ThreadTemplate {
     cdn_url: String,
     admin_role: i32,
     last_post_id: i32,
+    is_bump_limit: bool,
+    is_time_limit: bool,
 }
 
 #[derive(Template)]
@@ -311,6 +320,10 @@ pub async fn view_board_handler(
                     .unwrap();
 
                 let reply_count = posts_raw.len();
+                let is_bump_limit = reply_count as u64 >= BUMP_LIMIT;
+                let thread_age_days = (Utc::now().naive_utc() - thread.created_at).num_days();
+                let is_time_limit = thread_age_days >= THREAD_AGE_LIMIT_DAYS;
+
                 let post_images_raw = posts_raw.load_many(images::Entity, db).await.unwrap();
                 let mut image_count = 0;
                 for imgs in &post_images_raw {
@@ -348,7 +361,9 @@ pub async fn view_board_handler(
                     reply_count,
                     image_count,
                     omitted_posts,
-                    omitted_images
+                    omitted_images,
+                    is_bump_limit,
+                    is_time_limit,
                 });
             }
 
@@ -356,7 +371,7 @@ pub async fn view_board_handler(
             items
         };
 
-        let final_threads = thread_items.into_iter().map(|mut t| {
+        let final_threads: Vec<ThreadItem> = thread_items.into_iter().map(|mut t| {
             t.replies.iter_mut().for_each(|r| r.admin_role = session.role);
             t
         }).collect();
@@ -430,10 +445,15 @@ pub async fn view_thread_handler(
 
         let last_post_id = replies.last().map(|p| p.model.id).unwrap_or(0);
 
-        let final_replies = replies.into_iter().map(|mut p| {
+        let final_replies: Vec<PostItem> = replies.into_iter().map(|mut p| {
             p.admin_role = session.role;
             p
         }).collect();
+
+        let post_count = final_replies.len();
+        let is_bump_limit = post_count as u64 >= BUMP_LIMIT;
+        let thread_age_days = (Utc::now().naive_utc() - thread.created_at).num_days();
+        let is_time_limit = thread_age_days >= THREAD_AGE_LIMIT_DAYS;
 
         return HtmlTemplate(ThreadTemplate {
             board: _board,
@@ -443,6 +463,8 @@ pub async fn view_thread_handler(
             cdn_url,
             admin_role: session.role,
             last_post_id,
+            is_bump_limit,
+            is_time_limit,
         }).into_response();
     }
 
@@ -580,6 +602,21 @@ pub async fn reply_handler(
         return HtmlTemplate(crate::handler::ErrorTemplate { message: "Порожній пост".into() }).into_response();
     }
 
+    let thread_model = threads::Entity::find_by_id(thread_id).one(db).await.unwrap();
+    let should_bump = if let Some(t) = thread_model {
+        let post_count = posts::Entity::find()
+            .filter(posts::Column::ThreadId.eq(thread_id))
+            .count(db)
+            .await
+            .unwrap_or(0);
+
+        let age_days = (Utc::now().naive_utc() - t.created_at).num_days();
+
+        post_count < BUMP_LIMIT && age_days < THREAD_AGE_LIMIT_DAYS
+    } else {
+        false
+    };
+
     let new_post = posts::ActiveModel {
         thread_id: Set(thread_id),
         content: Set(parsed.content),
@@ -613,12 +650,14 @@ pub async fn reply_handler(
                 }
             }
 
-            let thread = threads::ActiveModel {
-                id: Set(thread_id),
-                updated_at: Set(Utc::now().naive_utc()),
-                ..Default::default()
-            };
-            let _ = thread.update(db).await;
+            if should_bump {
+                let thread = threads::ActiveModel {
+                    id: Set(thread_id),
+                    updated_at: Set(Utc::now().naive_utc()),
+                    ..Default::default()
+                };
+                let _ = thread.update(db).await;
+            }
 
             // Invalidate caches
             state_read.db_cache.invalidate("home_view").await;

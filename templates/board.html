@@ -24,14 +24,11 @@
     {% for thread_item in threads %}
     {% let thread = thread_item.model %}
     {% let op_images = thread_item.images %}
+    {% let is_bump_limit = thread_item.is_bump_limit %}
+    {% let is_time_limit = thread_item.is_time_limit %}
 
     <!-- Reuse Post OP Partial -->
     {% include "partials/post_op.html" %}
-
-    <!-- Logic to inject replies inside the OP block context if we wanted,
-         but typically Board view shows OP then replies below it.
-         Ideally post_op.html would be a macro, but here we inject manually below.
-    -->
 
     <!-- Replies Preview -->
     {% if thread_item.replies.len() > 0 %}
