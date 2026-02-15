@@ -36,6 +36,7 @@ async fn sanitize_error_response(req: axum::extract::Request, next: axum::middle
         // In Release mode, completely swallow the body and return a generic error
         #[cfg(not(debug_assertions))]
         {
+            use axum::body::Body;
             let (parts, _) = response.into_parts();
             return Response::from_parts(
                 parts,
