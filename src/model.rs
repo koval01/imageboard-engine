@@ -2,15 +2,15 @@ use chrono::NaiveDateTime;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct SessionClaims {
-    pub sess: String,
-    pub ip: String,
-    pub ua: String,
-    pub role: i32,
-    pub v: i32,
-    pub exp: usize,
-    pub iat: usize,
+    pub sess: String, // Session ID (UUID)
+    pub ip: String,   // Bind to IP
+    pub ua: String,   // Bind to User Agent
+    pub role: i32,    // 0=User, 1=Janitor, 2=Mod, 3=Admin
+    pub v: i32,       // Token Version (for Admin revocation)
+    pub exp: usize,   // Expiration timestamp
+    pub iat: usize,   // Issued At timestamp
 }
 
 pub mod boards {
@@ -111,7 +111,7 @@ pub mod images {
         pub width: i32,
         pub height: i32,
         pub size: i64,
-        pub exif: Option<serde_json::Value>, // Added field
+        pub exif: Option<serde_json::Value>,
         pub created_at: NaiveDateTime,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -136,7 +136,7 @@ pub mod admins {
         pub username: String,
         pub service_key: String,
         pub role: i32,
-        pub token_version: i32,
+        pub token_version: i32, // Versioning for revocation
         pub created_at: NaiveDateTime,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
