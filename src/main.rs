@@ -44,6 +44,7 @@ pub struct AppState {
     pub ip_cache: Cache<String, String>,
     pub rate_limit_cache: Cache<String, u64>,
     pub db_cache: Cache<String, CacheData>,
+    pub login_attempts: Cache<String, u32>, // Added: Tracks failed login attempts
 }
 
 #[tokio::main]
@@ -70,6 +71,12 @@ async fn main() -> Result<()> {
     let db_cache = Cache::builder()
         .max_capacity(1000)
         .time_to_live(Duration::from_secs(5))
+        .build();
+
+    // Cache for admin login attempts: 15 minutes lockout
+    let login_attempts = Cache::builder()
+        .max_capacity(10_000)
+        .time_to_live(Duration::from_secs(60 * 60))
         .build();
 
     if config.storage_type == StorageType::Local {
@@ -109,6 +116,7 @@ async fn main() -> Result<()> {
         ip_cache,
         rate_limit_cache,
         db_cache,
+        login_attempts,
     }));
 
     route::serve(app_state).await?;

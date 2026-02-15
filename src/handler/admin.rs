@@ -2,7 +2,7 @@ use std::sync::Arc;
 use axum::{
     extract::{Form, State, Query, Extension, ConnectInfo},
     response::{IntoResponse, Redirect, Response},
-    http::header,
+    http::{header, HeaderMap},
 };
 use sea_orm::*;
 use askama::Template;
@@ -55,6 +55,9 @@ struct AdminReportsTemplate {
 #[derive(Deserialize)]
 pub struct LoginPayload { key: String }
 
+// Constants
+const MAX_LOGIN_ATTEMPTS: u32 = 3;
+
 // SECURITY FIX: Redirect if already logged in
 pub async fn admin_login_page(
     Extension(session): Extension<CurrentSession>,
@@ -69,10 +72,22 @@ pub async fn admin_login_action(
     State(state): State<Arc<RwLock<AppState>>>,
     // We take the current session so we can upgrade it
     Extension(mut session): Extension<CurrentSession>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Form(payload): Form<LoginPayload>,
 ) -> Response {
     let state_read = state.read().await;
     let db = &state_read.pool;
+
+    // 1. Rate Limiting Check
+    let ip = get_client_ip(&headers, &addr);
+    let attempts = state_read.login_attempts.get(&ip).await.unwrap_or(0);
+
+    if attempts >= MAX_LOGIN_ATTEMPTS {
+        return HtmlTemplate(AdminLoginTemplate {
+            error: Some("Too many failed attempts. Locked for 1 hour.".into())
+        }).into_response();
+    }
 
     let mut hasher = Sha256::new();
     hasher.update(payload.key.as_bytes());
@@ -85,6 +100,9 @@ pub async fn admin_login_action(
         .unwrap_or(None);
 
     if let Some(admin) = admin {
+        // 2. Success: Reset rate limit
+        state_read.login_attempts.invalidate(&ip).await;
+
         // Update session state. The middleware will detect this change and issue the new cookie.
         session.role = admin.role;
         session.version = admin.token_version;
@@ -96,7 +114,17 @@ pub async fn admin_login_action(
         return response;
     }
 
-    HtmlTemplate(AdminLoginTemplate { error: Some("Invalid Key".into()) }).into_response()
+    // 3. Failure: Increment rate limit
+    state_read.login_attempts.insert(ip, attempts + 1).await;
+
+    let remaining = MAX_LOGIN_ATTEMPTS - (attempts + 1);
+    let msg = if remaining > 0 {
+        format!("Invalid Key. {} attempts remaining.", remaining)
+    } else {
+        "Invalid Key. Locked.".to_string()
+    };
+
+    HtmlTemplate(AdminLoginTemplate { error: Some(msg) }).into_response()
 }
 
 pub async fn admin_logout_action(

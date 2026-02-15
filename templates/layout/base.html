@@ -23,12 +23,17 @@
         /* Loader Overlay */
         .loader-overlay { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(2px); z-index: 9999; }
         [data-theme="dark"] .loader-overlay { background: rgba(0, 0, 0, 0.7); }
+        /* Hide uncompiled Vue templates */
+        [v-cloak] { display: none !important; }
     </style>
 </head>
 <body class="bg-skin-surface text-skin-text font-sans text-[13px]">
 
-<div id="app">
-    <!-- Global Loader (Wrapped in raw for Vue) -->
+<!--
+    FIX: Vue App Container restricted ONLY to overlays.
+    Added v-cloak to prevent flash of uncompiled content.
+-->
+<div id="app" v-cloak>
     {% raw %}
     <div v-if="isLoading" class="loader-overlay fixed inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-300">
         <div class="bg-skin-header p-4 rounded-lg shadow-lg border border-skin-border flex flex-col items-center gap-2">
@@ -40,7 +45,6 @@
         </div>
     </div>
 
-    <!-- Toast Notifications (Wrapped in raw for Vue) -->
     <div class="fixed top-4 right-4 z-[10000] flex flex-col gap-2 pointer-events-none">
         <transition-group name="toast">
             <div v-for="toast in toasts" :key="toast.id"
@@ -52,18 +56,17 @@
         </transition-group>
     </div>
     {% endraw %}
-
-    <!-- Header -->
-    {% include "partials/header.html" %}
-
-    <!-- Main Content -->
-    <main class="px-2 pb-10">
-        {% block content %}{% endblock %}
-    </main>
-
-    <!-- Footer -->
-    {% include "partials/footer.html" %}
 </div>
+<!-- END OF VUE APP CONTAINER -->
+
+<!-- HTMX Content (Outside Vue Scope) -->
+{% include "partials/header.html" %}
+
+<main class="px-2 pb-10">
+    {% block content %}{% endblock %}
+</main>
+
+{% include "partials/footer.html" %}
 
 <script>
     const { createApp, ref } = Vue;
@@ -74,7 +77,6 @@
             const toasts = ref([]);
             let toastId = 0;
 
-            // Global exposure for non-Vue JS (HTMX/Core.js) to trigger toasts
             window.showToast = (message, type = 'success') => {
                 const id = toastId++;
                 toasts.value.push({ id, message, type });
@@ -83,19 +85,20 @@
                 }, 4000);
             };
 
-            // HTMX Integration
             document.body.addEventListener('htmx:beforeRequest', () => { isLoading.value = true; });
             document.body.addEventListener('htmx:afterRequest', () => { isLoading.value = false; });
+
+            // Fixed logic to ensure loading stops on error
             document.body.addEventListener('htmx:responseError', () => {
                 isLoading.value = false;
-                window.showToast("Server Error", "error");
+                // Toast is triggered by existing code in core.js,
+                // but we ensure reactivity works here
             });
             document.body.addEventListener('htmx:sendError', () => {
                 isLoading.value = false;
                 window.showToast("Network Error", "error");
             });
 
-            // Processing Time Update via HTMX headers
             document.body.addEventListener('htmx:afterOnLoad', function(evt) {
                 const xhr = evt.detail.xhr;
                 const timing = xhr.getResponseHeader('X-Processing-Time');
