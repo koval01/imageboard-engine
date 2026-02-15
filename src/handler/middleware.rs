@@ -47,7 +47,6 @@ pub async fn response_time_middleware(request: Request, next: Next) -> Response 
         .unwrap_or(false);
 
     if is_html {
-        // Limit response buffering to 1MB to prevent DoS
         match to_bytes(body, 1024 * 1024).await {
             Ok(bytes) => {
                 if let Ok(content) = std::str::from_utf8(&bytes) {
@@ -79,8 +78,15 @@ pub async fn session_middleware(
     mut req: Request,
     next: Next,
 ) -> Result<Response, Response> {
-    // 0. Performance Optimization: Skip logic for static assets
+    // 0. Performance Optimization: Skip heavy logic for static assets
+    // CRITICAL FIX: We MUST insert a dummy session because downstream handlers/middleware might expect it.
     if req.uri().path().starts_with("/assets") || req.uri().path().ends_with(".webp") || req.uri().path().ends_with(".ico") {
+        let guest_session = CurrentSession {
+            id: "static_guest".to_string(),
+            role: 0,
+            version: 0,
+        };
+        req.extensions_mut().insert(guest_session);
         return Ok(next.run(req).await);
     }
 
@@ -95,7 +101,6 @@ pub async fn session_middleware(
     let mut role = 0;
     let mut version = 1;
 
-    // Flags to determine if we need to issue a NEW cookie
     let mut is_valid_token = false;
     let mut needs_refresh = false;
     let mut claims_opt: Option<SessionClaims> = None;
@@ -114,13 +119,9 @@ pub async fn session_middleware(
         ) {
             let claims = token_data.claims;
 
-            // IP & UA binding check (Anti-hijacking)
+            // IP & UA binding check
             if claims.ip == current_ip && claims.ua == current_ua {
                 // SECURITY: Global Ban/Revocation Check
-                // We check if this specific Session ID or IP has an active ban in the DB.
-                // Note: For high performance, you might want to cache this check,
-                // but checking DB on page loads is generally acceptable for this scale.
-
                 let is_banned = bans::Entity::find()
                     .filter(
                         sea_orm::Condition::any()
@@ -133,25 +134,23 @@ pub async fn session_middleware(
                     .unwrap_or(0);
 
                 if is_banned > 0 {
-                    // Force invalidation
                     is_valid_token = false;
                 } else {
                     // Admin Specific Security Check
                     let mut version_check_pass = true;
                     if claims.role > 0 {
-                        // Check DB for admin token version to allow global logout/revocation
                         let admin_opt = admins::Entity::find()
-                            .filter(admins::Column::Role.eq(claims.role)) // In a real app, bind to ID in claims
+                            .filter(admins::Column::Role.eq(claims.role))
                             .one(db).await.unwrap_or(None);
 
                         if let Some(admin) = admin_opt {
                             if admin.token_version != claims.v {
-                                version_check_pass = false; // Version changed (revoked)
+                                version_check_pass = false;
                             } else {
                                 version = admin.token_version;
                             }
                         } else {
-                            version_check_pass = false; // Admin record missing
+                            version_check_pass = false;
                         }
                     } else {
                         version = claims.v;
@@ -173,27 +172,25 @@ pub async fn session_middleware(
         session_id = Uuid::new_v4().to_string();
         role = 0;
         version = 1;
-        needs_refresh = true; // Must write cookie
+        needs_refresh = true;
     } else if let Some(c) = claims_opt {
-        // Sliding Window: If token is valid but > 24 hours old, re-issue to extend life
+        // Sliding Window: refresh if older than 24h
         let now = Utc::now().timestamp() as usize;
         if (now - c.iat) > 86400 {
             needs_refresh = true;
         }
     }
 
-    // 3. Inject Session into Request Context
+    // 3. Inject Session into Request
     let current_session = CurrentSession { id: session_id.clone(), role, version };
     req.extensions_mut().insert(current_session.clone());
 
-    // 4. Process Request (Handlers run here)
+    // 4. Process Request
     let response = next.run(req).await;
 
-    // 5. Post-Processing: Re-Sign Token ONLY if state changed or new
-    // We check extensions again in case the handler (Login/Logout) modified the session
+    // 5. Post-Processing: Re-Sign Token if needed
     let final_session = response.extensions().get::<CurrentSession>().cloned().unwrap_or(current_session);
 
-    // Check if handler changed the state (Login/Logout event)
     if final_session.role != role || final_session.version != version || final_session.id != session_id {
         needs_refresh = true;
     }
@@ -215,14 +212,12 @@ pub async fn session_middleware(
             exp,
         };
 
-        // SECURITY: Sign with HS384
         let token = encode(
             &Header::new(Algorithm::HS384),
             &claims,
             &EncodingKey::from_secret(jwt_secret)
         ).unwrap();
 
-        // Cookie Security Settings
         #[allow(unused_mut)]
         let mut jwt_cookie = Cookie::build(("session_id", token))
             .path("/")
@@ -234,7 +229,7 @@ pub async fn session_middleware(
         let mut key_cookie = Cookie::build(("client_key", final_session.id))
             .path("/")
             .max_age(Duration::days(365))
-            .http_only(false); // Exposed to JS for PoW
+            .http_only(false);
 
         #[cfg(not(debug_assertions))]
         {
@@ -265,7 +260,6 @@ pub async fn bot_guard_middleware(
             .and_then(|h| h.to_str().ok())
             .unwrap_or("");
 
-        // We try to get client_key from cookie directly as extension might vary based on middleware order
         let jar = CookieJar::from_headers(headers);
         let session_id = if let Some(cookie) = jar.get("client_key") {
             cookie.value().to_string()
