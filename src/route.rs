@@ -52,6 +52,7 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
         .route("/report", post(create_report))
         .route("/admin", get(crate::handler::admin::admin_login_page))
         .route("/admin/login", post(crate::handler::admin::admin_login_action))
+        .route("/admin/logout", post(crate::handler::admin::admin_logout_action))
         .route("/admin/dashboard", get(crate::handler::admin::admin_dashboard))
         .route("/admin/ban", post(crate::handler::admin::admin_ban_action))
         .route("/admin/delete", post(crate::handler::admin::admin_delete_post_action))

@@ -8,6 +8,7 @@ pub struct SessionClaims {
     pub ip: String,
     pub ua: String,
     pub role: i32,
+    pub v: i32,
     pub exp: usize,
     pub iat: usize,
 }
@@ -135,6 +136,7 @@ pub mod admins {
         pub username: String,
         pub service_key: String,
         pub role: i32,
+        pub token_version: i32,
         pub created_at: NaiveDateTime,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

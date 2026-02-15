@@ -7,6 +7,7 @@ mod m20260205_000004_add_image_hash;
 mod m20260205_000005_admin_and_tracking;
 mod m20260205_000006_create_reports;
 mod m20260205_000007_add_exif_data;
+mod m20260205_000008_add_admin_version;
 
 pub struct Migrator;
 
@@ -21,6 +22,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260205_000005_admin_and_tracking::Migration),
             Box::new(m20260205_000006_create_reports::Migration),
             Box::new(m20260205_000007_add_exif_data::Migration),
+            Box::new(m20260205_000008_add_admin_version::Migration),
         ]
     }
 }

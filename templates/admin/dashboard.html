@@ -3,9 +3,12 @@
 <div class="p-4 font-sans">
     <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-skin-header p-4 rounded text-skin-text shadow-sm">
         <h1 class="text-2xl font-bold tracking-wide">ПАНЕЛЬ КЕРУВАННЯ <span class="text-sm font-mono text-skin-accent ml-2">[{{ admin.username }}]</span></h1>
-        <div class="flex gap-4 text-sm font-bold">
+        <div class="flex gap-4 text-sm font-bold items-center">
             <a href="/" class="hover:text-skin-link hover:underline">НА ГОЛОВНУ</a>
             <a href="/admin/logs" class="hover:text-skin-link hover:underline">ЛОГИ</a>
+            <form action="/admin/logout" method="POST" class="inline">
+                <button type="submit" class="text-red-600 hover:text-red-800 hover:underline uppercase">Вийти</button>
+            </form>
         </div>
     </div>
 

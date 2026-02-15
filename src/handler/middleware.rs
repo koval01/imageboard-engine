@@ -4,10 +4,10 @@ use axum::{
     http::{HeaderMap, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
-    body::{Body, to_bytes}, // Import Body utilities
+    body::{Body, to_bytes},
     Json
 };
-use axum_extra::extract::cookie::{Cookie, CookieJar};
+use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde_json::json;
 use std::net::SocketAddr;
@@ -15,13 +15,15 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 use time::Duration;
 use sha2::{Sha256, Digest};
+use sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
 
-use crate::{model::SessionClaims, security::{get_client_ip, get_user_agent}, AppState};
+use crate::{model::{SessionClaims, admins}, security::{get_client_ip, get_user_agent}, AppState};
 
 #[derive(Clone)]
 pub struct CurrentSession {
     pub id: String,
     pub role: i32,
+    pub version: i32,
 }
 
 pub async fn response_time_middleware(request: Request, next: Next) -> Response {
@@ -33,26 +35,18 @@ pub async fn response_time_middleware(request: Request, next: Next) -> Response 
 
     let (mut parts, body) = response.into_parts();
 
-    // 1. Add Custom Header (X-Processing-Time)
-    // Useful for HTMX Javascript to update the footer dynamically on partial reloads
     if let Ok(val) = time_str.parse() {
         parts.headers.insert("X-Processing-Time", val);
     }
 
-    // 2. Server-Side Injection (SSR)
-    // Check if the response is HTML. If so, read the body, find the placeholder,
-    // and replace it with the actual time. This ensures the time is visible
-    // immediately on first paint, without waiting for client-side JS.
     let is_html = parts.headers.get(axum::http::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .map(|v| v.starts_with("text/html"))
         .unwrap_or(false);
 
     if is_html {
-        // Buffer body (limit 1MB to be safe)
         match to_bytes(body, 1024 * 1024).await {
             Ok(bytes) => {
-                // Try to parse as UTF-8 string to perform replacement
                 if let Ok(content) = std::str::from_utf8(&bytes) {
                     let marker = "<!-- PROC_TIME -->";
                     if content.contains(marker) {
@@ -60,11 +54,9 @@ pub async fn response_time_middleware(request: Request, next: Next) -> Response 
                         return Response::from_parts(parts, Body::from(new_content));
                     }
                 }
-                // Return original if not text or marker not found
                 return Response::from_parts(parts, Body::from(bytes));
             }
             Err(_) => {
-                // Body read error
                 return Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .body(Body::empty())
@@ -84,16 +76,19 @@ pub async fn session_middleware(
     mut req: Request,
     next: Next,
 ) -> Result<Response, Response> {
-    // ... config setup ...
-    let config = &state.read().await.config;
+    let state_read = state.read().await;
+    let config = &state_read.config;
     let jwt_secret = config.jwt_secret.as_bytes();
     let current_ip = get_client_ip(&headers, &addr);
     let current_ua = get_user_agent(&headers);
+    let db = &state_read.pool;
 
     let mut session_id = String::new();
-    let mut role = 0; // Default: User
-    let mut is_new_session = true;
+    let mut role = 0;
+    let mut version = 1;
+    let mut is_valid_token = false;
 
+    // 1. Validate Existing Token
     if let Some(cookie) = cookie_jar.get("session_id") {
         let token = cookie.value();
         let validation = Validation::default();
@@ -104,71 +99,118 @@ pub async fn session_middleware(
             &validation,
         ) {
             let claims = token_data.claims;
+
+            // IP & UA binding check
             if claims.ip == current_ip && claims.ua == current_ua {
-                session_id = claims.sess;
-                role = claims.role; // Preserve role
-                is_new_session = false;
+                // SECURITY: Check Token Version against DB for Admins
+                let mut version_check_pass = true;
+
+                if claims.role > 0 {
+                    // Logic fixed here: We actually check the DB result now
+                    let admin_opt = admins::Entity::find()
+                        .filter(admins::Column::Role.eq(claims.role))
+                        .one(db).await.unwrap_or(None);
+
+                    if let Some(admin) = admin_opt {
+                        // If the version in DB is different from token, invalidate
+                        if admin.token_version != claims.v {
+                            version_check_pass = false;
+                        } else {
+                            // Update local version to match DB (though they are equal here)
+                            version = admin.token_version;
+                        }
+                    } else {
+                        // Admin role claimed but no record found (deleted admin?)
+                        version_check_pass = false;
+                    }
+                } else {
+                    // Regular user, verify claimed version (usually 1)
+                    version = claims.v;
+                }
+
+                if version_check_pass {
+                    session_id = claims.sess;
+                    role = claims.role;
+                    is_valid_token = true;
+                }
             }
         }
     }
 
-    let response_jar = if is_new_session {
-        // ... new session generation ...
+    // 2. Create New Session if Invalid
+    if !is_valid_token {
         session_id = Uuid::new_v4().to_string();
-        let now = chrono::Utc::now();
-        let iat = now.timestamp() as usize;
-        let exp = (now + chrono::Duration::days(365)).timestamp() as usize;
+        role = 0;
+        version = 1;
+    }
 
-        let claims = SessionClaims {
-            sess: session_id.clone(),
-            ip: current_ip,
-            ua: current_ua,
-            role: 0, // Default role
-            iat,
-            exp,
-        };
+    // 3. Inject Session into Request
+    let current_session = CurrentSession { id: session_id.clone(), role, version };
+    req.extensions_mut().insert(current_session.clone());
 
-        // ... encode and set cookies (same as before) ...
-        let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(jwt_secret)).unwrap();
+    // 4. Process Request
+    let response = next.run(req).await;
 
-        let jwt_cookie = Cookie::build(("session_id", token))
-            .path("/")
-            .max_age(Duration::days(365))
-            .http_only(true);
+    // 5. Re-Sign Token & Handle Cookies
+    // We fetch extensions again because the Handler (Login/Logout) might have updated the session
+    let final_session = response.extensions().get::<CurrentSession>().cloned().unwrap_or(current_session);
 
-        let key_cookie = Cookie::build(("client_key", session_id.clone()))
-            .path("/")
-            .max_age(Duration::days(365))
-            .http_only(false);
+    let now = chrono::Utc::now();
+    let iat = now.timestamp() as usize;
+    let exp = (now + chrono::Duration::days(365)).timestamp() as usize;
 
-        cookie_jar.add(jwt_cookie).add(key_cookie)
-    } else {
-        // If not new, just ensure client_key is synced
-        let key_cookie = Cookie::build(("client_key", session_id.clone()))
-            .path("/")
-            .max_age(Duration::days(365))
-            .http_only(false);
-        cookie_jar.add(key_cookie)
+    let claims = SessionClaims {
+        sess: final_session.id.clone(),
+        ip: current_ip,
+        ua: current_ua,
+        role: final_session.role,
+        v: final_session.version,
+        iat,
+        exp,
     };
 
-    // Inject session and ROLE into request context
-    req.extensions_mut().insert(CurrentSession { id: session_id, role }); // Update CurrentSession struct too!
+    let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(jwt_secret)).unwrap();
 
-    let response = next.run(req).await;
+    // NOTE: #[allow(unused_mut)] suppresses warnings in Dev mode where .secure(true) is not called.
+    #[allow(unused_mut)]
+    let mut jwt_cookie = Cookie::build(("session_id", token))
+        .path("/")
+        .max_age(Duration::days(365))
+        .http_only(true)
+        .same_site(SameSite::Lax);
+
+    #[cfg(not(debug_assertions))]
+    {
+        jwt_cookie = jwt_cookie.secure(true);
+    }
+
+    #[allow(unused_mut)]
+    let mut key_cookie = Cookie::build(("client_key", final_session.id))
+        .path("/")
+        .max_age(Duration::days(365))
+        .http_only(false); // Exposed to JS for PoW
+
+    #[cfg(not(debug_assertions))]
+    {
+        key_cookie = key_cookie.secure(true);
+    }
+
+    // Overwrite cookies to prevent layering (ensure only one Set-Cookie header per key)
+    let mut response_jar = cookie_jar;
+    response_jar = response_jar.add(jwt_cookie.build());
+    response_jar = response_jar.add(key_cookie.build());
+
     Ok((response_jar, response).into_response())
 }
-
 
 pub async fn bot_guard_middleware(
     State(state): State<Arc<RwLock<AppState>>>,
     req: Request,
     next: Next,
 ) -> Result<Response, Response> {
-    // 1. Only check POST requests
     if req.method() == axum::http::Method::POST {
         let headers = req.headers();
 
-        // 2. Get the PoW Data
         let nonce = headers.get("X-PoW-Nonce")
             .and_then(|h| h.to_str().ok())
             .unwrap_or("");
@@ -177,23 +219,12 @@ pub async fn bot_guard_middleware(
             .and_then(|h| h.to_str().ok())
             .unwrap_or("");
 
-        // 3. Get Session ID (client_key)
-        let session_id = if let Some(sess) = req.extensions().get::<CurrentSession>() {
-            sess.id.clone()
+        // We use the cookie directly here because extensions might not be populated yet depending on middleware order
+        let jar = CookieJar::from_headers(headers);
+        let session_id = if let Some(cookie) = jar.get("client_key") {
+            cookie.value().to_string()
         } else {
-            // Wait, extensions might not be populated yet if this middleware runs BEFORE session middleware
-            // But usually custom middleware runs inside out. Let's assume order is correct.
-            // If Session Middleware hasn't run, we can't verify properly.
-            // *Correction*: In src/route.rs, we layered bot_guard *before* session.
-            // Axum middleware executes Top -> Bottom for request, Bottom -> Top for response.
-            // We need session ID here.
-            // **We rely on the Cookie directly here because extension isn't set yet.**
-            let jar = CookieJar::from_headers(headers);
-            if let Some(cookie) = jar.get("client_key") {
-                cookie.value().to_string()
-            } else {
-                return Err((StatusCode::FORBIDDEN, "No Client Key Cookie").into_response());
-            }
+            return Err((StatusCode::FORBIDDEN, "No Client Key Cookie").into_response());
         };
 
         if nonce.is_empty() || salt.is_empty() {
@@ -203,7 +234,6 @@ pub async fn bot_guard_middleware(
             ).into_response());
         }
 
-        // 4. Replay Attack Check (Uniqueness)
         let state_read = state.read().await;
         let cache_key = format!("pow:{}", salt);
         if state_read.rate_limit_cache.get(&cache_key).await.is_some() {
@@ -213,15 +243,11 @@ pub async fn bot_guard_middleware(
             ).into_response());
         }
 
-        // 5. Verify Proof of Work
-        // Input: session_id + salt + nonce
-        // Target: Starts with 0x00, 0x00 (16 zero bits)
         let input = format!("{}{}{}", session_id, salt, nonce);
         let mut hasher = Sha256::new();
         hasher.update(input.as_bytes());
         let result = hasher.finalize();
 
-        // Check difficulty
         if result[0] != 0 || result[1] != 0 {
             return Err((
                 StatusCode::FORBIDDEN,
@@ -229,8 +255,6 @@ pub async fn bot_guard_middleware(
             ).into_response());
         }
 
-        // 6. Mark Salt as Used (Prevent Replay)
-        // Store current timestamp, expire in 10 mins
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
         state_read.rate_limit_cache.insert(cache_key, now).await;
     }

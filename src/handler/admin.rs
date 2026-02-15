@@ -4,22 +4,22 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     http::header,
 };
-use axum_extra::extract::cookie::{Cookie, CookieJar};
+// Removed CookieJar/Cookie imports - handled by middleware now
 use sea_orm::*;
 use askama::Template;
 use serde::Deserialize;
 use chrono::{Utc, Duration};
 use tokio::sync::RwLock;
 use sha2::{Sha256, Digest};
-use jsonwebtoken::{encode, Header, EncodingKey};
+// Removed jsonwebtoken imports - handled by middleware now
 use std::net::SocketAddr;
 use sea_orm::sea_query::Expr;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, ActiveModelTrait, Set, PaginatorTrait, QueryOrder};
 use crate::{
-    model::{admins, bans, admin_logs, posts, threads, images, reports, SessionClaims},
+    model::{admins, bans, admin_logs, posts, threads, images, reports},
     AppState,
     handler::{HtmlTemplate, middleware::CurrentSession},
-    security::{get_client_ip, get_user_agent},
+    security::get_client_ip,
 };
 
 // --- Templates ---
@@ -45,6 +45,13 @@ struct AdminLogsTemplate {
     logs: Vec<admin_logs::Model>,
 }
 
+#[derive(Template)]
+#[template(path = "admin/reports.html")]
+struct AdminReportsTemplate {
+    reports: Vec<(reports::Model, Option<posts::Model>, Vec<images::Model>)>,
+    cdn_url: String,
+}
+
 // --- Handlers ---
 
 #[derive(Deserialize)]
@@ -56,16 +63,12 @@ pub async fn admin_login_page() -> impl IntoResponse {
 
 pub async fn admin_login_action(
     State(state): State<Arc<RwLock<AppState>>>,
-    Extension(session): Extension<CurrentSession>,
-    jar: CookieJar,
-    headers: axum::http::HeaderMap,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    // We take the current session (guest) so we can upgrade it
+    Extension(mut session): Extension<CurrentSession>,
     Form(payload): Form<LoginPayload>,
-) -> impl IntoResponse {
+) -> Response {
     let state_read = state.read().await;
     let db = &state_read.pool;
-    let config = &state_read.config;
-    let jwt_secret = config.jwt_secret.as_bytes();
 
     let mut hasher = Sha256::new();
     hasher.update(payload.key.as_bytes());
@@ -78,35 +81,34 @@ pub async fn admin_login_action(
         .unwrap_or(None);
 
     if let Some(admin) = admin {
-        let now = Utc::now();
-        let iat = now.timestamp() as usize;
-        let exp = (now + Duration::days(365)).timestamp() as usize;
+        // SECURITY UPDATE:
+        // We do NOT set the cookie here manually anymore to prevent layering.
+        // We update the session object and pass it to the response extensions.
+        // The middleware will read this and generate the authoritative cookie.
 
-        let claims = SessionClaims {
-            sess: session.id,
-            ip: get_client_ip(&headers, &addr),
-            ua: get_user_agent(&headers),
-            role: admin.role,
-            iat,
-            exp,
-        };
+        session.role = admin.role;
+        session.version = admin.token_version;
 
-        let token = encode(
-            &Header::default(),
-            &claims,
-            &EncodingKey::from_secret(jwt_secret),
-        ).unwrap();
-
-        let jwt_cookie = Cookie::build(("session_id", token))
-            .path("/")
-            .max_age(time::Duration::days(365))
-            .http_only(true)
-            .build();
-
-        return (jar.add(jwt_cookie), Redirect::to("/admin/dashboard")).into_response();
+        let mut response = Redirect::to("/admin/dashboard").into_response();
+        // Insert the modified session into the response so middleware sees the change
+        response.extensions_mut().insert(session);
+        return response;
     }
 
     HtmlTemplate(AdminLoginTemplate { error: Some("Invalid Key".into()) }).into_response()
+}
+
+pub async fn admin_logout_action(
+    Extension(mut session): Extension<CurrentSession>,
+) -> Response {
+    // Downgrade session
+    session.role = 0;
+    session.version = 1; // Reset to default version
+
+    let mut response = Redirect::to("/admin").into_response();
+    // Pass updated session to middleware to overwrite the cookie
+    response.extensions_mut().insert(session);
+    response
 }
 
 #[derive(Deserialize)]
@@ -168,6 +170,7 @@ pub async fn admin_dashboard(
         username: role_name.to_string(),
         service_key: "".to_string(),
         role: session.role,
+        token_version: 0,
         created_at: Utc::now().naive_utc(),
     };
 
@@ -305,11 +308,11 @@ pub async fn admin_delete_post_action(
     let mut log_target = String::new();
 
     if let Some(pid) = payload.post_id {
+        log_target = format!("Post {}", pid);
         if let Ok(Some(_)) = posts::Entity::find_by_id(pid).one(db).await {
             let imgs = images::Entity::find().filter(images::Column::PostId.eq(pid)).all(db).await.unwrap_or_default();
             for img in imgs {
-                let _ = storage.delete_file(&img.url).await;
-                let _ = storage.delete_file(&img.thumbnail_url).await;
+                image_keys_to_check.push((img.storage_key, img.url, img.thumbnail_url));
             }
             let _ = posts::Entity::delete_by_id(pid).exec(db).await;
 
@@ -385,7 +388,7 @@ pub struct ReportPayload {
 
 pub async fn create_report(
     State(state): State<Arc<RwLock<AppState>>>,
-    Extension(_session): Extension<CurrentSession>, // Fixed unused variable
+    Extension(_session): Extension<CurrentSession>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
     Form(payload): Form<ReportPayload>,
@@ -516,13 +519,6 @@ pub async fn admin_logs_view(
         .unwrap_or_default();
 
     HtmlTemplate(AdminLogsTemplate { logs }).into_response()
-}
-
-#[derive(Template)]
-#[template(path = "admin/reports.html")]
-struct AdminReportsTemplate {
-    reports: Vec<(reports::Model, Option<posts::Model>, Vec<images::Model>)>,
-    cdn_url: String, // Added cdn_url for image display
 }
 
 pub async fn admin_reports_view(
