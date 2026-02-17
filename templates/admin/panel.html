@@ -5,16 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Panel - Kryivka</title>
 
-  <!-- Styles -->
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- PrimeVue Theme & Icons -->
   <link href="https://unpkg.com/primevue@3.50.0/resources/themes/aura-dark-green/theme.css" rel="stylesheet" />
   <link href="https://unpkg.com/primeicons@6.0.1/primeicons.css" rel="stylesheet" />
 
-  <!-- Vue and PrimeVue via CDN (simpler approach) -->
-  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  <script src="https://unpkg.com/primevue@3.50.0/primevue.umd.min.js"></script>
-  <script src="https://unpkg.com/primevue@3.50.0/confirmation-service/confirmation-service.umd.min.js"></script>
-  <script src="https://unpkg.com/primevue@3.50.0/toast-service/toast-service.umd.min.js"></script>
+  <!-- Vue (Production Build) -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+
+  <!-- PrimeVue Core & Services -->
+  <!-- Note: Loading core first establishes the 'primevue' global object -->
+  <script src="https://unpkg.com/primevue@3.50.0/core/core.min.js"></script>
+  <script src="https://unpkg.com/primevue@3.50.0/toastservice/toastservice.min.js"></script>
+  <script src="https://unpkg.com/primevue@3.50.0/confirmationservice/confirmationservice.min.js"></script>
+
+  <!-- PrimeVue Components -->
+  <script src="https://unpkg.com/primevue@3.50.0/datatable/datatable.min.js"></script>
+  <script src="https://unpkg.com/primevue@3.50.0/column/column.min.js"></script>
+  <script src="https://unpkg.com/primevue@3.50.0/tabview/tabview.min.js"></script>
+  <script src="https://unpkg.com/primevue@3.50.0/tabpanel/tabpanel.min.js"></script>
+  <script src="https://unpkg.com/primevue@3.50.0/button/button.min.js"></script>
+  <script src="https://unpkg.com/primevue@3.50.0/inputtext/inputtext.min.js"></script>
+  <script src="https://unpkg.com/primevue@3.50.0/toast/toast.min.js"></script>
+  <script src="https://unpkg.com/primevue@3.50.0/dialog/dialog.min.js"></script>
+  <script src="https://unpkg.com/primevue@3.50.0/confirmdialog/confirmdialog.min.js"></script>
 
   <style>
     body { background-color: #111827; color: #e5e7eb; font-family: ui-sans-serif, system-ui, sans-serif; }
@@ -59,7 +75,6 @@
 
     <!-- DASHBOARD TAB -->
     <p-tabpanel header="Dashboard">
-      <!-- Stats -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <div class="bg-gray-800 p-4 rounded border border-gray-700 text-center">
           <div class="text-xs uppercase text-gray-500 font-bold">Total Posts</div>
@@ -79,7 +94,6 @@
         </div>
       </div>
 
-      <!-- Logs Table -->
       <div class="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
         <div class="p-3 bg-gray-900 border-b border-gray-700 font-bold text-gray-400 text-xs uppercase">Recent Activity Logs</div>
         <p-datatable :value="logs" :rows="10" paginator responsive-layout="scroll" class="text-sm">
@@ -91,13 +105,13 @@
           <p-column field="admin_username" header="Admin" class="font-bold w-32"></p-column>
           <p-column field="action" header="Action" class="w-32">
             <template #body="slotProps">
-                            <span :class="{
-                                'bg-red-900 text-red-200 border-red-800': slotProps.data.action === 'BAN',
-                                'bg-orange-900 text-orange-200 border-orange-800': slotProps.data.action === 'DELETE',
-                                'bg-gray-700 text-gray-300 border-gray-600': !['BAN', 'DELETE'].includes(slotProps.data.action)
-                            }" class="px-2 py-0.5 rounded text-[10px] border">
-                                {{ slotProps.data.action }}
-                            </span>
+              <span :class="{
+                  'bg-red-900 text-red-200 border-red-800': slotProps.data.action === 'BAN',
+                  'bg-orange-900 text-orange-200 border-orange-800': slotProps.data.action === 'DELETE',
+                  'bg-gray-700 text-gray-300 border-gray-600': !['BAN', 'DELETE'].includes(slotProps.data.action)
+              }" class="px-2 py-0.5 rounded text-[10px] border">
+                  {{ slotProps.data.action }}
+              </span>
             </template>
           </p-column>
           <p-column field="target_id" header="Target" class="font-mono text-xs text-blue-400"></p-column>
@@ -120,7 +134,6 @@
 
       <div v-else class="flex flex-col gap-4">
         <div v-for="report in reports" :key="report.id" class="bg-gray-800 border border-gray-700 rounded flex flex-col md:flex-row overflow-hidden shadow-sm">
-          <!-- Sidebar -->
           <div class="bg-gray-900 p-4 w-full md:w-64 border-b md:border-b-0 md:border-r border-gray-700 flex flex-col shrink-0">
             <div class="text-[10px] font-mono text-gray-500 mb-1">REPORT #{{ report.id }}</div>
             <div class="text-red-400 font-bold mb-2">{{ report.reason }}</div>
@@ -129,16 +142,10 @@
               <div>At: {{ new Date(report.created_at).toLocaleString() }}</div>
             </div>
             <div class="mt-auto flex flex-col gap-2">
-              <button @click="resolveReport(report.id, 'REJECTED')" class="w-full bg-gray-800 border border-gray-600 hover:bg-gray-700 text-gray-300 py-1.5 rounded text-xs font-bold transition">
-                Dismiss
-              </button>
-              <button v-if="report.post" @click="openBanDialog(report.post.ip_address, report.post.session_id, report.id)" class="w-full bg-red-900/30 border border-red-800 hover:bg-red-900/50 text-red-300 py-1.5 rounded text-xs font-bold transition">
-                Ban User
-              </button>
+              <button @click="resolveReport(report.id, 'REJECTED')" class="w-full bg-gray-800 border border-gray-600 hover:bg-gray-700 text-gray-300 py-1.5 rounded text-xs font-bold transition">Dismiss</button>
+              <button v-if="report.post" @click="openBanDialog(report.post.ip_address, report.post.session_id, report.id)" class="w-full bg-red-900/30 border border-red-800 hover:bg-red-900/50 text-red-300 py-1.5 rounded text-xs font-bold transition">Ban User</button>
             </div>
           </div>
-
-          <!-- Content -->
           <div class="p-4 flex-1">
             <div v-if="report.post">
               <div class="flex justify-between items-start mb-2 border-b border-gray-700 pb-2">
@@ -148,9 +155,7 @@
                 </div>
                 <div class="text-xs text-gray-500">Post ID: {{ report.post.id }}</div>
               </div>
-
               <div class="text-sm text-gray-200 whitespace-pre-wrap mb-4 font-medium">{{ report.post.content }}</div>
-
               <div v-if="report.images.length" class="flex gap-2 flex-wrap">
                 <div v-for="img in report.images" :key="img.id" class="relative group">
                   <a :href="cdnUrl + '/' + img.url" target="_blank">
@@ -159,19 +164,11 @@
                 </div>
               </div>
             </div>
-            <div v-else class="flex h-full items-center justify-center text-gray-500 italic">
-              Target content was already deleted.
-            </div>
+            <div v-else class="flex h-full items-center justify-center text-gray-500 italic">Target content was already deleted.</div>
           </div>
-
-          <!-- Actions -->
           <div class="p-4 bg-gray-900/50 w-full md:w-32 border-t md:border-t-0 md:border-l border-gray-700 flex flex-col justify-center items-center gap-2">
-            <button v-if="report.post" @click="deletePost(report.post.id, report.id)" class="bg-orange-900/20 text-orange-400 border border-orange-900/50 hover:bg-orange-900/40 p-2 rounded-full transition" title="Delete Post">
-              <i class="pi pi-trash text-lg"></i>
-            </button>
-            <button @click="resolveReport(report.id, 'RESOLVED')" class="bg-green-900/20 text-green-400 border border-green-900/50 hover:bg-green-900/40 p-2 rounded-full transition" title="Resolve">
-              <i class="pi pi-check text-lg"></i>
-            </button>
+            <button v-if="report.post" @click="deletePost(report.post.id, report.id)" class="bg-orange-900/20 text-orange-400 border border-orange-900/50 hover:bg-orange-900/40 p-2 rounded-full transition" title="Delete Post"><i class="pi pi-trash text-lg"></i></button>
+            <button @click="resolveReport(report.id, 'RESOLVED')" class="bg-green-900/20 text-green-400 border border-green-900/50 hover:bg-green-900/40 p-2 rounded-full transition" title="Resolve"><i class="pi pi-check text-lg"></i></button>
           </div>
         </div>
       </div>
@@ -180,64 +177,51 @@
     <!-- INVESTIGATION TAB -->
     <p-tabpanel header="Tools">
       <div class="flex gap-2 mb-6">
-                <span class="p-input-icon-left w-full">
-                    <i class="pi pi-search"></i>
-                    <p-inputtext v-model="investigateQuery" placeholder="Search IP or Session ID..." class="w-full !bg-gray-800 !border-gray-600 !text-white" @keydown.enter="investigate"></p-inputtext>
-                </span>
+        <span class="p-input-icon-left w-full">
+            <i class="pi pi-search"></i>
+            <p-inputtext v-model="investigateQuery" placeholder="Search IP or Session ID..." class="w-full !bg-gray-800 !border-gray-600 !text-white" @keydown.enter="investigate"></p-inputtext>
+        </span>
         <p-button label="Investigate" @click="investigate" class="!bg-blue-600 !border-blue-600"></p-button>
       </div>
 
       <div v-if="investigationData" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Network Graph -->
         <div class="bg-gray-800 p-4 rounded border border-gray-700">
           <h3 class="font-bold text-blue-400 mb-3 text-sm uppercase">Network Connections</h3>
           <div class="space-y-4">
             <div>
               <div class="text-xs text-gray-500 uppercase font-bold mb-1">Related IPs</div>
               <div class="flex flex-wrap gap-1">
-                                <span v-for="ip in investigationData.related_ips" @click="setInvestigation(ip)"
-                                      class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-2 py-1 rounded text-xs font-mono cursor-pointer transition">
-                                    {{ ip }}
-                                </span>
+                <span v-for="ip in investigationData.related_ips" @click="setInvestigation(ip)" class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-2 py-1 rounded text-xs font-mono cursor-pointer transition">{{ ip }}</span>
               </div>
             </div>
             <div>
               <div class="text-xs text-gray-500 uppercase font-bold mb-1">Related Sessions</div>
               <div class="flex flex-wrap gap-1">
-                                <span v-for="s in investigationData.related_sessions" @click="setInvestigation(s)"
-                                      class="bg-gray-900 hover:bg-gray-700 border border-gray-700 text-gray-400 px-2 py-1 rounded text-[10px] font-mono cursor-pointer transition truncate max-w-[120px]">
-                                    {{ s }}
-                                </span>
+                <span v-for="s in investigationData.related_sessions" @click="setInvestigation(s)" class="bg-gray-900 hover:bg-gray-700 border border-gray-700 text-gray-400 px-2 py-1 rounded text-[10px] font-mono cursor-pointer transition truncate max-w-[120px]">{{ s }}</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Visual Matches -->
         <div class="bg-gray-800 p-4 rounded border border-gray-700">
           <h3 class="font-bold text-orange-400 mb-3 text-sm uppercase">Visual Matches (pHash)</h3>
           <div v-if="investigationData.similar_images.length === 0" class="text-gray-500 text-sm italic">No similar images found in database.</div>
           <div class="grid grid-cols-4 gap-2 max-h-[300px] overflow-y-auto pr-1">
             <div v-for="sim in investigationData.similar_images" class="relative group">
-              <a :href="cdnUrl + '/' + sim[2]" target="_blank">
-                <img :src="cdnUrl + '/' + sim[2]" class="w-full h-24 object-cover rounded bg-black">
-              </a>
+              <a :href="cdnUrl + '/' + sim[2]" target="_blank"><img :src="cdnUrl + '/' + sim[2]" class="w-full h-24 object-cover rounded bg-black"></a>
               <span class="absolute bottom-0 right-0 bg-black/80 text-white text-[9px] px-1 font-mono">Dist: {{ sim[1] }}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Visual Search Upload -->
       <div class="mt-6 border-t border-gray-700 pt-6">
         <h3 class="font-bold text-gray-400 mb-2">Reverse Image Search</h3>
-        <div class="border-2 border-dashed border-gray-700 rounded-lg p-8 text-center hover:bg-gray-800/50 transition cursor-pointer"
-             @dragover.prevent @drop.prevent="handleDrop" @click="$refs.fileInput.click()">
+        <div class="border-2 border-dashed border-gray-700 rounded-lg p-8 text-center hover:bg-gray-800/50 transition cursor-pointer" @dragover.prevent @drop.prevent="handleDrop" @click="$refs.fileInput.click()">
           <i class="pi pi-image text-4xl text-gray-600 mb-2"></i>
           <p class="text-gray-500 text-sm">Click or Drag image here to search DB</p>
           <input type="file" ref="fileInput" class="hidden" @change="handleFileSelect">
         </div>
-
         <div v-if="visualMatches.length > 0" class="mt-4">
           <h4 class="text-sm font-bold text-green-400 mb-2">Search Results</h4>
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -257,7 +241,6 @@
     </p-tabpanel>
   </p-tabview>
 
-  <!-- Ban Modal -->
   <p-dialog v-model:visible="banModal.visible" modal header="Ban User" :style="{ width: '28rem' }" :closable="false">
     <div class="flex flex-col gap-4 mt-1">
       <div>
@@ -267,7 +250,6 @@
           <input type="text" v-model="banModal.session" readonly class="w-1/2 bg-gray-900 border border-gray-700 p-2 rounded text-sm text-gray-400 font-mono">
         </div>
       </div>
-
       <div>
         <label class="block text-xs font-bold text-gray-500 mb-1">Duration</label>
         <select v-model="banModal.duration" class="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded text-sm focus:outline-none focus:border-blue-500">
@@ -278,12 +260,10 @@
           <option :value="87600">Forever</option>
         </select>
       </div>
-
       <div>
         <label class="block text-xs font-bold text-gray-500 mb-1">Reason</label>
         <input type="text" v-model="banModal.reason" class="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded text-sm focus:outline-none focus:border-blue-500">
       </div>
-
       <div class="flex items-center gap-2 bg-red-900/20 p-3 rounded border border-red-900/50">
         <input type="checkbox" v-model="banModal.deleteContent" id="nuke_cb" class="w-4 h-4 rounded bg-gray-700 border-gray-600 text-red-600 focus:ring-0">
         <label for="nuke_cb" class="text-sm font-bold text-red-400 cursor-pointer select-none">Delete all posts by this IP?</label>
@@ -299,15 +279,18 @@
 </div>
 
 <script>
-  const { createApp, ref, onMounted } = Vue;
+  const { createApp, ref, onMounted, getCurrentInstance } = Vue;
 
   // Global from server template
   const CDN_URL = "{{ cdn_url }}";
 
   const app = createApp({
     setup() {
-      const toast = PrimeVueToastService.useToast();
-      const confirm = PrimeVueConfirmationService.useConfirm();
+      // NOTE: Using getCurrentInstance() to bypass Symbol mismatches in CDN environments
+      // when loading modules separately.
+      const appInst = getCurrentInstance();
+      const toast = appInst.appContext.config.globalProperties.$toast;
+      const confirm = appInst.appContext.config.globalProperties.$confirm;
 
       // Data
       const activeTab = ref(0);
@@ -367,7 +350,7 @@
           });
           toast.add({ severity: 'success', summary: 'Updated', detail: `Report #${id} ${status.toLowerCase()}`, life: 3000 });
           fetchReports();
-          fetchStats(); // Update counters
+          fetchStats();
         } catch(e) {
           toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update report', life: 3000 });
         }
@@ -390,7 +373,6 @@
             if (reportId) {
               resolveReport(reportId, 'RESOLVED');
             } else {
-              // If just deleting from log or search (feature not fully impl here but good practice)
               fetchStats();
             }
           }
@@ -483,16 +465,13 @@
         cdnUrl: CDN_URL,
         resolveReport,
         deletePost,
-        // Ban
         banModal,
         openBanDialog,
         submitBan,
-        // Investigate
         investigateQuery,
         investigationData,
         investigate,
         setInvestigation,
-        // Visual
         visualMatches,
         handleFileSelect,
         handleDrop
@@ -501,20 +480,20 @@
   });
 
   // Use PrimeVue plugins
-  app.use(PrimeVue);
-  app.use(PrimeVueToastService);
-  app.use(PrimeVueConfirmationService);
+  app.use(primevue.config.default);
+  app.use(primevue.toastservice);
+  app.use(primevue.confirmationservice);
 
   // Global component registration
-  app.component('p-datatable', PrimeVue.DataTable);
-  app.component('p-column', PrimeVue.Column);
-  app.component('p-tabview', PrimeVue.TabView);
-  app.component('p-tabpanel', PrimeVue.TabPanel);
-  app.component('p-button', PrimeVue.Button);
-  app.component('p-inputtext', PrimeVue.InputText);
-  app.component('p-toast', PrimeVue.Toast);
-  app.component('p-dialog', PrimeVue.Dialog);
-  app.component('p-confirm-dialog', PrimeVue.ConfirmDialog);
+  app.component('p-datatable', primevue.datatable);
+  app.component('p-column', primevue.column);
+  app.component('p-tabview', primevue.tabview);
+  app.component('p-tabpanel', primevue.tabpanel);
+  app.component('p-button', primevue.button);
+  app.component('p-inputtext', primevue.inputtext);
+  app.component('p-toast', primevue.toast);
+  app.component('p-dialog', primevue.dialog);
+  app.component('p-confirm-dialog', primevue.confirmdialog);
 
   app.mount('#app');
 </script>
