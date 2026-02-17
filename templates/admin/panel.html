@@ -10,45 +10,11 @@
   <link href="https://unpkg.com/primevue@3.50.0/resources/themes/aura-dark-green/theme.css" rel="stylesheet" />
   <link href="https://unpkg.com/primeicons@6.0.1/primeicons.css" rel="stylesheet" />
 
-  <!-- Import Map for Clean Dependency Loading -->
-  <script type="importmap">
-    {
-      "imports": {
-        "vue": "https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js",
-        "primevue/config": "https://unpkg.com/primevue@3.50.0/config/config.esm.js",
-        "primevue/api": "https://unpkg.com/primevue@3.50.0/api/api.esm.js",
-        "primevue/utils": "https://unpkg.com/primevue@3.50.0/utils/utils.esm.js",
-        "primevue/usetoast": "https://unpkg.com/primevue@3.50.0/usetoast/usetoast.esm.js",
-        "primevue/useconfirm": "https://unpkg.com/primevue@3.50.0/useconfirm/useconfirm.esm.js",
-        "primevue/toasteventbus": "https://unpkg.com/primevue@3.50.0/toasteventbus/toasteventbus.esm.js",
-        "primevue/overlayeventbus": "https://unpkg.com/primevue@3.50.0/overlayeventbus/overlayeventbus.esm.js",
-        "primevue/confirmationeventbus": "https://unpkg.com/primevue@3.50.0/confirmationeventbus/confirmationeventbus.esm.js",
-        "primevue/focustrap": "https://unpkg.com/primevue@3.50.0/focustrap/focustrap.esm.js",
-        "primevue/ripple": "https://unpkg.com/primevue@3.50.0/ripple/ripple.esm.js",
-        "primevue/portal": "https://unpkg.com/primevue@3.50.0/portal/portal.esm.js",
-        "primevue/baseicon": "https://unpkg.com/primevue@3.50.0/baseicon/baseicon.esm.js",
-        "primevue/paginator": "https://unpkg.com/primevue@3.50.0/paginator/paginator.esm.js",
-        "primevue/virtualscroller": "https://unpkg.com/primevue@3.50.0/virtualscroller/virtualscroller.esm.js",
-        "primevue/dropdown": "https://unpkg.com/primevue@3.50.0/dropdown/dropdown.esm.js",
-        "primevue/inputnumber": "https://unpkg.com/primevue@3.50.0/inputnumber/inputnumber.esm.js",
-        "primevue/progressbar": "https://unpkg.com/primevue@3.50.0/progressbar/progressbar.esm.js",
-        "primevue/message": "https://unpkg.com/primevue@3.50.0/message/message.esm.js",
-        "primevue/icons/": "https://unpkg.com/primevue@3.50.0/icons/",
-
-        "primevue/datatable": "https://unpkg.com/primevue@3.50.0/datatable/datatable.esm.js",
-        "primevue/column": "https://unpkg.com/primevue@3.50.0/column/column.esm.js",
-        "primevue/tabview": "https://unpkg.com/primevue@3.50.0/tabview/tabview.esm.js",
-        "primevue/tabpanel": "https://unpkg.com/primevue@3.50.0/tabpanel/tabpanel.esm.js",
-        "primevue/button": "https://unpkg.com/primevue@3.50.0/button/button.esm.js",
-        "primevue/inputtext": "https://unpkg.com/primevue@3.50.0/inputtext/inputtext.esm.js",
-        "primevue/toast": "https://unpkg.com/primevue@3.50.0/toast/toast.esm.js",
-        "primevue/dialog": "https://unpkg.com/primevue@3.50.0/dialog/dialog.esm.js",
-        "primevue/confirmdialog": "https://unpkg.com/primevue@3.50.0/confirmdialog/confirmdialog.esm.js",
-        "primevue/toastservice": "https://unpkg.com/primevue@3.50.0/toastservice/toastservice.esm.js",
-        "primevue/confirmationservice": "https://unpkg.com/primevue@3.50.0/confirmationservice/confirmationservice.esm.js"
-      }
-    }
-  </script>
+  <!-- Vue and PrimeVue via CDN (simpler approach) -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/primevue@3.50.0/primevue.umd.min.js"></script>
+  <script src="https://unpkg.com/primevue@3.50.0/confirmation-service/confirmation-service.umd.min.js"></script>
+  <script src="https://unpkg.com/primevue@3.50.0/toast-service/toast-service.umd.min.js"></script>
 
   <style>
     body { background-color: #111827; color: #e5e7eb; font-family: ui-sans-serif, system-ui, sans-serif; }
@@ -117,7 +83,11 @@
       <div class="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
         <div class="p-3 bg-gray-900 border-b border-gray-700 font-bold text-gray-400 text-xs uppercase">Recent Activity Logs</div>
         <p-datatable :value="logs" :rows="10" paginator responsive-layout="scroll" class="text-sm">
-          <p-column field="created_at" header="Time" sortable class="font-mono text-xs w-40"></p-column>
+          <p-column field="created_at" header="Time" sortable class="font-mono text-xs w-40">
+            <template #body="slotProps">
+              {{ new Date(slotProps.data.created_at).toLocaleString() }}
+            </template>
+          </p-column>
           <p-column field="admin_username" header="Admin" class="font-bold w-32"></p-column>
           <p-column field="action" header="Action" class="w-32">
             <template #body="slotProps">
@@ -156,7 +126,7 @@
             <div class="text-red-400 font-bold mb-2">{{ report.reason }}</div>
             <div class="text-xs text-gray-400 mb-4">
               <div>From: <span class="text-white">{{ report.reporter_ip }}</span></div>
-              <div>At: {{ report.created_at }}</div>
+              <div>At: {{ new Date(report.created_at).toLocaleString() }}</div>
             </div>
             <div class="mt-auto flex flex-col gap-2">
               <button @click="resolveReport(report.id, 'REJECTED')" class="w-full bg-gray-800 border border-gray-600 hover:bg-gray-700 text-gray-300 py-1.5 rounded text-xs font-bold transition">
@@ -328,32 +298,16 @@
   </p-dialog>
 </div>
 
-<script type="module">
-  import { createApp, ref, onMounted } from 'vue';
-  import PrimeVue from 'primevue/config';
-  import ToastService from 'primevue/toastservice';
-  import ConfirmationService from 'primevue/confirmationservice';
-  import { useToast } from 'primevue/usetoast';
-  import { useConfirm } from 'primevue/useconfirm';
-
-  // Components
-  import DataTable from 'primevue/datatable';
-  import Column from 'primevue/column';
-  import TabView from 'primevue/tabview';
-  import TabPanel from 'primevue/tabpanel';
-  import Button from 'primevue/button';
-  import InputText from 'primevue/inputtext';
-  import Toast from 'primevue/toast';
-  import Dialog from 'primevue/dialog';
-  import ConfirmDialog from 'primevue/confirmdialog';
+<script>
+  const { createApp, ref, onMounted } = Vue;
 
   // Global from server template
   const CDN_URL = "{{ cdn_url }}";
 
   const app = createApp({
     setup() {
-      const toast = useToast();
-      const confirm = useConfirm();
+      const toast = PrimeVueToastService.useToast();
+      const confirm = PrimeVueConfirmationService.useConfirm();
 
       // Data
       const activeTab = ref(0);
@@ -546,19 +500,21 @@
     }
   });
 
+  // Use PrimeVue plugins
   app.use(PrimeVue);
-  app.use(ToastService);
-  app.use(ConfirmationService);
+  app.use(PrimeVueToastService);
+  app.use(PrimeVueConfirmationService);
 
-  app.component('p-datatable', DataTable);
-  app.component('p-column', Column);
-  app.component('p-tabview', TabView);
-  app.component('p-tabpanel', TabPanel);
-  app.component('p-button', Button);
-  app.component('p-inputtext', InputText);
-  app.component('p-toast', Toast);
-  app.component('p-dialog', Dialog);
-  app.component('p-confirm-dialog', ConfirmDialog);
+  // Global component registration
+  app.component('p-datatable', PrimeVue.DataTable);
+  app.component('p-column', PrimeVue.Column);
+  app.component('p-tabview', PrimeVue.TabView);
+  app.component('p-tabpanel', PrimeVue.TabPanel);
+  app.component('p-button', PrimeVue.Button);
+  app.component('p-inputtext', PrimeVue.InputText);
+  app.component('p-toast', PrimeVue.Toast);
+  app.component('p-dialog', PrimeVue.Dialog);
+  app.component('p-confirm-dialog', PrimeVue.ConfirmDialog);
 
   app.mount('#app');
 </script>
