@@ -2,8 +2,9 @@ use std::sync::Arc;
 use std::net::SocketAddr;
 use axum::{
     extract::{Path, State, Extension, Multipart, ConnectInfo, Query},
-    response::{IntoResponse, Redirect, Response},
-    http::HeaderMap,
+    response::{IntoResponse, Response},
+    http::{HeaderMap, StatusCode},
+    Json,
 };
 use sea_orm::{
     EntityTrait, QueryOrder, Set, ActiveModelTrait, ModelTrait,
@@ -11,34 +12,22 @@ use sea_orm::{
     RelationTrait, DatabaseConnection
 };
 use tokio::sync::RwLock;
-use askama::Template;
 use chrono::Utc;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use crate::{
     model::{boards, threads, posts, images},
     AppState,
     handler::middleware::CurrentSession,
-    handler::HtmlTemplate,
     service::{ProcessedImage, StorageService, resolve_country_code},
     security::get_client_ip,
     config::{BUMP_LIMIT, THREAD_AGE_LIMIT_DAYS},
 };
 
-#[derive(Clone)]
-pub enum CacheData {
-    Home(Vec<BoardStat>, Vec<(images::Model, String)>, Vec<threads::Model>),
-    Board(Vec<ThreadItem>),
-    Thread(threads::Model, Vec<images::Model>, Vec<PostItem>),
-}
+// --- DTOs (Data Transfer Objects) ---
 
-struct ParsedForm {
-    subject: Option<String>,
-    content: String,
-    images: Vec<ProcessedImage>,
-}
-
-#[derive(Clone)]
+#[derive(Clone, Serialize)] // Added Serialize
 pub struct PostItem {
     pub model: posts::Model,
     pub images: Vec<images::Model>,
@@ -47,11 +36,13 @@ pub struct PostItem {
     pub board_slug: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize)] // Added Serialize
 pub struct ThreadItem {
     pub model: threads::Model,
     pub images: Vec<images::Model>,
-    pub replies: Vec<PostItem>,
+    // We don't serialize full replies list for board view to save bandwidth
+    // pub replies: Vec<PostItem>,
+    pub replies_preview: Vec<PostItem>, // Only the last few
     pub reply_count: usize,
     pub image_count: usize,
     pub omitted_posts: usize,
@@ -60,66 +51,73 @@ pub struct ThreadItem {
     pub is_time_limit: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize)] // Added Serialize
 pub struct BoardStat {
     pub model: boards::Model,
     pub post_count: u64,
 }
 
-#[derive(Template)]
-#[template(path = "home.html")]
-struct HomeTemplate {
-    boards: Vec<BoardStat>,
-    recent_images: Vec<(images::Model, String)>,
-    recent_threads: Vec<threads::Model>,
-    cdn_url: String,
-    admin_role: i32, // Added field
+// Internal Cache Data (Keep as is, but ensure inner types are serializable if needed elsewhere)
+#[derive(Clone)]
+pub enum CacheData {
+    Home(Vec<BoardStat>, Vec<(images::Model, String)>, Vec<threads::Model>),
+    Board(Vec<ThreadItem>),
+    Thread(threads::Model, Vec<images::Model>, Vec<PostItem>),
 }
 
-#[derive(Template)]
-#[template(path = "about.html")]
-struct AboutTemplate {}
+// --- API Response Structs ---
 
-#[derive(Template)]
-#[template(path = "rules.html")]
-struct RulesTemplate {}
-
-#[derive(Template)]
-#[template(path = "board.html")]
-struct BoardTemplate {
-    board: boards::Model,
-    threads: Vec<ThreadItem>,
-    cdn_url: String,
-    admin_role: i32,
+#[derive(Serialize)]
+pub struct HomeResponse {
+    pub boards: Vec<BoardStat>,
+    pub recent_images: Vec<RecentImageDto>,
+    pub recent_threads: Vec<threads::Model>,
+    pub cdn_url: String,
+    pub admin_role: i32,
 }
 
-#[derive(Template)]
-#[template(path = "thread.html")]
-struct ThreadTemplate {
-    board: boards::Model,
-    thread: threads::Model,
-    op_images: Vec<images::Model>,
-    replies: Vec<PostItem>,
-    cdn_url: String,
-    admin_role: i32,
-    last_post_id: i32,
-    is_bump_limit: bool,
-    is_time_limit: bool,
+#[derive(Serialize)]
+pub struct RecentImageDto {
+    #[serde(flatten)]
+    pub model: images::Model,
+    pub thread_id: String,
 }
 
-#[derive(Template)]
-#[template(path = "partials/post.html")]
-struct PostPartialTemplate {
-    post: PostItem,
+#[derive(Serialize)]
+pub struct BoardResponse {
+    pub board: boards::Model,
+    pub threads: Vec<ThreadItem>,
+    pub cdn_url: String,
+    pub admin_role: i32,
 }
 
-#[derive(Template)]
-#[template(path = "partials/posts_list.html")]
-struct PostsListPartialTemplate {
-    posts: Vec<PostItem>,
-    next_cursor: Option<i32>,
-    board_slug: String,
-    thread_id: i32,
+#[derive(Serialize)]
+pub struct ThreadResponse {
+    pub board: boards::Model,
+    pub thread: threads::Model,
+    pub op_images: Vec<images::Model>,
+    pub replies: Vec<PostItem>,
+    pub cdn_url: String,
+    pub admin_role: i32,
+    pub last_post_id: i32,
+    pub is_bump_limit: bool,
+    pub is_time_limit: bool,
+}
+
+#[derive(Serialize)]
+pub struct PostsListResponse {
+    pub posts: Vec<PostItem>,
+    pub next_cursor: Option<i32>,
+    pub board_slug: String,
+    pub thread_id: i32,
+}
+
+// --- Helper Functions ---
+
+struct ParsedForm {
+    subject: Option<String>,
+    content: String,
+    images: Vec<ProcessedImage>,
 }
 
 async fn parse_multipart_form(
@@ -160,13 +158,13 @@ async fn parse_multipart_form(
             let data = field.bytes().await.map_err(|e| e.body_text())?;
 
             if data.len() > max_file_size {
-                return Err(format!("Файл {} завеликий (макс 5MB)", filename));
+                return Err(format!("File {} too large (max 5MB)", filename));
             }
 
             if !data.is_empty() {
                 match storage.upload_image(data, filename, db).await {
                     Ok(img) => processed_images.push(img),
-                    Err(e) => return Err(format!("Помилка завантаження: {}", e)),
+                    Err(e) => return Err(format!("Upload error: {}", e)),
                 }
             }
         }
@@ -182,7 +180,7 @@ async fn check_rate_limit(ip: &str, cache: &moka::future::Cache<String, u64>) ->
     if let Some(last_post) = cache.get(&key).await {
         if now < last_post + 60 {
             let wait = (last_post + 60) - now;
-            return Err(format!("Зачекайте ще {} сек.", wait));
+            return Err(format!("Wait {} seconds.", wait));
         }
     }
 
@@ -190,21 +188,24 @@ async fn check_rate_limit(ip: &str, cache: &moka::future::Cache<String, u64>) ->
     Ok(())
 }
 
+// --- Handlers ---
+
 pub async fn home_handler(
     State(state): State<Arc<RwLock<AppState>>>,
-    Extension(session): Extension<CurrentSession>, // Added Extension here
-) -> impl IntoResponse {
+    Extension(session): Extension<CurrentSession>,
+) -> Response {
     let state_read = state.read().await;
     let cache_key = "home_view".to_string();
 
     if let Some(CacheData::Home(c_boards, c_images, c_threads)) = state_read.db_cache.get(&cache_key).await {
-        return HtmlTemplate(HomeTemplate {
+        let recent_images_dto = c_images.into_iter().map(|(m, t)| RecentImageDto { model: m, thread_id: t }).collect();
+        return Json(HomeResponse {
             boards: c_boards,
-            recent_images: c_images,
+            recent_images: recent_images_dto,
             recent_threads: c_threads,
             cdn_url: state_read.config.cdn_url.clone(),
-            admin_role: session.role, // Pass role to template
-        });
+            admin_role: session.role,
+        }).into_response();
     }
 
     let db = &state_read.pool;
@@ -241,6 +242,8 @@ pub async fn home_handler(
         .unwrap_or_default();
 
     let mut recent_images = Vec::new();
+    let mut recent_images_dto = Vec::new();
+
     for img in recent_images_raw {
         let thread_id = if let Some(tid) = img.thread_id {
             tid.to_string()
@@ -250,7 +253,8 @@ pub async fn home_handler(
         } else {
             "0".to_string()
         };
-        recent_images.push((img, thread_id));
+        recent_images.push((img.clone(), thread_id.clone()));
+        recent_images_dto.push(RecentImageDto { model: img, thread_id });
     }
 
     let recent_threads = threads::Entity::find()
@@ -262,217 +266,212 @@ pub async fn home_handler(
 
     state_read.db_cache.insert(
         cache_key,
-        CacheData::Home(boards_stats.clone(), recent_images.clone(), recent_threads.clone())
+        CacheData::Home(boards_stats.clone(), recent_images, recent_threads.clone())
     ).await;
 
-    HtmlTemplate(HomeTemplate {
+    Json(HomeResponse {
         boards: boards_stats,
-        recent_images,
+        recent_images: recent_images_dto,
         recent_threads,
         cdn_url,
-        admin_role: session.role, // Pass role to template
-    })
-}
-
-pub async fn about_handler() -> impl IntoResponse {
-    HtmlTemplate(AboutTemplate {})
-}
-
-pub async fn rules_handler() -> impl IntoResponse {
-    HtmlTemplate(RulesTemplate {})
+        admin_role: session.role,
+    }).into_response()
 }
 
 pub async fn view_board_handler(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
     Path(slug): Path<String>,
-) -> impl IntoResponse {
+) -> Response {
     let state_read = state.read().await;
     let db = &state_read.pool;
     let cdn_url = state_read.config.cdn_url.clone();
     let cache_key = format!("board_{}", slug);
 
-    let board = boards::Entity::find_by_id(&slug).one(db).await.unwrap();
+    let board = match boards::Entity::find_by_id(&slug).one(db).await {
+        Ok(Some(b)) => b,
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    };
 
-    if let Some(board) = board {
-        let cached_threads = if let Some(CacheData::Board(items)) = state_read.db_cache.get(&cache_key).await {
-            Some(items)
-        } else {
-            None
-        };
+    let cached_threads = if let Some(CacheData::Board(items)) = state_read.db_cache.get(&cache_key).await {
+        Some(items)
+    } else {
+        None
+    };
 
-        let thread_items = if let Some(items) = cached_threads {
-            items
-        } else {
-            let threads_raw = threads::Entity::find()
-                .filter(threads::Column::BoardSlug.eq(&slug))
-                .order_by_desc(threads::Column::UpdatedAt)
-                .limit(10)
+    let thread_items = if let Some(items) = cached_threads {
+        items
+    } else {
+        let threads_raw = threads::Entity::find()
+            .filter(threads::Column::BoardSlug.eq(&slug))
+            .order_by_desc(threads::Column::UpdatedAt)
+            .limit(10)
+            .all(db)
+            .await
+            .unwrap();
+
+        let thread_images = threads_raw.load_many(images::Entity, db).await.unwrap();
+        let mut items = Vec::new();
+
+        for (i, thread) in threads_raw.into_iter().enumerate() {
+            let posts_raw = posts::Entity::find()
+                .filter(posts::Column::ThreadId.eq(thread.id))
+                .order_by_asc(posts::Column::CreatedAt)
                 .all(db)
                 .await
                 .unwrap();
 
-            let thread_images = threads_raw.load_many(images::Entity, db).await.unwrap();
-            let mut items = Vec::new();
+            let reply_count = posts_raw.len();
+            let is_bump_limit = reply_count as u64 >= BUMP_LIMIT;
+            let thread_age_days = (Utc::now().naive_utc() - thread.created_at).num_days();
+            let is_time_limit = thread_age_days >= THREAD_AGE_LIMIT_DAYS;
 
-            for (i, thread) in threads_raw.into_iter().enumerate() {
-                let posts_raw = posts::Entity::find()
-                    .filter(posts::Column::ThreadId.eq(thread.id))
-                    .order_by_asc(posts::Column::CreatedAt)
-                    .all(db)
-                    .await
-                    .unwrap();
+            let post_images_raw = posts_raw.load_many(images::Entity, db).await.unwrap();
+            let mut image_count = 0;
+            for imgs in &post_images_raw {
+                image_count += imgs.len();
+            }
 
-                let reply_count = posts_raw.len();
-                let is_bump_limit = reply_count as u64 >= BUMP_LIMIT;
-                let thread_age_days = (Utc::now().naive_utc() - thread.created_at).num_days();
-                let is_time_limit = thread_age_days >= THREAD_AGE_LIMIT_DAYS;
+            let preview_len = 3;
+            let start_idx = if reply_count > preview_len { reply_count - preview_len } else { 0 };
 
-                let post_images_raw = posts_raw.load_many(images::Entity, db).await.unwrap();
-                let mut image_count = 0;
-                for imgs in &post_images_raw {
-                    image_count += imgs.len();
+            let mut omitted_posts = 0;
+            let mut omitted_images = 0;
+
+            if reply_count > preview_len {
+                omitted_posts = reply_count - preview_len;
+                for k in 0..start_idx {
+                    omitted_images += post_images_raw[k].len();
                 }
+            }
 
-                let preview_len = 3;
-                let start_idx = if reply_count > preview_len { reply_count - preview_len } else { 0 };
-
-                let mut omitted_posts = 0;
-                let mut omitted_images = 0;
-
-                if reply_count > preview_len {
-                    omitted_posts = reply_count - preview_len;
-                    for k in 0..start_idx {
-                        omitted_images += post_images_raw[k].len();
-                    }
-                }
-
-                let mut replies = Vec::new();
-                for j in start_idx..reply_count {
-                    replies.push(PostItem {
-                        model: posts_raw[j].clone(),
-                        images: post_images_raw[j].clone(),
-                        cdn_url: cdn_url.clone(),
-                        admin_role: 0,
-                        board_slug: slug.clone(),
-                    });
-                }
-
-                items.push(ThreadItem {
-                    model: thread,
-                    images: thread_images[i].clone(),
-                    replies,
-                    reply_count,
-                    image_count,
-                    omitted_posts,
-                    omitted_images,
-                    is_bump_limit,
-                    is_time_limit,
+            let mut replies_preview = Vec::new();
+            for j in start_idx..reply_count {
+                replies_preview.push(PostItem {
+                    model: posts_raw[j].clone(),
+                    images: post_images_raw[j].clone(),
+                    cdn_url: cdn_url.clone(),
+                    admin_role: 0,
+                    board_slug: slug.clone(),
                 });
             }
 
-            state_read.db_cache.insert(cache_key, CacheData::Board(items.clone())).await;
-            items
-        };
+            items.push(ThreadItem {
+                model: thread,
+                images: thread_images[i].clone(),
+                replies_preview,
+                reply_count,
+                image_count,
+                omitted_posts,
+                omitted_images,
+                is_bump_limit,
+                is_time_limit,
+            });
+        }
 
-        let final_threads: Vec<ThreadItem> = thread_items.into_iter().map(|mut t| {
-            t.replies.iter_mut().for_each(|r| r.admin_role = session.role);
-            t
-        }).collect();
+        state_read.db_cache.insert(cache_key, CacheData::Board(items.clone())).await;
+        items
+    };
 
-        return HtmlTemplate(BoardTemplate {
-            board,
-            threads: final_threads,
-            cdn_url,
-            admin_role: session.role,
-        }).into_response();
-    }
+    let final_threads: Vec<ThreadItem> = thread_items.into_iter().map(|mut t| {
+        t.replies_preview.iter_mut().for_each(|r| r.admin_role = session.role);
+        t
+    }).collect();
 
-    Redirect::to("/").into_response()
+    Json(BoardResponse {
+        board,
+        threads: final_threads,
+        cdn_url,
+        admin_role: session.role,
+    }).into_response()
 }
 
 pub async fn view_thread_handler(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
     Path((slug, thread_id)): Path<(String, i32)>,
-) -> impl IntoResponse {
+) -> Response {
     let state_read = state.read().await;
     let db = &state_read.pool;
     let cdn_url = state_read.config.cdn_url.clone();
     let cache_key = format!("thread_{}", thread_id);
 
-    let board = boards::Entity::find_by_id(&slug).one(db).await.unwrap();
+    let board = match boards::Entity::find_by_id(&slug).one(db).await {
+        Ok(Some(b)) => b,
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    };
 
-    if let Some(_board) = board {
-        let cached_data = if let Some(CacheData::Thread(th, op, reps)) = state_read.db_cache.get(&cache_key).await {
-            Some((th, op, reps))
-        } else {
-            None
-        };
+    let cached_data = if let Some(CacheData::Thread(th, op, reps)) = state_read.db_cache.get(&cache_key).await {
+        Some((th, op, reps))
+    } else {
+        None
+    };
 
-        let (thread, op_images, replies) = if let Some(d) = cached_data {
-            d
-        } else {
-            let thread = threads::Entity::find_by_id(thread_id).one(db).await.unwrap();
-            if let Some(thread) = thread {
-                let op_images = thread.find_related(images::Entity).all(db).await.unwrap();
-
-                let posts_raw = thread.find_related(posts::Entity)
-                    .order_by_asc(posts::Column::CreatedAt)
-                    .all(db)
-                    .await
-                    .unwrap();
-
-                let post_images_vec = posts_raw.load_many(images::Entity, db).await.unwrap();
-
-                let mut posts_with_images = Vec::new();
-                for (i, post) in posts_raw.into_iter().enumerate() {
-                    posts_with_images.push(PostItem {
-                        model: post,
-                        images: post_images_vec[i].clone(),
-                        cdn_url: cdn_url.clone(),
-                        admin_role: 0,
-                        board_slug: slug.clone(),
-                    });
-                }
-
-                state_read.db_cache.insert(
-                    cache_key,
-                    CacheData::Thread(thread.clone(), op_images.clone(), posts_with_images.clone())
-                ).await;
-
-                (thread, op_images, posts_with_images)
-            } else {
-                return Redirect::to(&format!("/{}", slug)).into_response();
+    let (thread, op_images, replies) = if let Some(d) = cached_data {
+        d
+    } else {
+        let thread = threads::Entity::find_by_id(thread_id).one(db).await.unwrap();
+        if let Some(thread) = thread {
+            // Verify thread belongs to board
+            if thread.board_slug != slug {
+                return StatusCode::NOT_FOUND.into_response();
             }
-        };
 
-        let last_post_id = replies.last().map(|p| p.model.id).unwrap_or(0);
+            let op_images = thread.find_related(images::Entity).all(db).await.unwrap();
 
-        let final_replies: Vec<PostItem> = replies.into_iter().map(|mut p| {
-            p.admin_role = session.role;
-            p
-        }).collect();
+            let posts_raw = thread.find_related(posts::Entity)
+                .order_by_asc(posts::Column::CreatedAt)
+                .all(db)
+                .await
+                .unwrap();
 
-        let post_count = final_replies.len();
-        let is_bump_limit = post_count as u64 >= BUMP_LIMIT;
-        let thread_age_days = (Utc::now().naive_utc() - thread.created_at).num_days();
-        let is_time_limit = thread_age_days >= THREAD_AGE_LIMIT_DAYS;
+            let post_images_vec = posts_raw.load_many(images::Entity, db).await.unwrap();
 
-        return HtmlTemplate(ThreadTemplate {
-            board: _board,
-            thread,
-            op_images,
-            replies: final_replies,
-            cdn_url,
-            admin_role: session.role,
-            last_post_id,
-            is_bump_limit,
-            is_time_limit,
-        }).into_response();
-    }
+            let mut posts_with_images = Vec::new();
+            for (i, post) in posts_raw.into_iter().enumerate() {
+                posts_with_images.push(PostItem {
+                    model: post,
+                    images: post_images_vec[i].clone(),
+                    cdn_url: cdn_url.clone(),
+                    admin_role: 0,
+                    board_slug: slug.clone(),
+                });
+            }
 
-    Redirect::to(&format!("/{}", slug)).into_response()
+            state_read.db_cache.insert(
+                cache_key,
+                CacheData::Thread(thread.clone(), op_images.clone(), posts_with_images.clone())
+            ).await;
+
+            (thread, op_images, posts_with_images)
+        } else {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+    };
+
+    let last_post_id = replies.last().map(|p| p.model.id).unwrap_or(0);
+
+    let final_replies: Vec<PostItem> = replies.into_iter().map(|mut p| {
+        p.admin_role = session.role;
+        p
+    }).collect();
+
+    let post_count = final_replies.len();
+    let is_bump_limit = post_count as u64 >= BUMP_LIMIT;
+    let thread_age_days = (Utc::now().naive_utc() - thread.created_at).num_days();
+    let is_time_limit = thread_age_days >= THREAD_AGE_LIMIT_DAYS;
+
+    Json(ThreadResponse {
+        board,
+        thread,
+        op_images,
+        replies: final_replies,
+        cdn_url,
+        admin_role: session.role,
+        last_post_id,
+        is_bump_limit,
+        is_time_limit,
+    }).into_response()
 }
 
 pub async fn create_thread_handler(
@@ -488,7 +487,7 @@ pub async fn create_thread_handler(
     let db = &state_read.pool;
 
     if let Err(msg) = check_rate_limit(&ip, &state_read.rate_limit_cache).await {
-        return HtmlTemplate(crate::handler::ErrorTemplate { message: msg }).into_response();
+        return (StatusCode::TOO_MANY_REQUESTS, Json(json!({"error": msg}))).into_response();
     }
 
     let is_banned = crate::model::bans::Entity::find()
@@ -501,21 +500,18 @@ pub async fn create_thread_handler(
         .one(db).await.unwrap_or(None);
 
     if let Some(ban) = is_banned {
-        return HtmlTemplate(crate::handler::ErrorTemplate {
-            message: format!("БАН. Причина: {}. Спливає: {}",
-                             ban.reason.unwrap_or_default(), ban.expires_at)
-        }).into_response();
+        return (StatusCode::FORBIDDEN, Json(json!({"error": format!("BANNED. Reason: {}", ban.reason.unwrap_or_default())}))).into_response();
     }
 
     let country_code = resolve_country_code(ip.clone(), &state_read.ip_cache).await;
 
     let parsed = match parse_multipart_form(multipart, &state_read.storage, db).await {
         Ok(p) => p,
-        Err(e) => return HtmlTemplate(crate::handler::ErrorTemplate { message: e }).into_response(),
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
     };
 
     if parsed.content.trim().is_empty() && parsed.images.is_empty() {
-        return HtmlTemplate(crate::handler::ErrorTemplate { message: "Порожній тред".into() }).into_response();
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "Thread cannot be empty"}))).into_response();
     }
 
     let new_thread = threads::ActiveModel {
@@ -554,10 +550,10 @@ pub async fn create_thread_handler(
         state_read.db_cache.invalidate("home_view").await;
         state_read.db_cache.invalidate(&format!("board_{}", slug)).await;
 
-        return Redirect::to(&format!("/{}/thread/{}", slug, thread.id)).into_response();
+        return Json(json!({ "status": "ok", "thread_id": thread.id })).into_response();
     }
 
-    HtmlTemplate(crate::handler::ErrorTemplate { message: "Помилка створення треду".into() }).into_response()
+    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to create thread"}))).into_response()
 }
 
 pub async fn reply_handler(
@@ -573,10 +569,7 @@ pub async fn reply_handler(
     let db = &state_read.pool;
 
     if let Err(msg) = check_rate_limit(&ip, &state_read.rate_limit_cache).await {
-        return (
-            axum::http::StatusCode::TOO_MANY_REQUESTS,
-            HtmlTemplate(crate::handler::ErrorTemplate { message: msg })
-        ).into_response();
+        return (StatusCode::TOO_MANY_REQUESTS, Json(json!({"error": msg}))).into_response();
     }
 
     let is_banned = crate::model::bans::Entity::find()
@@ -589,21 +582,18 @@ pub async fn reply_handler(
         .one(db).await.unwrap_or(None);
 
     if let Some(ban) = is_banned {
-        return HtmlTemplate(crate::handler::ErrorTemplate {
-            message: format!("БАН. Причина: {}. Спливає: {}",
-                             ban.reason.unwrap_or_default(), ban.expires_at)
-        }).into_response();
+        return (StatusCode::FORBIDDEN, Json(json!({"error": format!("BANNED: {}", ban.reason.unwrap_or_default())}))).into_response();
     }
 
     let country_code = resolve_country_code(ip.clone(), &state_read.ip_cache).await;
 
     let parsed = match parse_multipart_form(multipart, &state_read.storage, db).await {
         Ok(p) => p,
-        Err(e) => return HtmlTemplate(crate::handler::ErrorTemplate { message: e }).into_response(),
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
     };
 
     if parsed.content.trim().is_empty() && parsed.images.is_empty() {
-        return HtmlTemplate(crate::handler::ErrorTemplate { message: "Порожній пост".into() }).into_response();
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "Post cannot be empty"}))).into_response();
     }
 
     let thread_model = threads::Entity::find_by_id(thread_id).one(db).await.unwrap();
@@ -668,21 +658,16 @@ pub async fn reply_handler(
             state_read.db_cache.invalidate(&format!("board_{}", slug)).await;
             state_read.db_cache.invalidate(&format!("thread_{}", thread_id)).await;
 
-            HtmlTemplate(PostsListPartialTemplate {
-                posts: vec![PostItem {
-                    model: post.clone(),
-                    images: saved_images,
-                    cdn_url: state_read.config.cdn_url.clone(),
-                    admin_role: session.role,
-                    board_slug: slug.clone(),
-                }],
-                next_cursor: Some(post.id),
-                board_slug: slug,
-                thread_id: thread_id
+            Json(PostItem {
+                model: post.clone(),
+                images: saved_images,
+                cdn_url: state_read.config.cdn_url.clone(),
+                admin_role: session.role,
+                board_slug: slug.clone(),
             }).into_response()
         },
         Err(e) => {
-            HtmlTemplate(crate::handler::ErrorTemplate { message: format!("Database error: {}", e) }).into_response()
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response()
         }
     }
 }
@@ -697,7 +682,7 @@ pub async fn poll_new_posts_handler(
     Extension(session): Extension<CurrentSession>,
     Path((slug, thread_id)): Path<(String, i32)>,
     Query(query): Query<PollQuery>,
-) -> impl IntoResponse {
+) -> Response {
     let state = state.read().await;
     let db = &state.pool;
     let cdn_url = state.config.cdn_url.clone();
@@ -711,7 +696,7 @@ pub async fn poll_new_posts_handler(
         .unwrap_or_default();
 
     if new_posts.is_empty() {
-        return "".into_response();
+        return Json(json!({ "posts": [], "next_cursor": query.after })).into_response();
     }
 
     let last_id = new_posts.last().map(|p| p.id).unwrap_or(query.after);
@@ -729,7 +714,7 @@ pub async fn poll_new_posts_handler(
         });
     }
 
-    HtmlTemplate(PostsListPartialTemplate {
+    Json(PostsListResponse {
         posts: posts_with_images,
         next_cursor: Some(last_id),
         board_slug: slug,
