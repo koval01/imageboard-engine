@@ -29,10 +29,6 @@
 </head>
 <body class="bg-skin-surface text-skin-text font-sans text-[13px]">
 
-<!--
-    FIX: Vue App Container restricted ONLY to overlays.
-    Added v-cloak to prevent flash of uncompiled content.
--->
 <div id="app" v-cloak>
     {% raw %}
     <div v-if="isLoading" class="loader-overlay fixed inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-300">
@@ -57,10 +53,37 @@
     </div>
     {% endraw %}
 </div>
-<!-- END OF VUE APP CONTAINER -->
 
-<!-- HTMX Content (Outside Vue Scope) -->
-{% include "partials/header.html" %}
+<!-- Header -->
+<div class="border-b border-skin-border-reply mb-2 p-1 text-[13px]">
+    <div class="flex flex-wrap justify-between items-center">
+        <div class="flex gap-1">
+            <span class="text-skin-muted">[</span>
+            <a href="/" class="hover:underline font-bold">Home</a>
+            <span class="text-skin-muted">/</span>
+            <a href="/b" class="hover:underline">b</a>
+            <span class="text-skin-muted">/</span>
+            <a href="/pol" class="hover:underline">pol</a>
+            <span class="text-skin-muted">/</span>
+            <a href="/tech" class="hover:underline">tech</a>
+            <span class="text-skin-muted">/</span>
+            <a href="/a" class="hover:underline">a</a>
+            <span class="text-skin-muted">/</span>
+            <a href="/sex" class="hover:underline">sex</a>
+            <span class="text-skin-muted">]</span>
+        </div>
+
+        <div class="flex gap-2">
+            {% block admin_nav %}
+            <span class="text-skin-muted">[</span><a href="/admin/dashboard" class="text-red-700 font-bold hover:underline">ADMIN</a><span class="text-skin-muted">]</span>
+            {% endblock %}
+
+            <span class="text-skin-muted">[</span>
+            <button id="theme-toggle" class="hover:underline cursor-pointer">Theme</button>
+            <span class="text-skin-muted">]</span>
+        </div>
+    </div>
+</div>
 
 <main class="px-2 pb-10">
     {% block content %}{% endblock %}
@@ -88,11 +111,8 @@
             document.body.addEventListener('htmx:beforeRequest', () => { isLoading.value = true; });
             document.body.addEventListener('htmx:afterRequest', () => { isLoading.value = false; });
 
-            // Fixed logic to ensure loading stops on error
             document.body.addEventListener('htmx:responseError', () => {
                 isLoading.value = false;
-                // Toast is triggered by existing code in core.js,
-                // but we ensure reactivity works here
             });
             document.body.addEventListener('htmx:sendError', () => {
                 isLoading.value = false;

@@ -34,7 +34,7 @@ pub struct ProcessedImage {
     pub height: i32,
     pub size: i64,
     pub hash: String,
-    pub phash: String, // Added Perceptual Hash
+    pub phash: String,
     pub exif: Option<serde_json::Value>,
 }
 
@@ -143,10 +143,8 @@ impl StorageService {
         original_filename: String,
         db: &DatabaseConnection,
     ) -> Result<ProcessedImage> {
-        // 1. Process Image & Extract EXIF & Calculate pHash (Blocking Task)
         let (full_img_bytes, thumb_img_bytes, width, height, exif_json, phash_str) =
             tokio::task::spawn_blocking(move || {
-                // --- EXIF Extraction ---
                 let mut exif_map = serde_json::Map::new();
                 let exif_reader = ExifReader::new();
                 let mut cursor = Cursor::new(&file_bytes);
@@ -185,16 +183,13 @@ impl StorageService {
                     Some(serde_json::Value::Object(exif_map))
                 };
 
-                // --- Image Loading ---
                 let img = image::load_from_memory(&file_bytes)
                     .context("Failed to load image from memory")?;
 
-                // --- Perceptual Hash Calculation ---
                 let hasher = HasherConfig::new().hash_alg(HashAlg::Mean).to_hasher();
                 let phash = hasher.hash_image(&img);
                 let phash_base64 = phash.to_base64();
 
-                // --- Resizing ---
                 let (w, h) = img.dimensions();
 
                 let processed_img = if w > MAX_WIDTH || h > MAX_HEIGHT {
@@ -227,10 +222,8 @@ impl StorageService {
             })
                 .await??;
 
-        // 2. Calculate SHA256 Hash (Exact Match)
         let hash = Self::calculate_hash(&full_img_bytes);
 
-        // 3. Deduplication Check (Exact match)
         let existing_image = images::Entity::find()
             .filter(images::Column::Hash.eq(&hash))
             .one(db)
@@ -251,7 +244,6 @@ impl StorageService {
             });
         }
 
-        // 4. Save New Files
         let uuid = Uuid::new_v4();
         let key_main = format!("{}.webp", uuid);
         let key_thumb = format!("{}_thumb.webp", uuid);

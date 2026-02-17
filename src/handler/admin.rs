@@ -1,29 +1,29 @@
 use std::sync::Arc;
 use std::net::SocketAddr;
-use std::collections::{HashSet, HashMap};
+use std::collections::HashSet;
 use axum::{
     extract::{Form, State, Query, Extension, ConnectInfo, Multipart},
     response::{IntoResponse, Redirect, Response},
-    http::{header, HeaderMap},
+    http::{HeaderMap, StatusCode},
     Json,
 };
 use sea_orm::*;
 use askama::Template;
-use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use chrono::{Utc, Duration, NaiveDateTime};
 use tokio::sync::RwLock;
 use sha2::{Sha256, Digest};
 use image_hasher::{ImageHash, HasherConfig};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use sea_orm::sea_query::Expr;
 use serde_json::json;
 use crate::{
-    model::{admins, bans, admin_logs, posts, threads, images, reports},
+    model::{admins, bans, admin_logs, posts, images, reports},
     AppState,
     handler::{HtmlTemplate, middleware::CurrentSession},
     security::get_client_ip,
 };
-
+use crate::model::threads;
 // --- Templates ---
 
 #[derive(Template)]
@@ -232,7 +232,7 @@ pub async fn api_get_reports(
 #[derive(Deserialize)]
 pub struct InvestigateQuery {
     target: String, // IP or Session
-    threshold: Option<u32>, // Hamming distance threshold (default 5)
+    threshold: Option<u32>, // Hamming distance threshold (default 10)
 }
 
 pub async fn api_investigate(
@@ -287,8 +287,6 @@ pub async fn api_investigate(
     images_found.extend(imgs.clone());
 
     // 4. FIND SIMILAR IMAGES (The Core Logic)
-    // We get ALL images from DB that have a phash (optimized: should limit time range in real prod)
-    // Here we scan all for demo purposes.
     let all_images_with_hash = images::Entity::find()
         .filter(images::Column::Phash.ne(""))
         .all(db)
@@ -298,14 +296,15 @@ pub async fn api_investigate(
     for source_img in &imgs {
         if source_img.phash.is_empty() { continue; }
         // Decode source hash
-        if let Ok(src_hash_bytes) = base64::decode(&source_img.phash) {
-            if let Ok(src_hash) = ImageHash::from_bytes(&src_hash_bytes) {
+        if let Ok(src_hash_bytes) = BASE64.decode(&source_img.phash) {
+            // We use Box<[u8]> to match the default hasher's output type
+            if let Ok(src_hash) = ImageHash::<Box<[u8]>>::from_bytes(&src_hash_bytes) {
                 for target_img in &all_images_with_hash {
                     if target_img.id == source_img.id { continue; } // Skip self
                     if target_img.phash.is_empty() { continue; }
 
-                    if let Ok(tgt_hash_bytes) = base64::decode(&target_img.phash) {
-                        if let Ok(tgt_hash) = ImageHash::from_bytes(&tgt_hash_bytes) {
+                    if let Ok(tgt_hash_bytes) = BASE64.decode(&target_img.phash) {
+                        if let Ok(tgt_hash) = ImageHash::<Box<[u8]>>::from_bytes(&tgt_hash_bytes) {
                             let dist = src_hash.dist(&tgt_hash);
                             if dist <= threshold {
                                 // FOUND A MATCH!
@@ -368,7 +367,7 @@ pub async fn api_visual_search(
             // Calculate pHash of uploaded file in memory
             let hasher = HasherConfig::new().hash_alg(image_hasher::HashAlg::Mean).to_hasher();
             if let Ok(img) = image::load_from_memory(&data) {
-                let hash = hasher.hash_image(&img);
+                let hash = hasher.hash_image(&img); // Inferred as ImageHash<Box<[u8]>>
 
                 // Compare against DB
                 let all_images = images::Entity::find()
@@ -380,8 +379,9 @@ pub async fn api_visual_search(
                 let mut matches = Vec::new();
 
                 for db_img in all_images {
-                    if let Ok(db_hash_bytes) = base64::decode(&db_img.phash) {
-                        if let Ok(db_hash) = ImageHash::from_bytes(&db_hash_bytes) {
+                    if let Ok(db_hash_bytes) = BASE64.decode(&db_img.phash) {
+                        // FIX: Use Box<[u8]> to match the type of 'hash'
+                        if let Ok(db_hash) = ImageHash::<Box<[u8]>>::from_bytes(&db_hash_bytes) {
                             let dist = hash.dist(&db_hash);
                             if dist < 15 { // Slightly looser threshold for manual search
                                 matches.push((db_img, dist));
@@ -415,7 +415,6 @@ pub async fn api_visual_search(
 }
 
 // --- STANDARD ACTIONS (Ban, Delete, Resolve) ---
-// Kept similar to previous logic but returning JSON for the Vue app
 
 #[derive(Deserialize)]
 pub struct BanPayload {
@@ -424,7 +423,7 @@ pub struct BanPayload {
     reason: String,
     duration: i64,
     delete_content: bool,
-    target_post_id: Option<i32>,
+    // Removed unused field target_post_id
 }
 
 pub async fn api_ban_user(
@@ -449,7 +448,7 @@ pub async fn api_ban_user(
     let _ = ban.insert(db).await;
 
     if payload.delete_content {
-        // Delete posts logic (simplified for brevity, same as before but using IP)
+        // Delete posts logic
         let posts_to_del = posts::Entity::find()
             .filter(posts::Column::IpAddress.eq(&payload.ip))
             .all(db).await.unwrap_or_default();
@@ -509,11 +508,8 @@ pub async fn api_delete_content(
             let _ = posts::Entity::delete_by_id(payload.id).exec(db).await;
         }
     } else {
-        // Thread deletion logic (same pattern)
         if let Ok(Some(_)) = threads::Entity::find_by_id(payload.id).one(db).await {
             let _ = threads::Entity::delete_by_id(payload.id).exec(db).await;
-            // Note: Cascade delete handles image records, but files need manual cleanup loop
-            // For brevity, assuming manual cleanup or cron job for orphaned files
         }
     }
 
@@ -536,7 +532,7 @@ pub async fn create_report(
     Extension(_session): Extension<CurrentSession>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    Form(payload): Form<super::admin::ReportPayload>, // Reusing struct from previous
+    Form(payload): Form<super::admin::ReportPayload>,
 ) -> Response {
     let state_read = state.read().await;
     let db = &state_read.pool;

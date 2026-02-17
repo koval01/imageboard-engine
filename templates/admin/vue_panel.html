@@ -29,12 +29,21 @@
     </style>
 </head>
 <body class="p-4">
+<script>
+    const cdnUrl = "{{ cdn_url }}";
+</script>
+
 <div id="app" v-cloak>
+    {% raw %}
     <p-toast></p-toast>
 
     <!-- Header -->
     <div class="flex justify-between items-center mb-4 bg-gray-900 p-4 rounded border border-gray-800">
-        <h1 class="text-xl font-bold text-green-500">KRYIVKA ADMIN <span class="text-xs text-gray-500">{{ username }}</span></h1>
+        <h1 class="text-xl font-bold text-green-500">KRYIVKA ADMIN <span class="text-xs text-gray-500">
+        {% endraw %}
+            {{ username }}
+        {% raw %}
+            </span></h1>
         <div class="flex gap-2">
             <a href="/" class="p-button p-component p-button-text p-button-sm no-underline">Main Site</a>
             <form action="/admin/logout" method="POST">
@@ -184,7 +193,7 @@
             <p-button label="BAN" severity="danger" @click="submitBan"></p-button>
         </template>
     </p-dialog>
-
+    {% endraw %}
 </div>
 
 <script>
@@ -195,7 +204,7 @@
             const stats = ref({});
             const logs = ref([]);
             const reports = ref([]);
-            const cdnUrl = "{{ cdn_url }}";
+            // cdnUrl is defined globally above
             const activeTab = ref(0);
 
             // Investigation
