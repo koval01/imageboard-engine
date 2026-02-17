@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use tokio::fs;
 use uuid::Uuid;
 use webp::Encoder;
+use image_hasher::{HasherConfig, HashAlg};
 
 pub struct StorageService {
     s3_client: Option<Client>,
@@ -33,7 +34,8 @@ pub struct ProcessedImage {
     pub height: i32,
     pub size: i64,
     pub hash: String,
-    pub exif: Option<serde_json::Value>, // Added field
+    pub phash: String, // Added Perceptual Hash
+    pub exif: Option<serde_json::Value>,
 }
 
 // Configuration constants
@@ -141,8 +143,8 @@ impl StorageService {
         original_filename: String,
         db: &DatabaseConnection,
     ) -> Result<ProcessedImage> {
-        // 1. Process Image & Extract EXIF (Blocking Task)
-        let (full_img_bytes, thumb_img_bytes, width, height, exif_json) =
+        // 1. Process Image & Extract EXIF & Calculate pHash (Blocking Task)
+        let (full_img_bytes, thumb_img_bytes, width, height, exif_json, phash_str) =
             tokio::task::spawn_blocking(move || {
                 // --- EXIF Extraction ---
                 let mut exif_map = serde_json::Map::new();
@@ -183,10 +185,16 @@ impl StorageService {
                     Some(serde_json::Value::Object(exif_map))
                 };
 
-                // --- Image Processing (Strips Metadata) ---
+                // --- Image Loading ---
                 let img = image::load_from_memory(&file_bytes)
                     .context("Failed to load image from memory")?;
 
+                // --- Perceptual Hash Calculation ---
+                let hasher = HasherConfig::new().hash_alg(HashAlg::Mean).to_hasher();
+                let phash = hasher.hash_image(&img);
+                let phash_base64 = phash.to_base64();
+
+                // --- Resizing ---
                 let (w, h) = img.dimensions();
 
                 let processed_img = if w > MAX_WIDTH || h > MAX_HEIGHT {
@@ -208,20 +216,21 @@ impl StorageService {
                 let thumb_data = thumb_encoder.encode(THUMB_QUALITY);
                 let thumb_bytes = thumb_data.to_vec();
 
-                Ok::<(Vec<u8>, Vec<u8>, u32, u32, Option<serde_json::Value>), anyhow::Error>((
+                Ok::<(Vec<u8>, Vec<u8>, u32, u32, Option<serde_json::Value>, String), anyhow::Error>((
                     main_bytes,
                     thumb_bytes,
                     final_w,
                     final_h,
                     exif_value,
+                    phash_base64
                 ))
             })
                 .await??;
 
-        // 2. Calculate Hash
+        // 2. Calculate SHA256 Hash (Exact Match)
         let hash = Self::calculate_hash(&full_img_bytes);
 
-        // 3. Deduplication Check
+        // 3. Deduplication Check (Exact match)
         let existing_image = images::Entity::find()
             .filter(images::Column::Hash.eq(&hash))
             .one(db)
@@ -237,7 +246,8 @@ impl StorageService {
                 height: img.height,
                 size: img.size,
                 hash,
-                exif: img.exif, // Return existing exif
+                phash: img.phash,
+                exif: img.exif,
             });
         }
 
@@ -258,6 +268,7 @@ impl StorageService {
             height: height as i32,
             size: full_img_bytes.len() as i64,
             hash,
+            phash: phash_str,
             exif: exif_json,
         })
     }

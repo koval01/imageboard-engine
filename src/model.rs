@@ -108,6 +108,7 @@ pub mod images {
         pub filename: String,
         pub storage_key: String,
         pub hash: String,
+        pub phash: String,
         pub width: i32,
         pub height: i32,
         pub size: i64,
