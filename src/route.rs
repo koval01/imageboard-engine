@@ -19,50 +19,26 @@ use crate::{
     },
     AppState,
 };
+use crate::handler::admin::{admin_login_action, admin_login_page, admin_logout_action, admin_panel_view, api_ban_user, api_delete_content, api_get_logs, api_get_reports, api_get_stats, api_investigate, api_visual_search};
 
-// SECURITY: Global error sanitizer
-// This ensures that if Axum throws a framework error (like "Missing extension"),
-// the user only sees a generic error page, not internal class names.
 async fn sanitize_error_response(req: axum::extract::Request, next: axum::middleware::Next) -> Response {
     let response = next.run(req).await;
-
     if response.status() == StatusCode::INTERNAL_SERVER_ERROR {
-        // In Debug mode, we might want to see the real error for development
         #[cfg(debug_assertions)]
-        {
-            return response;
-        }
-
-        // In Release mode, completely swallow the body and return a generic error
+        { return response; }
         #[cfg(not(debug_assertions))]
         {
             use axum::body::Body;
             let (parts, _) = response.into_parts();
-            return Response::from_parts(
-                parts,
-                Body::from("<!DOCTYPE html><html><body style='font-family:sans-serif;text-align:center;padding:50px;'><h1>500 Internal Server Error</h1><p>Something went wrong.</p></body></html>")
-            );
+            return Response::from_parts(parts, Body::from("Internal Server Error"));
         }
     }
-
     response
 }
 
 pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
     tracing_subscriber::registry()
-        .with(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| {
-                    #[cfg(debug_assertions)]
-                    {
-                        "debug".into()
-                    }
-                    #[cfg(not(debug_assertions))]
-                    {
-                        "info".into()
-                    }
-                }),
-        )
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .with(fmt::layer())
         .init();
 
@@ -80,29 +56,31 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
         .route("/{slug}/thread/{id}/reply", post(reply_handler))
         .route("/{slug}/thread/{id}/poll", get(poll_new_posts_handler))
         .route("/report", post(create_report))
-        .route("/admin", get(crate::handler::admin::admin_login_page))
-        .route("/admin/login", post(crate::handler::admin::admin_login_action))
-        .route("/admin/logout", post(crate::handler::admin::admin_logout_action))
-        .route("/admin/dashboard", get(crate::handler::admin::admin_dashboard))
-        .route("/admin/ban", post(crate::handler::admin::admin_ban_action))
-        .route("/admin/delete", post(crate::handler::admin::admin_delete_post_action))
-        .route("/admin/report/resolve", post(resolve_report))
-        .route("/admin/export", get(crate::handler::admin::admin_export_logs))
-        .route("/admin/logs", get(crate::handler::admin::admin_logs_view))
-        .route("/admin/reports", get(crate::handler::admin::admin_reports_view))
+
+        // Admin Routes
+        .route("/admin", get(admin_login_page))
+        .route("/admin/login", post(admin_login_action))
+        .route("/admin/logout", post(admin_logout_action))
+
+        // SPA Entry
+        .route("/admin/panel", get(admin_panel_view))
+
+        // Admin JSON API
+        .route("/api/admin/stats", get(api_get_stats))
+        .route("/api/admin/logs", get(api_get_logs))
+        .route("/api/admin/reports", get(api_get_reports))
+        .route("/api/admin/investigate", get(api_investigate))
+        .route("/api/admin/visual-search", post(api_visual_search))
+        .route("/api/admin/ban", post(api_ban_user))
+        .route("/api/admin/delete", post(api_delete_content))
+        .route("/api/admin/resolve", post(resolve_report))
+
         .nest_service("/assets", ServeDir::new(format!("{}/assets", assets_path.to_str().unwrap())))
-        // MIDDLEWARE ORDER IS BOTTOM-TO-TOP for Response, TOP-TO-BOTTOM for Request
-        // 1. Sanitize Errors (Outermost - catches everything)
         .layer(middleware::from_fn(sanitize_error_response))
-        // 2. Catch Panics (Prevents server crashes from killing the connection)
         .layer(CatchPanicLayer::new())
-        // 3. Bot Guard (Checks headers/PoW)
         .layer(from_fn_with_state(app_state.clone(), bot_guard_middleware))
-        // 4. Session (Injects User Data - CRITICAL: Must be before handlers)
         .layer(from_fn_with_state(app_state.clone(), session_middleware))
-        // 5. Response Time (Header injection)
         .layer(middleware::from_fn(response_time_middleware))
-        // 6. Logging
         .layer(TraceLayer::new_for_http())
         .with_state(app_state);
 

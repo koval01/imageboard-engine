@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kryivka Admin (L{{ role }})</title>
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- PrimeVue -->
+    <link href="https://unpkg.com/primevue/resources/themes/aura-dark-green/theme.css" rel="stylesheet" />
+    <script src="https://unpkg.com/primevue/core/core.min.js"></script>
+    <script src="https://unpkg.com/primevue/datatable/datatable.min.js"></script>
+    <script src="https://unpkg.com/primevue/column/column.min.js"></script>
+    <script src="https://unpkg.com/primevue/tabview/tabview.min.js"></script>
+    <script src="https://unpkg.com/primevue/tabpanel/tabpanel.min.js"></script>
+    <script src="https://unpkg.com/primevue/inputtext/inputtext.min.js"></script>
+    <script src="https://unpkg.com/primevue/button/button.min.js"></script>
+    <script src="https://unpkg.com/primevue/toast/toast.min.js"></script>
+    <script src="https://unpkg.com/primevue/usetoast/usetoast.min.js"></script>
+    <script src="https://unpkg.com/primevue/dialog/dialog.min.js"></script>
+    <script src="https://unpkg.com/primevue/fileupload/fileupload.min.js"></script>
+
+    <style>
+        body { background-color: #111; color: #eee; font-family: sans-serif; }
+        .p-component { font-size: 13px; }
+        [v-cloak] { display: none; }
+    </style>
+</head>
+<body class="p-4">
+<div id="app" v-cloak>
+    <p-toast></p-toast>
+
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-4 bg-gray-900 p-4 rounded border border-gray-800">
+        <h1 class="text-xl font-bold text-green-500">KRYIVKA ADMIN <span class="text-xs text-gray-500">{{ username }}</span></h1>
+        <div class="flex gap-2">
+            <a href="/" class="p-button p-component p-button-text p-button-sm no-underline">Main Site</a>
+            <form action="/admin/logout" method="POST">
+                <button class="p-button p-component p-button-danger p-button-sm">Logout</button>
+            </form>
+        </div>
+    </div>
+
+    <p-tabview>
+        <!-- DASHBOARD -->
+        <p-tabpanel header="Dashboard">
+            <div class="grid grid-cols-4 gap-4 mb-6">
+                <div class="bg-gray-800 p-4 rounded text-center border border-gray-700">
+                    <div class="text-xs uppercase text-gray-400">Total Posts</div>
+                    <div class="text-2xl font-bold">{{ stats.total_posts }}</div>
+                </div>
+                <div class="bg-gray-800 p-4 rounded text-center border border-gray-700">
+                    <div class="text-xs uppercase text-gray-400">Total Bans</div>
+                    <div class="text-2xl font-bold text-red-500">{{ stats.total_bans }}</div>
+                </div>
+                <div class="bg-gray-800 p-4 rounded text-center border border-gray-700">
+                    <div class="text-xs uppercase text-gray-400">Reports</div>
+                    <div class="text-2xl font-bold text-yellow-500">{{ stats.open_reports }}</div>
+                </div>
+            </div>
+
+            <h3 class="font-bold mb-2 text-gray-400 uppercase text-xs">Recent Logs</h3>
+            <p-datatable :value="logs" :rows="10" paginator striped-rows size="small">
+                <p-column field="created_at" header="Time" sortable></p-column>
+                <p-column field="admin_username" header="Admin"></p-column>
+                <p-column field="action" header="Action"></p-column>
+                <p-column field="target_id" header="Target"></p-column>
+                <p-column field="details" header="Details"></p-column>
+            </p-datatable>
+        </p-tabpanel>
+
+        <!-- REPORTS -->
+        <p-tabpanel header="Reports" :header-class="stats.open_reports > 0 ? 'text-red-500' : ''">
+            <div v-if="reports.length === 0" class="p-8 text-center text-gray-500">No open reports.</div>
+            <div v-else class="flex flex-col gap-4">
+                <div v-for="r in reports" :key="r.id" class="bg-gray-800 border border-gray-700 p-4 rounded flex gap-4">
+                    <div class="w-64 shrink-0 border-r border-gray-700 pr-4">
+                        <div class="font-bold text-red-400 mb-1">{{ r.reason }}</div>
+                        <div class="text-xs text-gray-500 mb-4">{{ r.created_at }}</div>
+                        <div class="flex gap-2">
+                            <p-button size="small" label="Ignore" severity="secondary" @click="resolveReport(r.id, 'REJECTED')"></p-button>
+                            <p-button size="small" label="Ban User" severity="danger" @click="openBanDialog(r.post?.ip_address, r.post?.session_id)"></p-button>
+                        </div>
+                    </div>
+                    <div class="flex-1">
+                        <div v-if="r.post" class="text-sm">
+                            <div class="mb-2 text-gray-300">{{ r.post.content }}</div>
+                            <div v-if="r.images.length" class="flex gap-2">
+                                <img v-for="img in r.images" :src="cdnUrl + '/' + img.thumbnail_url" class="w-20 h-20 object-cover border border-gray-600 rounded">
+                            </div>
+                            <div class="mt-2 text-xs font-mono text-gray-500">IP: {{ r.post.ip_address }}</div>
+                        </div>
+                        <div v-else class="italic text-gray-500">Post deleted</div>
+                    </div>
+                    <div v-if="r.post">
+                        <p-button icon="pi pi-trash" severity="danger" rounded text @click="deletePost(r.post.id, r.id)"></p-button>
+                    </div>
+                </div>
+            </div>
+        </p-tabpanel>
+
+        <!-- INVESTIGATION -->
+        <p-tabpanel header="Investigation / Search">
+            <div class="flex gap-2 mb-4">
+                <p-inputtext v-model="investigationTarget" placeholder="Enter IP or Session ID" class="w-full"></p-inputtext>
+                <p-button label="Investigate" @click="runInvestigation"></p-button>
+            </div>
+
+            <div v-if="investigationResult" class="grid grid-cols-2 gap-4">
+                <div class="bg-gray-800 p-4 rounded border border-gray-700">
+                    <h3 class="font-bold mb-2 text-blue-400">Network Graph</h3>
+                    <div class="text-sm mb-2">
+                        <strong>Linked IPs ({{ investigationResult.related_ips.length }}):</strong>
+                        <div class="flex flex-wrap gap-1 mt-1">
+                            <span v-for="ip in investigationResult.related_ips" class="bg-gray-700 px-1 rounded text-xs cursor-pointer hover:text-white" @click="investigationTarget=ip;runInvestigation()">{{ ip }}</span>
+                        </div>
+                    </div>
+                    <div class="text-sm">
+                        <strong>Linked Sessions ({{ investigationResult.related_sessions.length }}):</strong>
+                        <div class="flex flex-wrap gap-1 mt-1">
+                            <span v-for="s in investigationResult.related_sessions" class="bg-gray-700 px-1 rounded text-xs font-mono truncate max-w-[100px]" :title="s">{{ s }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 p-4 rounded border border-gray-700">
+                    <h3 class="font-bold mb-2 text-orange-400">Similar Image Matches (pHash)</h3>
+                    <div class="grid grid-cols-4 gap-2 max-h-[300px] overflow-y-auto">
+                        <div v-for="sim in investigationResult.similar_images" class="relative group">
+                            <img :src="cdnUrl + '/' + sim[2]" class="w-full h-20 object-cover rounded">
+                            <span class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] px-1">Dist: {{ sim[1] }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </p-tabpanel>
+
+        <!-- VISUAL SEARCH -->
+        <p-tabpanel header="Visual Search">
+            <div class="flex flex-col items-center justify-center p-10 border-2 border-dashed border-gray-700 rounded mb-4" @dragover.prevent @drop.prevent="handleDrop">
+                <p>Drag & Drop Image here or Paste</p>
+                <input type="file" @change="handleFileSelect" class="mt-2 text-sm text-gray-500">
+            </div>
+
+            <div v-if="visualSearchResults.length > 0">
+                <h3 class="font-bold mb-4">Matches (Low Hamming Distance)</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div v-for="res in visualSearchResults" class="bg-gray-800 p-2 rounded border border-gray-700 flex gap-2">
+                        <img :src="cdnUrl + '/' + res.image.thumbnail_url" class="w-24 h-24 object-cover rounded bg-black">
+                        <div class="text-xs overflow-hidden">
+                            <div class="font-bold text-green-400 mb-1">Distance: {{ res.distance }}</div>
+                            <div v-if="res.post">
+                                <div class="text-gray-300 truncate">{{ res.post.content }}</div>
+                                <div class="font-mono text-gray-500 mt-1 cursor-pointer hover:text-white" @click="investigationTarget=res.post.ip_address; activeTab=2; runInvestigation()">IP: {{ res.post.ip_address }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </p-tabpanel>
+    </p-tabview>
+
+    <!-- BAN DIALOG -->
+    <p-dialog v-model:visible="showBanModal" modal header="Ban User" :style="{ width: '25rem' }">
+        <div class="flex flex-col gap-3">
+            <label class="text-xs font-bold">IP Address</label>
+            <p-inputtext v-model="banForm.ip" readonly class="bg-gray-700"></p-inputtext>
+
+            <label class="text-xs font-bold">Reason</label>
+            <p-inputtext v-model="banForm.reason"></p-inputtext>
+
+            <label class="text-xs font-bold">Duration (Hours)</label>
+            <input type="number" v-model="banForm.duration" class="p-inputtext p-component">
+
+            <div class="flex items-center gap-2 mt-2">
+                <input type="checkbox" v-model="banForm.delete_content" id="del_cont">
+                <label for="del_cont" class="text-red-400 font-bold">Nuke Content (Delete All Posts)</label>
+            </div>
+        </div>
+        <template #footer>
+            <p-button label="Cancel" text severity="secondary" @click="showBanModal = false"></p-button>
+            <p-button label="BAN" severity="danger" @click="submitBan"></p-button>
+        </template>
+    </p-dialog>
+
+</div>
+
+<script>
+    const { createApp, ref, onMounted } = Vue;
+
+    createApp({
+        setup() {
+            const stats = ref({});
+            const logs = ref([]);
+            const reports = ref([]);
+            const cdnUrl = "{{ cdn_url }}";
+            const activeTab = ref(0);
+
+            // Investigation
+            const investigationTarget = ref("");
+            const investigationResult = ref(null);
+
+            // Visual Search
+            const visualSearchResults = ref([]);
+
+            // Ban Modal
+            const showBanModal = ref(false);
+            const banForm = ref({ ip: '', session: '', reason: 'CSAM / Illegal', duration: 87600, delete_content: true });
+
+            const loadData = async () => {
+                const [s, l, r] = await Promise.all([
+                    fetch('/api/admin/stats').then(res => res.json()),
+                    fetch('/api/admin/logs').then(res => res.json()),
+                    fetch('/api/admin/reports').then(res => res.json())
+                ]);
+                stats.value = s;
+                logs.value = l;
+                reports.value = r;
+            };
+
+            const resolveReport = async (id, status) => {
+                await fetch('/api/admin/resolve', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ report_id: id, status })
+                });
+                loadData();
+            };
+
+            const deletePost = async (id, reportId) => {
+                if(!confirm("Delete post?")) return;
+                await fetch('/api/admin/delete', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ id, type_: 'post' })
+                });
+                if(reportId) resolveReport(reportId, 'RESOLVED');
+                else loadData();
+            };
+
+            const openBanDialog = (ip, session) => {
+                banForm.value.ip = ip;
+                banForm.value.session = session;
+                showBanModal.value = true;
+            };
+
+            const submitBan = async () => {
+                await fetch('/api/admin/ban', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(banForm.value)
+                });
+                showBanModal.value = false;
+                loadData(); // Refreshes reports if they were auto-resolved
+            };
+
+            const runInvestigation = async () => {
+                if(!investigationTarget.value) return;
+                const res = await fetch(`/api/admin/investigate?target=${investigationTarget.value}`).then(r => r.json());
+                investigationResult.value = res;
+            };
+
+            const uploadImageSearch = async (file) => {
+                const formData = new FormData();
+                formData.append('file', file);
+                const res = await fetch('/api/admin/visual-search', {
+                    method: 'POST',
+                    body: formData
+                }).then(r => r.json());
+                visualSearchResults.value = res;
+            };
+
+            const handleFileSelect = (e) => {
+                if(e.target.files[0]) uploadImageSearch(e.target.files[0]);
+            };
+
+            const handleDrop = (e) => {
+                if(e.dataTransfer.files[0]) uploadImageSearch(e.dataTransfer.files[0]);
+            }
+
+            onMounted(() => {
+                loadData();
+            });
+
+            return {
+                stats, logs, reports, cdnUrl,
+                resolveReport, deletePost,
+                showBanModal, banForm, openBanDialog, submitBan,
+                investigationTarget, investigationResult, runInvestigation,
+                visualSearchResults, handleFileSelect, handleDrop,
+                activeTab
+            };
+        }
+    })
+        .use(primevue.config.default)
+        .use(primevue.toastservice)
+        .component('p-datatable', primevue.datatable)
+        .component('p-column', primevue.column)
+        .component('p-tabview', primevue.tabview)
+        .component('p-tabpanel', primevue.tabpanel)
+        .component('p-button', primevue.button)
+        .component('p-inputtext', primevue.inputtext)
+        .component('p-dialog', primevue.dialog)
+        .component('p-toast', primevue.toast)
+        .mount('#app');
+</script>
+</body>
+</html>
