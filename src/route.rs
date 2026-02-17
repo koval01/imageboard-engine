@@ -60,13 +60,14 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
     let address = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
 
     // API Router
+    // Updated route syntax from /:param to /{param} for Axum 0.8
     let api_router = Router::new()
         .route("/home", get(home_handler))
-        .route("/:slug", get(view_board_handler))
-        .route("/:slug/submit", post(create_thread_handler))
-        .route("/:slug/thread/:id", get(view_thread_handler))
-        .route("/:slug/thread/:id/reply", post(reply_handler))
-        .route("/:slug/thread/:id/poll", get(poll_new_posts_handler))
+        .route("/{slug}", get(view_board_handler))
+        .route("/{slug}/submit", post(create_thread_handler))
+        .route("/{slug}/thread/{id}", get(view_thread_handler))
+        .route("/{slug}/thread/{id}/reply", post(reply_handler))
+        .route("/{slug}/thread/{id}/poll", get(poll_new_posts_handler))
         .route("/report", post(create_report))
         // Admin API
         .route("/admin/login", post(admin_login_action))
