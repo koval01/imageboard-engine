@@ -24,15 +24,17 @@ use crate::{
     security::get_client_ip,
 };
 use crate::model::threads;
+
 // --- Templates ---
 
 #[derive(Template)]
 #[template(path = "admin/login.html")]
 struct AdminLoginTemplate { error: Option<String> }
 
+// Updated: Renamed path to panel.html
 #[derive(Template)]
-#[template(path = "admin/vue_panel.html")]
-struct AdminVueTemplate {
+#[template(path = "admin/panel.html")]
+struct AdminPanelTemplate {
     role: i32,
     username: String,
     cdn_url: String,
@@ -150,7 +152,8 @@ pub async fn admin_panel_view(
         return Redirect::to("/admin").into_response();
     }
     let state = state.read().await;
-    HtmlTemplate(AdminVueTemplate {
+    // Updated to use AdminPanelTemplate
+    HtmlTemplate(AdminPanelTemplate {
         role: session.role,
         username: format!("Role-L{}", session.role),
         cdn_url: state.config.cdn_url.clone(),
@@ -380,7 +383,6 @@ pub async fn api_visual_search(
 
                 for db_img in all_images {
                     if let Ok(db_hash_bytes) = BASE64.decode(&db_img.phash) {
-                        // FIX: Use Box<[u8]> to match the type of 'hash'
                         if let Ok(db_hash) = ImageHash::<Box<[u8]>>::from_bytes(&db_hash_bytes) {
                             let dist = hash.dist(&db_hash);
                             if dist < 15 { // Slightly looser threshold for manual search
@@ -423,7 +425,6 @@ pub struct BanPayload {
     reason: String,
     duration: i64,
     delete_content: bool,
-    // Removed unused field target_post_id
 }
 
 pub async fn api_ban_user(
@@ -532,7 +533,7 @@ pub async fn create_report(
     Extension(_session): Extension<CurrentSession>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    Form(payload): Form<super::admin::ReportPayload>,
+    Form(payload): Form<ReportPayload>,
 ) -> Response {
     let state_read = state.read().await;
     let db = &state_read.pool;
