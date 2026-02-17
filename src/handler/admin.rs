@@ -2,15 +2,14 @@ use std::sync::Arc;
 use std::net::SocketAddr;
 use std::collections::HashSet;
 use axum::{
-    extract::{Form, State, Query, Extension, ConnectInfo, Multipart},
-    response::{IntoResponse, Redirect, Response},
+    extract::{State, Query, Extension, ConnectInfo, Multipart},
+    response::{IntoResponse, Response},
     http::{HeaderMap, StatusCode},
     Json,
 };
 use sea_orm::*;
-use askama::Template;
 use serde::{Deserialize, Serialize};
-use chrono::{Utc, Duration, NaiveDateTime};
+use chrono::{Utc, NaiveDateTime};
 use tokio::sync::RwLock;
 use sha2::{Sha256, Digest};
 use image_hasher::{ImageHash, HasherConfig};
@@ -20,25 +19,10 @@ use serde_json::json;
 use crate::{
     model::{admins, bans, admin_logs, posts, images, reports},
     AppState,
-    handler::{HtmlTemplate, middleware::CurrentSession},
+    handler::middleware::CurrentSession,
     security::get_client_ip,
 };
 use crate::model::threads;
-
-// --- Templates ---
-
-#[derive(Template)]
-#[template(path = "admin/login.html")]
-struct AdminLoginTemplate { error: Option<String> }
-
-// Updated: Renamed path to panel.html
-#[derive(Template)]
-#[template(path = "admin/panel.html")]
-struct AdminPanelTemplate {
-    role: i32,
-    username: String,
-    cdn_url: String,
-}
 
 // --- Data Structs for JSON API ---
 
@@ -78,21 +62,12 @@ pub struct LoginPayload { key: String }
 
 const MAX_LOGIN_ATTEMPTS: u32 = 3;
 
-pub async fn admin_login_page(
-    Extension(session): Extension<CurrentSession>,
-) -> Response {
-    if session.role > 0 {
-        return Redirect::to("/admin/panel").into_response();
-    }
-    HtmlTemplate(AdminLoginTemplate { error: None }).into_response()
-}
-
 pub async fn admin_login_action(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(mut session): Extension<CurrentSession>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    Form(payload): Form<LoginPayload>,
+    Json(payload): Json<LoginPayload>,
 ) -> Response {
     let state_read = state.read().await;
     let db = &state_read.pool;
@@ -101,9 +76,10 @@ pub async fn admin_login_action(
     let attempts = state_read.login_attempts.get(&ip).await.unwrap_or(0);
 
     if attempts >= MAX_LOGIN_ATTEMPTS {
-        return HtmlTemplate(AdminLoginTemplate {
-            error: Some("Too many failed attempts. Locked for 1 hour.".into())
-        }).into_response();
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({"error": "Too many failed attempts. Locked for 1 hour."}))
+        ).into_response();
     }
 
     let mut hasher = Sha256::new();
@@ -121,15 +97,17 @@ pub async fn admin_login_action(
         session.role = admin.role;
         session.version = admin.token_version;
 
-        let mut response = Redirect::to("/admin/panel").into_response();
-        response.extensions_mut().insert(session);
-        return response;
+        // The middleware will see the updated session and issue a new JWT
+        return Json(json!({"status": "ok", "role": admin.role})).into_response();
     }
 
     state_read.login_attempts.insert(ip, attempts + 1).await;
     let remaining = MAX_LOGIN_ATTEMPTS - (attempts + 1);
-    let msg = format!("Invalid Key. {} attempts remaining.", remaining);
-    HtmlTemplate(AdminLoginTemplate { error: Some(msg) }).into_response()
+
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(json!({"error": "Invalid Key", "remaining_attempts": remaining}))
+    ).into_response()
 }
 
 pub async fn admin_logout_action(
@@ -137,30 +115,11 @@ pub async fn admin_logout_action(
 ) -> Response {
     session.role = 0;
     session.version = 1;
-    let mut response = Redirect::to("/admin").into_response();
-    response.extensions_mut().insert(session);
-    response
+    // Middleware will update the cookie to reflect role 0
+    Json(json!({"status": "logged_out"})).into_response()
 }
 
-// --- VUE SPA ENTRY POINT ---
-
-pub async fn admin_panel_view(
-    State(state): State<Arc<RwLock<AppState>>>,
-    Extension(session): Extension<CurrentSession>,
-) -> Response {
-    if session.role < 1 {
-        return Redirect::to("/admin").into_response();
-    }
-    let state = state.read().await;
-    // Updated to use AdminPanelTemplate
-    HtmlTemplate(AdminPanelTemplate {
-        role: session.role,
-        username: format!("Role-L{}", session.role),
-        cdn_url: state.config.cdn_url.clone(),
-    }).into_response()
-}
-
-// --- JSON APIs for Vue Frontend ---
+// --- JSON APIs ---
 
 pub async fn api_get_stats(
     State(state): State<Arc<RwLock<AppState>>>,
@@ -437,7 +396,7 @@ pub async fn api_ban_user(
     let db = &state.pool;
     let storage = &state.storage;
 
-    let expires = Utc::now().naive_utc() + Duration::hours(payload.duration);
+    let expires = Utc::now().naive_utc() + chrono::Duration::hours(payload.duration);
     let ban = bans::ActiveModel {
         ip_address: Set(Some(payload.ip.clone())),
         session_id: Set(payload.session.clone()),
@@ -528,12 +487,18 @@ pub async fn api_delete_content(
     Json(json!({"status": "ok"})).into_response()
 }
 
+#[derive(Deserialize)]
+pub struct ReportPayload {
+    post_id: i32,
+    reason: String,
+}
+
 pub async fn create_report(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(_session): Extension<CurrentSession>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    Form(payload): Form<ReportPayload>,
+    Json(payload): Json<ReportPayload>,
 ) -> Response {
     let state_read = state.read().await;
     let db = &state_read.pool;
@@ -545,7 +510,7 @@ pub async fn create_report(
         .count(db).await.unwrap_or(0);
 
     if exists > 0 {
-        return "Already reported".into_response();
+        return (StatusCode::CONFLICT, Json(json!({"error": "Already reported"}))).into_response();
     }
 
     let report = reports::ActiveModel {
@@ -557,13 +522,7 @@ pub async fn create_report(
     };
 
     let _ = report.insert(db).await;
-    "OK".into_response()
-}
-
-#[derive(Deserialize)]
-pub struct ReportPayload {
-    post_id: i32,
-    reason: String,
+    Json(json!({"status": "ok"})).into_response()
 }
 
 #[derive(Deserialize)]

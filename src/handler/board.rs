@@ -27,7 +27,7 @@ use crate::{
 
 // --- DTOs (Data Transfer Objects) ---
 
-#[derive(Clone, Serialize)] // Added Serialize
+#[derive(Clone, Serialize)]
 pub struct PostItem {
     pub model: posts::Model,
     pub images: Vec<images::Model>,
@@ -36,13 +36,11 @@ pub struct PostItem {
     pub board_slug: String,
 }
 
-#[derive(Clone, Serialize)] // Added Serialize
+#[derive(Clone, Serialize)]
 pub struct ThreadItem {
     pub model: threads::Model,
     pub images: Vec<images::Model>,
-    // We don't serialize full replies list for board view to save bandwidth
-    // pub replies: Vec<PostItem>,
-    pub replies_preview: Vec<PostItem>, // Only the last few
+    pub replies_preview: Vec<PostItem>,
     pub reply_count: usize,
     pub image_count: usize,
     pub omitted_posts: usize,
@@ -51,13 +49,12 @@ pub struct ThreadItem {
     pub is_time_limit: bool,
 }
 
-#[derive(Clone, Serialize)] // Added Serialize
+#[derive(Clone, Serialize)]
 pub struct BoardStat {
     pub model: boards::Model,
     pub post_count: u64,
 }
 
-// Internal Cache Data (Keep as is, but ensure inner types are serializable if needed elsewhere)
 #[derive(Clone)]
 pub enum CacheData {
     Home(Vec<BoardStat>, Vec<(images::Model, String)>, Vec<threads::Model>),
