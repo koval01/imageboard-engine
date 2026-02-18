@@ -17,6 +17,13 @@ export interface Image {
     width: number;
     height: number;
     size: number;
+    thread_id?: number | null;
+    post_id?: number | null;
+}
+
+// Use Omit to remove the conflicting thread_id type before redefining it
+export interface RecentImage extends Omit<Image, 'thread_id'> {
+    thread_id: string;
 }
 
 export interface Post {
@@ -63,7 +70,7 @@ export interface ThreadItem {
 
 export interface HomeResponse {
     boards: BoardStat[];
-    recent_images: ({ model: Image; thread_id: string })[];
+    recent_images: RecentImage[];
     recent_threads: Thread[];
     cdn_url: string;
     admin_role: number;
