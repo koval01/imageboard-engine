@@ -12,10 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { PostItem } from "@/types";
+import type { PostItem } from "@/types";
 import { Loader2, Upload } from "lucide-react";
 
-export default function ThreadView() {
+export default function ThreadPage() {
     const { slug, id } = useParams();
     const threadId = parseInt(id || "0");
     const navigate = useNavigate();
@@ -44,7 +44,6 @@ export default function ThreadView() {
 
         // Initial load scroll
         if (prevPostCount.current === 0 && currentCount > 0) {
-            // Optional: scroll to specific post if hash exists, else bottom
             if (shouldScroll && !window.location.hash) {
                 setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 100);
             }
@@ -87,7 +86,6 @@ export default function ThreadView() {
             const prefix = prev.length > 0 && !prev.endsWith('\n') ? '\n' : '';
             return `${prev}${prefix}>>${postId}\n`;
         });
-        // Focus logic would ideally go here
     };
 
     const handleBan = async (ip: string, session: string) => {
@@ -125,7 +123,6 @@ export default function ThreadView() {
     };
 
     const handleInvestigate = (target: string) => {
-        // Open admin panel in new tab with the target
         window.open(`/admin?target=${target}`, '_blank');
     };
 
@@ -142,7 +139,6 @@ export default function ThreadView() {
         </div>
     );
 
-    // Helper to unify OP data structure
     const opPost: PostItem = {
         model: {
             ...data.thread,
@@ -152,7 +148,8 @@ export default function ThreadView() {
         images: data.op_images,
         cdn_url: data.cdn_url,
         admin_role: data.admin_role,
-        board_slug: data.board.slug
+        board_slug: data.board.slug,
+        thread_id: data.thread.id // Added missing property
     };
 
     return (

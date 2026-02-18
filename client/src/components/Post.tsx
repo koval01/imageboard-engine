@@ -1,4 +1,4 @@
-import { PostItem } from "@/types";
+import type { PostItem } from "@/types";
 import { format } from "date-fns";
 import * as Flags from "country-flag-icons/react/3x2";
 import { ImageGallery } from "./ImageGallery";
@@ -46,7 +46,7 @@ export function Post({ post, isOp, onReply, onReport, onBan, onDelete, onInvesti
                     {FlagComponent && (
                         <FlagComponent
                             className="w-5 h-4 shadow-sm rounded-[2px]"
-                            title={model.country_code}
+                            title={model.country_code || "Unknown"}
                         />
                     )}
 
