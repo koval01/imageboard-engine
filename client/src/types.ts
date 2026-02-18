@@ -41,6 +41,7 @@ export interface PostItem {
     model: Post;
     images: Image[];
     cdn_url: string;
+    thread_id: number;
     admin_role: number;
     board_slug: string;
 }

@@ -1,20 +1,31 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { Provider } from 'react-redux'
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom'
 import { store } from './store/store'
 import './index.css'
 
-import Layout from './components/Layout.tsx'
+import Layout from './components/Layout'
 import HomePage from './pages/HomePage'
 import BoardPage from './pages/BoardPage'
 import ThreadPage from './pages/ThreadPage'
 import NotFoundPage from './pages/NotFoundPage'
 
+// Router Wrapper to pass Outlet to Layout
+const LayoutWrapper = () => (
+    <Layout>
+        <Outlet />
+    </Layout>
+)
+
 const router = createBrowserRouter([
     {
-        element: <Layout />,
-        errorElement: <NotFoundPage />,
+        element: <LayoutWrapper />,
+        errorElement: (
+            <Layout>
+                <NotFoundPage />
+            </Layout>
+        ),
         children: [
             {
                 path: "/",

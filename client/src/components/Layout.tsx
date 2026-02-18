@@ -1,12 +1,29 @@
-import { Outlet, Link, ScrollRestoration } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Moon, Sun, Hexagon } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { Toaster } from 'sonner'
 
-export default function Layout() {
+// Helper for page transitions
+const PageTransition = ({ children }: { children: React.ReactNode }) => {
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 15, filter: 'blur(5px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, y: -15, filter: 'blur(5px)' }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="w-full"
+        >
+            {children}
+        </motion.div>
+    )
+}
+
+export default function Layout({ children }: { children: React.ReactNode }) {
     const [theme, setTheme] = useState<'light' | 'dark'>('light')
+    const location = useLocation();
 
     useEffect(() => {
-        // Check system preference or localStorage
         if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
             setTheme('dark')
             document.documentElement.classList.add('dark')
@@ -24,37 +41,42 @@ export default function Layout() {
     }
 
     return (
-        <div className="min-h-screen bg-background font-sans text-foreground antialiased selection:bg-primary selection:text-primary-foreground">
-            <ScrollRestoration />
+        <div className="min-h-screen bg-background font-sans text-foreground antialiased selection:bg-primary selection:text-primary-foreground flex flex-col">
+            <Toaster position="top-center" richColors />
 
-            {/* Header */}
-            <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
                 <div className="container mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-                    <Link to="/" className="flex items-center gap-2 font-bold tracking-tight transition-opacity hover:opacity-80">
-                        <Hexagon className="h-6 w-6" />
-                        <span>KRYIVKA</span>
+                    <Link to="/" className="flex items-center gap-2 font-bold tracking-tight transition-all hover:opacity-80 hover:scale-105 active:scale-95">
+                        <Hexagon className="h-6 w-6 stroke-[2.5px]" />
+                        <span className="text-lg">KRYIVKA</span>
                     </Link>
 
                     <button
                         onClick={toggleTheme}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-transparent shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-transparent shadow-sm transition-all hover:bg-accent hover:text-accent-foreground hover:rotate-12 active:scale-90"
                     >
                         {theme === 'light' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                     </button>
                 </div>
             </header>
 
-            {/* Main Content */}
-            <main className="container mx-auto max-w-6xl p-4 md:py-8">
-                <Outlet />
+            <main className="flex-1 container mx-auto max-w-6xl p-4 md:py-8">
+                <AnimatePresence mode='wait'>
+                    {/* Clone children to inject key for AnimatePresence if needed, or wrap in route element */}
+                    <PageTransition key={location.pathname}>
+                        {children}
+                    </PageTransition>
+                </AnimatePresence>
             </main>
 
-            {/* Footer */}
-            <footer className="border-t py-6 md:py-0">
-                <div className="container mx-auto flex h-14 max-w-6xl flex-col items-center justify-between gap-4 px-4 md:h-16 md:flex-row">
+            <footer className="border-t border-border/40 py-6 md:py-8 bg-muted/20">
+                <div className="container mx-auto flex flex-col items-center justify-center gap-4 px-4 text-center md:flex-row md:justify-between">
                     <p className="text-sm text-muted-foreground">
-                        Built with Rust & React.
+                        © {new Date().getFullYear()} Kryivka Board. Secure & Anonymous.
                     </p>
+                    <div className="text-xs text-muted-foreground opacity-50">
+                        Powered by Rust & React
+                    </div>
                 </div>
             </footer>
         </div>
