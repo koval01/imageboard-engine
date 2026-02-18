@@ -1,18 +1,20 @@
-import { Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Layout from '@/components/Layout'
-import HomeView from '@/features/home/HomeView'
-import BoardView from '@/features/board/BoardView'
-import ThreadView from '@/features/thread/ThreadView'
+import HomePage from '@/pages/HomePage'
+import BoardPage from '@/pages/BoardPage'
+import ThreadPage from '@/pages/ThreadPage'
 
 function App() {
     return (
-        <Routes>
-            <Route path="/" element={<Layout />}>
-                <Route index element={<HomeView />} />
-                <Route path=":slug" element={<BoardView />} />
-                <Route path=":slug/thread/:id" element={<ThreadView />} />
-            </Route>
-        </Routes>
+        <BrowserRouter>
+            <Routes>
+                <Route path="/" element={<Layout />}>
+                    <Route index element={<HomePage />} />
+                    <Route path="/:slug" element={<BoardPage />} />
+                    <Route path="/:slug/thread/:id" element={<ThreadPage />} />
+                </Route>
+            </Routes>
+        </BrowserRouter>
     )
 }
 

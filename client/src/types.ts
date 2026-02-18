@@ -1,4 +1,5 @@
 export interface Board {
+    id: number;
     slug: string;
     name: string;
     description: string;
@@ -19,9 +20,9 @@ export interface Image {
     size: number;
     thread_id?: number | null;
     post_id?: number | null;
+    board_id?: number | null;
 }
 
-// Use Omit to remove the conflicting thread_id type before redefining it
 export interface RecentImage extends Omit<Image, 'thread_id'> {
     thread_id: string;
 }

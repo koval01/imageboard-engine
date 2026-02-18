@@ -1,121 +1,72 @@
-import { useState, useImperativeHandle, forwardRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Button } from '@/components/ui/button'
-import { useCreateThreadMutation, usePostReplyMutation } from '@/store/apiSlice'
+import { useState } from 'react'
+import { Loader2 } from 'lucide-react'
 
-export interface PostFormProps {
-    slug?: string;
-    boardSlug?: string; // Alias for slug to support legacy usages
-    threadId?: number;
-    type?: string;      // Ignored logically but kept for prop compatibility
+interface PostFormProps {
+    onSubmit: (formData: FormData) => Promise<any>
+    onCancel?: () => void
+    buttonLabel?: string
+    loading?: boolean
 }
 
-export interface PostFormHandle {
-    setContent: (v: string) => void;
-}
-
-export const PostForm = forwardRef<PostFormHandle, PostFormProps>(({ slug, boardSlug, threadId }, ref) => {
-    // Determine the actual slug to use
-    const finalSlug = slug || boardSlug || '';
-
-    const [subject, setSubject] = useState('')
+export default function PostForm({ onSubmit, onCancel, buttonLabel = "Post", loading }: PostFormProps) {
     const [content, setContent] = useState('')
     const [file, setFile] = useState<File | null>(null)
-    const navigate = useNavigate()
-
-    useImperativeHandle(ref, () => ({
-        setContent: (v: string) => setContent(v)
-    }));
-
-    const [createThread, { isLoading: isCreating }] = useCreateThreadMutation()
-    const [postReply, { isLoading: isReplying }] = usePostReplyMutation()
-
-    const isLoading = isCreating || isReplying
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-
-        if (!finalSlug) {
-            console.error("No board slug provided")
-            return
-        }
+        if (!content.trim() && !file) return
 
         const formData = new FormData()
-        if (subject) formData.append('subject', subject)
         formData.append('content', content)
-        if (file) formData.append('file', file)
-
-        try {
-            if (threadId) {
-                // Reply mode
-                await postReply({ slug: finalSlug, id: threadId, formData }).unwrap()
-                setContent('')
-                setFile(null)
-                setSubject('')
-                // Usually the query hook will auto-refetch due to tag invalidation
-            } else {
-                // Thread creation mode
-                const res = await createThread({ slug: finalSlug, formData }).unwrap()
-                navigate(`/${finalSlug}/thread/${res.thread_id}`)
-            }
-        } catch (err) {
-            console.error("Failed to post:", err)
+        if (file) {
+            formData.append('file', file)
         }
+
+        await onSubmit(formData)
+        setContent('')
+        setFile(null)
     }
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4 p-4 border rounded-lg bg-card text-card-foreground shadow-sm">
-            {!threadId && (
-                <div className="grid w-full items-center gap-1.5">
-                    <Label htmlFor="subject">Subject</Label>
-                    <Input
-                        id="subject"
-                        value={subject}
-                        onChange={(e) => setSubject(e.target.value)}
-                        placeholder="Thread subject (optional)"
-                        disabled={isLoading}
-                    />
-                </div>
-            )}
-
-            <div className="grid w-full gap-1.5">
-                <Label htmlFor="content">Comment</Label>
-                <Textarea
-                    id="content"
+        <form onSubmit={handleSubmit} className="bg-muted/30 p-4 border rounded shadow-sm max-w-2xl mx-auto space-y-3">
+            <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold">Comment</label>
+                <textarea
+                    className="w-full min-h-[100px] border rounded p-2 text-sm bg-background"
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
-                    placeholder="Type your message here."
-                    required={!file} // Content required if no file
-                    disabled={isLoading}
+                    placeholder="Write your thoughts..."
                 />
             </div>
 
-            <div className="grid w-full items-center gap-1.5">
-                <Label htmlFor="file">Image</Label>
-                <Input
-                    id="file"
+            <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold">File</label>
+                <input
                     type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                        const files = e.target.files
-                        if (files && files.length > 0) {
-                            setFile(files[0])
-                        }
-                    }}
-                    disabled={isLoading}
+                    className="text-xs"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
                 />
             </div>
 
-            <Button type="submit" disabled={isLoading}>
-                {isLoading ? 'Posting...' : (threadId ? 'Post Reply' : 'Create Thread')}
-            </Button>
+            <div className="flex justify-between items-center pt-2">
+                {onCancel && (
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="text-xs underline"
+                    >
+                        Close
+                    </button>
+                )}
+                <button
+                    type="submit"
+                    disabled={loading}
+                    className="bg-primary text-primary-foreground px-4 py-1 rounded text-sm font-bold flex items-center gap-2 hover:opacity-90 disabled:opacity-50"
+                >
+                    {loading && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {buttonLabel}
+                </button>
+            </div>
         </form>
     )
-})
-
-PostForm.displayName = "PostForm"
-
-export default PostForm
+}

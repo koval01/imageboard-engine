@@ -1,61 +1,72 @@
-import type { PostItem, Image } from '@/types'
-import ImageDisplay from './ImageDisplay'
+import { format } from 'date-fns'
+import type { PostItem, Image as ImageType } from '@/types'
+import { cn } from '@/lib/utils'
 
 interface PostProps {
     post: PostItem
     isOp?: boolean
-    cdnUrl: string
+    className?: string
+    id?: string
 }
 
-export default function Post({ post, isOp, cdnUrl }: PostProps) {
-    const date = new Date(post.model.created_at + 'Z').toLocaleString()
+export function Post({ post, isOp = false, className, id }: PostProps) {
+    const { model, images, cdn_url } = post
 
     return (
         <div
-            id={`p${post.model.id}`}
-            className={`p-3 rounded mb-2 overflow-hidden ${
-                isOp ? '' : 'bg-neutral-200 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 inline-block max-w-full'
-            }`}
+            id={id || `p${model.id}`}
+            className={cn(
+                "p-3 rounded-sm flex flex-col gap-2 relative group target:bg-orange-50 dark:target:bg-orange-950/30 transition-colors",
+                isOp ? "mb-6" : "bg-muted/50 border border-border/50 inline-block min-w-[300px] max-w-full",
+                className
+            )}
         >
-            <div className="text-sm text-neutral-600 dark:text-neutral-400 mb-2 flex flex-wrap items-baseline gap-2">
-                <span className="font-bold text-green-700 dark:text-green-500">Anonymous</span>
-                {post.model.country_code && (
-                    <span className="text-xs border border-neutral-300 px-1 rounded uppercase">
-            {post.model.country_code}
-          </span>
-                )}
-                <time dateTime={post.model.created_at}>{date}</time>
-                <a href={`#p${post.model.id}`} className="hover:underline">No.{post.model.id}</a>
-
-                {/* Reply Link context for Thread Page */}
-                {!isOp && (
-                    <span className="cursor-pointer text-blue-500 text-xs" onClick={() => {
-                        const area = document.querySelector('textarea')
-                        if(area) area.value += `>>${post.model.id}\n`
-                    }}>
-             Reply
-           </span>
-                )}
+            <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-primary">Anonymous</span>
+                {model.country_code && <span>[{model.country_code}]</span>}
+                <time dateTime={model.created_at}>
+                    {format(new Date(model.created_at), 'MM/dd/yy(EEE)HH:mm:ss')}
+                </time>
+                <span className="cursor-pointer hover:underline">No.{model.id}</span>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4">
-                {post.images.length > 0 && (
-                    <div className="shrink-0">
-                        {post.images.map((img: Image) => (
-                            <ImageDisplay key={img.id} image={img} cdnUrl={cdnUrl} />
+            <div className={cn("flex gap-4", isOp ? "flex-col sm:flex-row" : "flex-col")}>
+                {images.length > 0 && (
+                    <div className="flex flex-wrap gap-2 items-start shrink-0">
+                        {images.map((img: ImageType) => (
+                            <div key={img.id} className="flex flex-col gap-1">
+                                <a
+                                    href={`${cdn_url}/${img.url}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs text-blue-600 hover:underline truncate max-w-[150px]"
+                                >
+                                    {img.filename}
+                                </a>
+                                <span className="text-[10px] text-muted-foreground">
+                  ({img.width}x{img.height}, {Math.round(img.size / 1024)}KB)
+                </span>
+                                <a href={`${cdn_url}/${img.url}`} target="_blank" rel="noreferrer">
+                                    <img
+                                        src={`${cdn_url}/${img.thumbnail_url}`}
+                                        alt={img.filename}
+                                        className="max-w-[200px] max-h-[200px] object-contain border border-border bg-background"
+                                        loading="lazy"
+                                    />
+                                </a>
+                            </div>
                         ))}
                     </div>
                 )}
 
-                <div className="whitespace-pre-wrap text-sm leading-relaxed min-w-0 break-words">
-                    {/* Simple greentext parsing */}
-                    {post.model.content.split('\n').map((line, i) => (
-                        <div key={i} className={line.startsWith('>') && !line.startsWith('>>') ? 'text-green-600 dark:text-green-400' : ''}>
-                            {line}
-                        </div>
-                    ))}
+                <div className="flex-1 min-w-0">
+                    <blockquote className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                        {model.content}
+                    </blockquote>
                 </div>
             </div>
         </div>
     )
 }
+
+export default Post;

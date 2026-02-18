@@ -5,7 +5,7 @@ import PostForm from '@/components/PostForm'
 import { useState } from 'react'
 import { Loader2, Plus } from 'lucide-react'
 
-export default function Board() {
+export default function BoardPage() {
     const { slug } = useParams<{ slug: string }>()
     const { data, isLoading, isFetching } = useGetBoardQuery(slug || '')
     const [createThread, { isLoading: isCreating }] = useCreateThreadMutation()
@@ -19,6 +19,7 @@ export default function Board() {
         try {
             await createThread({ slug, formData }).unwrap()
             setShowForm(false)
+            // RTK Query tags will auto-refresh the list
         } catch (err) {
             console.error("Failed to create thread", err)
             alert("Failed to create thread")
@@ -54,6 +55,11 @@ export default function Board() {
                 {isFetching && !isLoading && <div className="text-center text-xs opacity-50">Updating...</div>}
 
                 {data.threads.map((threadItem) => {
+                    // Construct the OP Post Item from the thread model and images
+                    // Note: ThreadItem structure in types.ts is slightly different from PostItem
+                    // We need to adapt it for the <Post> component or create a specific view
+
+                    // Constructing a pseudo-PostItem for the OP
                     const opPost = {
                         model: {
                             id: threadItem.model.id,
@@ -66,14 +72,16 @@ export default function Board() {
                         },
                         images: threadItem.images,
                         cdn_url: data.cdn_url,
-                        admin_role: 0,
+                        admin_role: 0, // Default
                         board_slug: data.board.slug
                     }
 
                     return (
                         <div key={threadItem.model.id} className="border-b pb-6">
+                            {/* OP Post */}
                             <Post post={opPost} isOp={true} />
 
+                            {/* Replies Preview */}
                             <div className="ml-4 md:ml-8 mt-2 space-y-1">
                                 {threadItem.omitted_posts > 0 && (
                                     <div className="text-xs text-muted-foreground mb-2">
