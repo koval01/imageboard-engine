@@ -12,7 +12,7 @@ use sea_orm::{
     RelationTrait, DatabaseConnection
 };
 use tokio::sync::RwLock;
-use chrono::Utc;
+use chrono::{Utc, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -25,21 +25,78 @@ use crate::{
     config::{BUMP_LIMIT, THREAD_AGE_LIMIT_DAYS},
 };
 
-// --- DTOs (Data Transfer Objects) ---
+// --- SAFE DTOs (Data Transfer Objects) ---
+// These structs explicitly define what is sent to the client.
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SafeImage {
+    pub id: i32,
+    pub url: String,
+    pub thumbnail_url: String,
+    pub filename: String,
+    pub width: i32,
+    pub height: i32,
+    pub size: i64,
+    // Excluded: storage_key, hash, phash
+}
+
+impl From<images::Model> for SafeImage {
+    fn from(m: images::Model) -> Self {
+        Self {
+            id: m.id,
+            url: m.url,
+            thumbnail_url: m.thumbnail_url,
+            filename: m.filename,
+            width: m.width,
+            height: m.height,
+            size: m.size,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SafePost {
+    pub id: i32,
+    pub thread_id: i32,
+    pub content: String,
+    pub country_code: Option<String>,
+    pub created_at: NaiveDateTime,
+    // Sensitive fields that are conditionally included
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ip_address: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SafeThread {
+    pub id: i32,
+    pub board_slug: String,
+    pub subject: Option<String>,
+    pub content: String,
+    pub country_code: Option<String>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+    // Sensitive fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ip_address: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PostItem {
-    pub model: posts::Model,
-    pub images: Vec<images::Model>,
+    pub model: SafePost,
+    pub images: Vec<SafeImage>,
     pub cdn_url: String,
     pub admin_role: i32,
     pub board_slug: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ThreadItem {
-    pub model: threads::Model,
-    pub images: Vec<images::Model>,
+    pub model: SafeThread,
+    pub images: Vec<SafeImage>,
     pub replies_preview: Vec<PostItem>,
     pub reply_count: usize,
     pub image_count: usize,
@@ -49,17 +106,18 @@ pub struct ThreadItem {
     pub is_time_limit: bool,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct BoardStat {
     pub model: boards::Model,
     pub post_count: u64,
 }
 
-#[derive(Clone)]
+// Updated CacheData to store the Safe structs to prevent accidental leaks via cache
+#[derive(Clone, Serialize, Deserialize)]
 pub enum CacheData {
-    Home(Vec<BoardStat>, Vec<(images::Model, String)>, Vec<threads::Model>),
+    Home(Vec<BoardStat>, Vec<RecentImageDto>, Vec<SafeThread>),
     Board(Vec<ThreadItem>),
-    Thread(threads::Model, Vec<images::Model>, Vec<PostItem>),
+    Thread(SafeThread, Vec<SafeImage>, Vec<PostItem>),
 }
 
 // --- API Response Structs ---
@@ -68,15 +126,15 @@ pub enum CacheData {
 pub struct HomeResponse {
     pub boards: Vec<BoardStat>,
     pub recent_images: Vec<RecentImageDto>,
-    pub recent_threads: Vec<threads::Model>,
+    pub recent_threads: Vec<SafeThread>,
     pub cdn_url: String,
     pub admin_role: i32,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RecentImageDto {
     #[serde(flatten)]
-    pub model: images::Model,
+    pub model: SafeImage,
     pub thread_id: String,
 }
 
@@ -91,8 +149,8 @@ pub struct BoardResponse {
 #[derive(Serialize)]
 pub struct ThreadResponse {
     pub board: boards::Model,
-    pub thread: threads::Model,
-    pub op_images: Vec<images::Model>,
+    pub thread: SafeThread,
+    pub op_images: Vec<SafeImage>,
     pub replies: Vec<PostItem>,
     pub cdn_url: String,
     pub admin_role: i32,
@@ -109,7 +167,41 @@ pub struct PostsListResponse {
     pub thread_id: i32,
 }
 
+#[derive(Deserialize)]
+pub struct PollQuery {
+    after: i32,
+}
+
 // --- Helper Functions ---
+
+// Helper to convert DB models to Safe DTOs with permission checks
+fn to_safe_post(m: posts::Model, role: i32) -> SafePost {
+    SafePost {
+        id: m.id,
+        thread_id: m.thread_id,
+        content: m.content,
+        country_code: m.country_code,
+        created_at: m.created_at,
+        // Only show IP and Session to Mods (Role >= 2) or Admins
+        ip_address: if role >= 2 { Some(m.ip_address) } else { None },
+        session_id: if role >= 2 { Some(m.session_id) } else { None },
+    }
+}
+
+fn to_safe_thread(m: threads::Model, role: i32) -> SafeThread {
+    SafeThread {
+        id: m.id,
+        board_slug: m.board_slug,
+        subject: m.subject,
+        content: m.content,
+        country_code: m.country_code,
+        created_at: m.created_at,
+        updated_at: m.updated_at,
+        // Only show IP and Session to Mods (Role >= 2) or Admins
+        ip_address: if role >= 2 { Some(m.ip_address) } else { None },
+        session_id: if role >= 2 { Some(m.session_id) } else { None },
+    }
+}
 
 struct ParsedForm {
     subject: Option<String>,
@@ -194,11 +286,13 @@ pub async fn home_handler(
     let state_read = state.read().await;
     let cache_key = "home_view".to_string();
 
+    // Cache logic: Note that cache stores SAFE structs now.
+    // If cache exists, we return it. Note: Cached data does NOT contain IPs.
+    // Admin IPs won't show up in cached home views, which is acceptable for performance.
     if let Some(CacheData::Home(c_boards, c_images, c_threads)) = state_read.db_cache.get(&cache_key).await {
-        let recent_images_dto = c_images.into_iter().map(|(m, t)| RecentImageDto { model: m, thread_id: t }).collect();
         return Json(HomeResponse {
             boards: c_boards,
-            recent_images: recent_images_dto,
+            recent_images: c_images,
             recent_threads: c_threads,
             cdn_url: state_read.config.cdn_url.clone(),
             admin_role: session.role,
@@ -238,7 +332,6 @@ pub async fn home_handler(
         .await
         .unwrap_or_default();
 
-    let mut recent_images = Vec::new();
     let mut recent_images_dto = Vec::new();
 
     for img in recent_images_raw {
@@ -250,26 +343,33 @@ pub async fn home_handler(
         } else {
             "0".to_string()
         };
-        recent_images.push((img.clone(), thread_id.clone()));
-        recent_images_dto.push(RecentImageDto { model: img, thread_id });
+        recent_images_dto.push(RecentImageDto {
+            model: SafeImage::from(img),
+            thread_id
+        });
     }
 
-    let recent_threads = threads::Entity::find()
+    let recent_threads_raw = threads::Entity::find()
         .order_by_desc(threads::Column::UpdatedAt)
         .limit(10)
         .all(db)
         .await
         .unwrap_or_default();
 
+    // Cache stores data without IPs (Role 0 view)
+    let recent_threads_safe: Vec<SafeThread> = recent_threads_raw.into_iter()
+        .map(|t| to_safe_thread(t, 0))
+        .collect();
+
     state_read.db_cache.insert(
         cache_key,
-        CacheData::Home(boards_stats.clone(), recent_images, recent_threads.clone())
+        CacheData::Home(boards_stats.clone(), recent_images_dto.clone(), recent_threads_safe.clone())
     ).await;
 
     Json(HomeResponse {
         boards: boards_stats,
         recent_images: recent_images_dto,
-        recent_threads,
+        recent_threads: recent_threads_safe,
         cdn_url,
         admin_role: session.role,
     }).into_response()
@@ -290,6 +390,10 @@ pub async fn view_board_handler(
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
 
+    // Note: Cached Board Data acts as Role 0 (No IPs).
+    // If an Admin views the board, we *could* bypass cache to show IPs,
+    // but typically admins view IPs inside threads or mod view.
+    // For now, we serve cached safe data to everyone for performance.
     let cached_threads = if let Some(CacheData::Board(items)) = state_read.db_cache.get(&cache_key).await {
         Some(items)
     } else {
@@ -345,8 +449,8 @@ pub async fn view_board_handler(
             let mut replies_preview = Vec::new();
             for j in start_idx..reply_count {
                 replies_preview.push(PostItem {
-                    model: posts_raw[j].clone(),
-                    images: post_images_raw[j].clone(),
+                    model: to_safe_post(posts_raw[j].clone(), 0), // Cache as safe (Role 0)
+                    images: post_images_raw[j].iter().map(|i| SafeImage::from(i.clone())).collect(),
                     cdn_url: cdn_url.clone(),
                     admin_role: 0,
                     board_slug: slug.clone(),
@@ -354,8 +458,8 @@ pub async fn view_board_handler(
             }
 
             items.push(ThreadItem {
-                model: thread,
-                images: thread_images[i].clone(),
+                model: to_safe_thread(thread, 0), // Cache as safe (Role 0)
+                images: thread_images[i].iter().map(|i| SafeImage::from(i.clone())).collect(),
                 replies_preview,
                 reply_count,
                 image_count,
@@ -370,6 +474,8 @@ pub async fn view_board_handler(
         items
     };
 
+    // If User is Admin, we *could* re-fetch to show IPs, but for Board Index it's usually overkill.
+    // We just update the admin_role field in the DTO so the frontend shows buttons.
     let final_threads: Vec<ThreadItem> = thread_items.into_iter().map(|mut t| {
         t.replies_preview.iter_mut().for_each(|r| r.admin_role = session.role);
         t
@@ -398,77 +504,97 @@ pub async fn view_thread_handler(
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
 
-    let cached_data = if let Some(CacheData::Thread(th, op, reps)) = state_read.db_cache.get(&cache_key).await {
-        Some((th, op, reps))
-    } else {
-        None
-    };
+    // FOR THREAD VIEW: If user is ADMIN/MOD, we bypass cache or re-fetch to ensure they see IPs.
+    // Standard users get cached safe data.
 
-    let (thread, op_images, replies) = if let Some(d) = cached_data {
-        d
-    } else {
-        let thread = threads::Entity::find_by_id(thread_id).one(db).await.unwrap();
-        if let Some(thread) = thread {
-            // Verify thread belongs to board
-            if thread.board_slug != slug {
-                return StatusCode::NOT_FOUND.into_response();
-            }
+    if session.role < 2 {
+        if let Some(CacheData::Thread(th, op, reps)) = state_read.db_cache.get(&cache_key).await {
+            // Update admin_role for UI logic
+            let final_replies: Vec<PostItem> = reps.into_iter().map(|mut p| {
+                p.admin_role = session.role;
+                p
+            }).collect();
 
-            let op_images = thread.find_related(images::Entity).all(db).await.unwrap();
+            let last_post_id = final_replies.last().map(|p| p.model.id).unwrap_or(0);
+            let post_count = final_replies.len();
+            let is_bump_limit = post_count as u64 >= BUMP_LIMIT;
+            let thread_age_days = (Utc::now().naive_utc() - th.created_at).num_days();
+            let is_time_limit = thread_age_days >= THREAD_AGE_LIMIT_DAYS;
 
-            let posts_raw = thread.find_related(posts::Entity)
-                .order_by_asc(posts::Column::CreatedAt)
-                .all(db)
-                .await
-                .unwrap();
+            return Json(ThreadResponse {
+                board,
+                thread: th,
+                op_images: op,
+                replies: final_replies,
+                cdn_url,
+                admin_role: session.role,
+                last_post_id,
+                is_bump_limit,
+                is_time_limit,
+            }).into_response();
+        }
+    }
 
-            let post_images_vec = posts_raw.load_many(images::Entity, db).await.unwrap();
-
-            let mut posts_with_images = Vec::new();
-            for (i, post) in posts_raw.into_iter().enumerate() {
-                posts_with_images.push(PostItem {
-                    model: post,
-                    images: post_images_vec[i].clone(),
-                    cdn_url: cdn_url.clone(),
-                    admin_role: 0,
-                    board_slug: slug.clone(),
-                });
-            }
-
-            state_read.db_cache.insert(
-                cache_key,
-                CacheData::Thread(thread.clone(), op_images.clone(), posts_with_images.clone())
-            ).await;
-
-            (thread, op_images, posts_with_images)
-        } else {
+    // Fetch fresh data (either because cache miss OR user is admin/mod)
+    let thread = threads::Entity::find_by_id(thread_id).one(db).await.unwrap();
+    if let Some(thread) = thread {
+        if thread.board_slug != slug {
             return StatusCode::NOT_FOUND.into_response();
         }
-    };
 
-    let last_post_id = replies.last().map(|p| p.model.id).unwrap_or(0);
+        let op_images_raw = thread.find_related(images::Entity).all(db).await.unwrap();
+        let op_images: Vec<SafeImage> = op_images_raw.into_iter().map(SafeImage::from).collect();
 
-    let final_replies: Vec<PostItem> = replies.into_iter().map(|mut p| {
-        p.admin_role = session.role;
-        p
-    }).collect();
+        let posts_raw = thread.find_related(posts::Entity)
+            .order_by_asc(posts::Column::CreatedAt)
+            .all(db)
+            .await
+            .unwrap();
 
-    let post_count = final_replies.len();
-    let is_bump_limit = post_count as u64 >= BUMP_LIMIT;
-    let thread_age_days = (Utc::now().naive_utc() - thread.created_at).num_days();
-    let is_time_limit = thread_age_days >= THREAD_AGE_LIMIT_DAYS;
+        let post_images_vec = posts_raw.load_many(images::Entity, db).await.unwrap();
 
-    Json(ThreadResponse {
-        board,
-        thread,
-        op_images,
-        replies: final_replies,
-        cdn_url,
-        admin_role: session.role,
-        last_post_id,
-        is_bump_limit,
-        is_time_limit,
-    }).into_response()
+        let mut posts_dto = Vec::new();
+        for (i, post) in posts_raw.into_iter().enumerate() {
+            posts_dto.push(PostItem {
+                model: to_safe_post(post, session.role), // Inject IPs if Admin
+                images: post_images_vec[i].iter().map(|img| SafeImage::from(img.clone())).collect(),
+                cdn_url: cdn_url.clone(),
+                admin_role: session.role,
+                board_slug: slug.clone(),
+            });
+        }
+
+        let safe_thread = to_safe_thread(thread.clone(), session.role);
+
+        // Only cache if it's the public view (role < 2)
+        if session.role < 2 {
+            state_read.db_cache.insert(
+                cache_key,
+                CacheData::Thread(safe_thread.clone(), op_images.clone(), posts_dto.clone())
+            ).await;
+        }
+
+        let last_post_id = posts_dto.last().map(|p| p.model.id).unwrap_or(0);
+        let post_count = posts_dto.len();
+        let is_bump_limit = post_count as u64 >= BUMP_LIMIT;
+        let thread_age_days = (Utc::now().naive_utc() - thread.created_at).num_days();
+        let is_time_limit = thread_age_days >= THREAD_AGE_LIMIT_DAYS;
+
+        Json(ThreadResponse {
+            board,
+            thread: safe_thread,
+            op_images,
+            replies: posts_dto,
+            cdn_url,
+            admin_role: session.role,
+            last_post_id,
+            is_bump_limit,
+            is_time_limit,
+        }).into_response()
+
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    }
 }
 
 pub async fn create_thread_handler(
@@ -534,6 +660,7 @@ pub async fn create_thread_handler(
                 filename: Set(img.filename),
                 storage_key: Set(img.storage_key),
                 hash: Set(img.hash),
+                phash: Set(img.phash),
                 width: Set(img.width),
                 height: Set(img.height),
                 size: Set(img.size),
@@ -629,6 +756,7 @@ pub async fn reply_handler(
                     filename: Set(img.filename.clone()),
                     storage_key: Set(img.storage_key.clone()),
                     hash: Set(img.hash.clone()),
+                    phash: Set(img.phash.clone()),
                     width: Set(img.width),
                     height: Set(img.height),
                     size: Set(img.size),
@@ -637,7 +765,7 @@ pub async fn reply_handler(
                     ..Default::default()
                 };
                 if let Ok(m) = image_model.insert(db).await {
-                    saved_images.push(m);
+                    saved_images.push(SafeImage::from(m));
                 }
             }
 
@@ -656,7 +784,7 @@ pub async fn reply_handler(
             state_read.db_cache.invalidate(&format!("thread_{}", thread_id)).await;
 
             Json(PostItem {
-                model: post.clone(),
+                model: to_safe_post(post, session.role),
                 images: saved_images,
                 cdn_url: state_read.config.cdn_url.clone(),
                 admin_role: session.role,
@@ -667,11 +795,6 @@ pub async fn reply_handler(
             (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response()
         }
     }
-}
-
-#[derive(Deserialize)]
-pub struct PollQuery {
-    after: i32,
 }
 
 pub async fn poll_new_posts_handler(
@@ -703,8 +826,8 @@ pub async fn poll_new_posts_handler(
 
     for (i, post) in new_posts.into_iter().enumerate() {
         posts_with_images.push(PostItem {
-            model: post,
-            images: post_images_vec[i].clone(),
+            model: to_safe_post(post, session.role),
+            images: post_images_vec[i].iter().map(|img| SafeImage::from(img.clone())).collect(),
             cdn_url: cdn_url.clone(),
             admin_role: session.role,
             board_slug: slug.clone(),
