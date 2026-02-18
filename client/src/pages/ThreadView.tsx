@@ -1,7 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useGetThreadQuery } from '@/store/apiSlice';
 import { Post } from '@/components/board/Post';
-import { PostForm } from '@/components/board/PostForm'; // Assuming you have a form component
+import PostForm from '@/components/board/PostForm';
 import { Loader2 } from 'lucide-react';
 
 export default function ThreadView() {

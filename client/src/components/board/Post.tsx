@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { PostItem } from '@/types';
+import type {PostItem} from '@/types';
 import { PostContent } from './PostContent';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';

@@ -1,13 +1,10 @@
-import { Link } from 'react-router-dom';
-import { cn } from '@/lib/utils';
-
 interface PostContentProps {
     content: string;
     boardSlug: string;
     threadId: number;
 }
 
-export function PostContent({ content, boardSlug, threadId }: PostContentProps) {
+export function PostContent({ content }: PostContentProps) {
     // Split content by newlines to handle greentext line-by-line
     const lines = content.split('\n');
 

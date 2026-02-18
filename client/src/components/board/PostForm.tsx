@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
-import { useCreateThreadMutation, usePostReplyMutation } from '@/store/apiSlice'
+import { useCreateThreadMutation, usePostReplyMutation } from '@/store/apiSlice.ts'
 import { Loader2, ImagePlus, Send, X } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils.ts'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 

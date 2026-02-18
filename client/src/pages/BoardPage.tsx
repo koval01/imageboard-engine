@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useGetBoardQuery } from '@/store/apiSlice'
-import PostForm from '@/components/PostForm'
+import PostForm from '@/components/board/PostForm.tsx'
 import ImageViewer from '@/components/ImageViewer'
 import { Loader2, MessageCircle, ImageIcon, Info, ArrowUpRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
