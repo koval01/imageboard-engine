@@ -221,19 +221,19 @@ export default function ThreadView() {
                 )}
 
                 {/* Input Bar */}
-                <div className="max-w-[700px] p-1 m-auto">
+                <div className="max-w-[700px] p-1 pb-4 m-auto">
                     <div className="container max-w-4xl mx-auto flex gap-3 items-end">
                         <div className="flex-1">
                             <Textarea
                                 value={replyContent}
                                 onChange={(e) => setReplyContent(e.target.value)}
                                 placeholder="Write a reply..."
-                                className="min-h-[88px] max-h-[200px] resize-none focus-visible:ring-primary bg-background"
+                                className="min-h-[88px] shadow-xl max-h-[200px] resize-none focus-visible:ring-primary bg-background"
                             />
                         </div>
 
                         <div className="flex flex-col gap-2 shrink-0">
-                            <div className="relative">
+                            <div className="relative shadow-2xl">
                                 <input
                                     type="file" id="file-upload" className="hidden"
                                     onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
@@ -248,7 +248,7 @@ export default function ThreadView() {
                                 </Button>
                             </div>
 
-                            <Button onClick={handleReply} disabled={isPosting} size="icon">
+                            <Button onClick={handleReply} disabled={isPosting} size="icon" className="shadow-2xl">
                                 {isPosting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                             </Button>
                         </div>
