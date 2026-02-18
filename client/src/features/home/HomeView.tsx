@@ -50,7 +50,7 @@ export default function HomeView() {
                         <div key={img.id} className="aspect-square relative overflow-hidden rounded border">
                             <a href={data.cdn_url + img.url} target="_blank" rel="noreferrer">
                                 <img
-                                    src={data.cdn_url + img.thumbnail_url}
+                                    src={data.cdn_url + "/" + img.thumbnail_url}
                                     alt={img.filename}
                                     className="object-cover w-full h-full hover:scale-105 transition-transform"
                                     loading="lazy"
