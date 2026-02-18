@@ -1,8 +1,8 @@
 import { Routes, Route } from "react-router-dom"
-import { Layout } from "@/components/layout"
-import HomePage from "@/pages/home"
-import BoardPage from "@/pages/board"
-import ThreadPage from "@/pages/thread"
+import Layout from "@/components/Layout.tsx"
+import HomePage from "@/pages/HomePage.tsx"
+import BoardPage from "@/pages/BoardPage.tsx"
+import ThreadPage from "@/pages/ThreadPage.tsx"
 
 function App() {
     return (
