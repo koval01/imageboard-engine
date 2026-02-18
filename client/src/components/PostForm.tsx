@@ -1,101 +1,109 @@
-import { useState } from 'react'
-import { usePostReplyMutation, useCreateThreadMutation } from '@/store/apiSlice'
-import { useNavigate } from 'react-router-dom'
+// client/src/components/PostForm.tsx
+import { useState, useImperativeHandle, forwardRef, useRef } from 'react'
+import { useCreateThreadMutation, usePostReplyMutation } from '@/store/apiSlice'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent } from '@/components/ui/card'
+import { Loader2 } from 'lucide-react'
 
 interface PostFormProps {
-    slug: string
+    boardSlug: string
     threadId?: number
-    onSuccess?: () => void
+    type: 'thread' | 'reply'
 }
 
-export default function PostForm({ slug, threadId, onSuccess }: PostFormProps) {
+const PostForm = forwardRef<{ setContent: (v: string) => void }, PostFormProps>(({ boardSlug, threadId, type }, ref) => {
     const [subject, setSubject] = useState('')
     const [content, setContent] = useState('')
     const [file, setFile] = useState<File | null>(null)
-    const [error, setError] = useState<string | null>(null)
-    const navigate = useNavigate()
 
-    const [postReply, { isLoading: isReplying }] = usePostReplyMutation()
+    // Use uncontrolled input for file reset hack
+    const fileInputRef = useRef<HTMLInputElement>(null)
+
     const [createThread, { isLoading: isCreating }] = useCreateThreadMutation()
+    const [postReply, { isLoading: isReplying }] = usePostReplyMutation()
 
-    const isLoading = isReplying || isCreating
+    const isLoading = isCreating || isReplying
+
+    useImperativeHandle(ref, () => ({
+        setContent: (val: string) => setContent(prev => prev + val)
+    }))
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        setError(null)
 
         const formData = new FormData()
-        if (subject) formData.append('subject', subject)
         formData.append('content', content)
         if (file) formData.append('file', file)
 
         try {
-            if (threadId) {
-                // Reply Mode
-                await postReply({ slug, id: threadId, formData }).unwrap()
+            if (type === 'thread') {
+                formData.append('subject', subject)
+                const res = await createThread({ slug: boardSlug, formData }).unwrap()
+                // Optional: Redirect to new thread or refresh
+                window.location.href = `/${boardSlug}/thread/${res.thread_id}`
+            } else if (threadId) {
+                await postReply({ slug: boardSlug, id: threadId, formData }).unwrap()
+                // Reset form
                 setContent('')
                 setFile(null)
-                if (onSuccess) onSuccess()
-            } else {
-                // New Thread Mode
-                const res = await createThread({ slug, formData }).unwrap()
-                navigate(`/${slug}/thread/${res.thread_id}`)
+                if(fileInputRef.current) fileInputRef.current.value = ''
             }
-        } catch (err: any) {
-            console.error(err)
-            setError(err.data?.error || 'Something went wrong')
+        } catch (err) {
+            console.error("Failed to post:", err)
+            alert("Error submitting post. Check console.")
         }
     }
 
     return (
-        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 p-4 rounded-md shadow-sm mb-6 max-w-2xl mx-auto">
-            <h3 className="font-bold text-lg mb-4 text-center">
-                {threadId ? 'Post a Reply' : 'Create New Thread'}
-            </h3>
+        <Card className="w-full max-w-lg shadow-sm">
+            <CardContent className="pt-6">
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    {type === 'thread' && (
+                        <div className="space-y-2">
+                            <Label htmlFor="subject">Subject</Label>
+                            <Input
+                                id="subject"
+                                placeholder="Thread Subject"
+                                value={subject}
+                                onChange={(e) => setSubject(e.target.value)}
+                            />
+                        </div>
+                    )}
 
-            <form onSubmit={handleSubmit} className="space-y-3">
-                {!threadId && (
-                    <input
-                        type="text"
-                        placeholder="Subject"
-                        value={subject}
-                        onChange={(e) => setSubject(e.target.value)}
-                        className="w-full p-2 border border-neutral-300 dark:border-neutral-700 rounded bg-transparent focus:ring-1 focus:ring-blue-500 outline-none"
-                    />
-                )}
-
-                <textarea
-                    placeholder="Comment"
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                    rows={4}
-                    className="w-full p-2 border border-neutral-300 dark:border-neutral-700 rounded bg-transparent focus:ring-1 focus:ring-blue-500 outline-none font-mono text-sm"
-                    required={!file} // Content required if no file
-                />
-
-                <div className="flex items-center gap-4">
-                    <input
-                        type="file"
-                        onChange={(e) => setFile(e.target.files?.[0] || null)}
-                        className="text-sm text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-neutral-100 file:text-neutral-700 hover:file:bg-neutral-200 dark:file:bg-neutral-800 dark:file:text-neutral-300"
-                        accept="image/*"
-                    />
-                </div>
-
-                {error && (
-                    <div className="text-red-500 text-sm font-medium p-2 bg-red-50 dark:bg-red-900/20 rounded">
-                        Error: {error}
+                    <div className="space-y-2">
+                        <Label htmlFor="content">Comment</Label>
+                        <Textarea
+                            id="content"
+                            placeholder="Type your message..."
+                            value={content}
+                            onChange={(e) => setContent(e.target.value)}
+                            rows={5}
+                            className="resize-y"
+                        />
                     </div>
-                )}
 
-                <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                    {isLoading ? 'Posting...' : 'Submit'}
-                </button>
-            </form>
-        </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="file">Image</Label>
+                        <Input
+                            id="file"
+                            type="file"
+                            accept="image/*"
+                            ref={fileInputRef}
+                            onChange={(e) => setFile(e.target.files?.[0] || null)}
+                        />
+                    </div>
+
+                    <Button type="submit" className="w-full" disabled={isLoading}>
+                        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {type === 'thread' ? 'Start Thread' : 'Post Reply'}
+                    </Button>
+                </form>
+            </CardContent>
+        </Card>
     )
-}
+})
+
+export default PostForm
