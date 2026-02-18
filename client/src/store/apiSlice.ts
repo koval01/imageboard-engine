@@ -1,5 +1,8 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react'
-import type { HomeResponse, BoardResponse, ThreadResponse, PostItem } from '@/types'
+import type {
+    HomeResponse, BoardResponse, ThreadResponse, PostItem,
+    AdminStats, AdminLog, Report, InvestigationResult, BanPayload
+} from '@/types'
 import { solvePoW } from '@/lib/pow'
 
 // Helper to get session ID from cookie
@@ -16,7 +19,7 @@ export const apiSlice = createApi({
         baseUrl: '/api',
         prepareHeaders: async (headers, { endpoint }) => {
             // Apply Proof of Work for mutation endpoints
-            if (endpoint === 'postReply' || endpoint === 'createThread') {
+            if (endpoint === 'postReply' || endpoint === 'createThread' || endpoint === 'reportPost') {
                 const sessionId = getCookie('client_key');
                 if (sessionId) {
                     try {
@@ -31,7 +34,7 @@ export const apiSlice = createApi({
             return headers;
         },
     }),
-    tagTypes: ['Board', 'Thread'],
+    tagTypes: ['Board', 'Thread', 'AdminStats', 'Reports'],
     endpoints: (builder) => ({
         getHome: builder.query<HomeResponse, void>({
             query: () => '/home',
@@ -60,6 +63,53 @@ export const apiSlice = createApi({
             }),
             invalidatesTags: ['Board'],
         }),
+
+        // --- Reporting ---
+        reportPost: builder.mutation<{ status: string }, { post_id: number; reason: string }>({
+            query: (body) => ({
+                url: '/report',
+                method: 'POST',
+                body,
+            }),
+        }),
+
+        // --- Admin Endpoints ---
+        adminLogin: builder.mutation<{ status: string; role: number }, { key: string }>({
+            query: (body) => ({ url: '/admin/login', method: 'POST', body }),
+        }),
+        getAdminStats: builder.query<AdminStats, void>({
+            query: () => '/admin/stats',
+            providesTags: ['AdminStats'],
+        }),
+        getAdminLogs: builder.query<AdminLog[], void>({
+            query: () => '/admin/logs',
+        }),
+        getReports: builder.query<Report[], void>({
+            query: () => '/admin/reports',
+            providesTags: ['Reports'],
+        }),
+        resolveReport: builder.mutation<void, { report_id: number; status: string }>({
+            query: (body) => ({ url: '/admin/resolve', method: 'POST', body }),
+            invalidatesTags: ['Reports', 'AdminStats'],
+        }),
+        banUser: builder.mutation<void, BanPayload>({
+            query: (body) => ({ url: '/admin/ban', method: 'POST', body }),
+            invalidatesTags: ['Thread', 'Board', 'AdminStats'],
+        }),
+        deleteContent: builder.mutation<void, { id: number; type_: 'post' | 'thread' }>({
+            query: (body) => ({ url: '/admin/delete', method: 'POST', body }),
+            invalidatesTags: ['Thread', 'Board'],
+        }),
+        investigate: builder.query<InvestigationResult, { target: string; threshold?: number }>({
+            query: ({ target, threshold }) => `/admin/investigate?target=${target}&threshold=${threshold ?? 10}`,
+        }),
+        visualSearch: builder.mutation<any, FormData>({
+            query: (formData) => ({
+                url: '/admin/visual-search',
+                method: 'POST',
+                body: formData,
+            }),
+        }),
     }),
 })
 
@@ -68,5 +118,15 @@ export const {
     useGetBoardQuery,
     useGetThreadQuery,
     usePostReplyMutation,
-    useCreateThreadMutation
+    useCreateThreadMutation,
+    useReportPostMutation,
+    useAdminLoginMutation,
+    useGetAdminStatsQuery,
+    useGetAdminLogsQuery,
+    useGetReportsQuery,
+    useResolveReportMutation,
+    useBanUserMutation,
+    useDeleteContentMutation,
+    useLazyInvestigateQuery,
+    useVisualSearchMutation,
 } = apiSlice

@@ -1,108 +1,241 @@
-import { useParams, Link } from 'react-router-dom'
-import { useGetThreadQuery } from '@/store/apiSlice'
-import PostForm from '@/components/PostForm'
-import ImageViewer from '@/components/ImageViewer'
-import { Loader2, ArrowLeft, RotateCw } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
-import { motion } from 'framer-motion'
+import { useEffect, useRef, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import {
+    useGetThreadQuery,
+    usePostReplyMutation,
+    useBanUserMutation,
+    useDeleteContentMutation,
+    useReportPostMutation
+} from "@/store/apiSlice";
+import { Post } from "@/components/Post";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
+import { toast } from "sonner";
+import { PostItem } from "@/types";
+import { Loader2, Upload } from "lucide-react";
 
-export default function ThreadPage() {
-    const { slug, id } = useParams<{ slug: string; id: string }>()
-    const threadId = parseInt(id || '0', 10)
+export default function ThreadView() {
+    const { slug, id } = useParams();
+    const threadId = parseInt(id || "0");
+    const navigate = useNavigate();
+    const bottomRef = useRef<HTMLDivElement>(null);
 
-    const { data, isLoading, error, refetch, isFetching } = useGetThreadQuery(
+    // Polling configuration: refetch every 10 seconds
+    const { data, isLoading, error, refetch } = useGetThreadQuery(
         { slug: slug!, id: threadId },
-        {
-            skip: !slug || !threadId,
-            pollingInterval: 10000 // Poll every 10s
-        }
-    )
+        { pollingInterval: 10000 }
+    );
 
-    if (isLoading) return <div className="flex h-[50vh] flex-col items-center justify-center gap-2"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="text-muted-foreground animate-pulse">Loading thread...</p></div>
-    if (error) return <div className="p-12 text-center rounded-lg border border-destructive/20 bg-destructive/5 text-destructive">Thread not found or deleted.</div>
-    if (!data) return null
+    const [postReply, { isLoading: isPosting }] = usePostReplyMutation();
+    const [banUser] = useBanUserMutation();
+    const [deleteContent] = useDeleteContentMutation();
+    const [reportPost] = useReportPostMutation();
+
+    const [replyContent, setReplyContent] = useState("");
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [shouldScroll, setShouldScroll] = useState(true);
+    const prevPostCount = useRef(0);
+
+    // Auto-scroll logic
+    useEffect(() => {
+        if (!data) return;
+        const currentCount = data.replies.length;
+
+        // Initial load scroll
+        if (prevPostCount.current === 0 && currentCount > 0) {
+            // Optional: scroll to specific post if hash exists, else bottom
+            if (shouldScroll && !window.location.hash) {
+                setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 100);
+            }
+        }
+        // New posts added
+        else if (currentCount > prevPostCount.current) {
+            if (shouldScroll) {
+                bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+        prevPostCount.current = currentCount;
+    }, [data, shouldScroll]);
+
+    const handleReply = async () => {
+        if (!replyContent.trim() && !selectedFile) {
+            toast.error("Reply cannot be empty");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append("content", replyContent);
+        if (selectedFile) formData.append("file", selectedFile);
+
+        try {
+            setShouldScroll(true); // Ensure we scroll to the new post
+            await postReply({ slug: slug!, id: threadId, formData }).unwrap();
+
+            // Cleanup
+            setReplyContent("");
+            setSelectedFile(null);
+            refetch(); // Fetch immediately to show the new post
+            toast.success("Reply posted");
+        } catch (err: any) {
+            toast.error(err?.data?.error || "Failed to post reply");
+        }
+    };
+
+    const quotePost = (postId: number) => {
+        setReplyContent((prev) => {
+            const prefix = prev.length > 0 && !prev.endsWith('\n') ? '\n' : '';
+            return `${prev}${prefix}>>${postId}\n`;
+        });
+        // Focus logic would ideally go here
+    };
+
+    const handleBan = async (ip: string, session: string) => {
+        if (window.confirm(`Are you sure you want to ban ${ip}?`)) {
+            try {
+                await banUser({
+                    ip,
+                    session,
+                    reason: "Manual ban from thread view",
+                    duration: 24,
+                    delete_content: true
+                }).unwrap();
+                toast.success("User banned and content deleted");
+                refetch();
+            } catch (e) {
+                toast.error("Failed to ban user");
+            }
+        }
+    };
+
+    const handleDelete = async (itemId: number, type: 'post' | 'thread') => {
+        if(window.confirm(`Delete this ${type}?`)) {
+            try {
+                await deleteContent({ id: itemId, type_: type }).unwrap();
+                toast.success(`${type} deleted`);
+                if (type === 'thread') {
+                    navigate(`/${slug}`);
+                } else {
+                    refetch();
+                }
+            } catch (e) {
+                toast.error("Failed to delete");
+            }
+        }
+    };
+
+    const handleInvestigate = (target: string) => {
+        // Open admin panel in new tab with the target
+        window.open(`/admin?target=${target}`, '_blank');
+    };
+
+    if (isLoading) return (
+        <div className="flex h-screen items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
+
+    if (error || !data) return (
+        <div className="container py-10 text-center">
+            <h2 className="text-xl font-semibold">Thread not found or deleted</h2>
+            <Button variant="link" onClick={() => navigate(`/${slug}`)}>Return to Board</Button>
+        </div>
+    );
+
+    // Helper to unify OP data structure
+    const opPost: PostItem = {
+        model: {
+            ...data.thread,
+            thread_id: data.thread.id,
+            id: data.thread.id
+        } as any,
+        images: data.op_images,
+        cdn_url: data.cdn_url,
+        admin_role: data.admin_role,
+        board_slug: data.board.slug
+    };
 
     return (
-        <div className="max-w-5xl mx-auto space-y-8">
-            <div className="flex items-center justify-between">
-                <Link to={`/${slug}`} className="inline-flex items-center text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Return to /{slug}/
-                </Link>
-                <button onClick={refetch} disabled={isFetching} className="inline-flex items-center text-xs text-muted-foreground hover:text-primary transition-colors disabled:opacity-50">
-                    <RotateCw className={`mr-1 h-3 w-3 ${isFetching ? 'animate-spin' : ''}`} />
-                    {isFetching ? 'Updating...' : 'Refresh'}
-                </button>
+        <div className="container max-w-4xl mx-auto py-6 pb-40">
+            <Button variant="ghost" className="mb-4 pl-0" onClick={() => navigate(`/${slug}`)}>
+                &larr; Back to /{data.board.slug}/
+            </Button>
+
+            {/* OP Post */}
+            <div className="mb-6">
+                <h1 className="text-2xl font-bold text-primary mb-2 break-words">
+                    {data.thread.subject || "No Subject"}
+                </h1>
+                <Post
+                    post={opPost}
+                    isOp
+                    onReply={quotePost}
+                    onReport={(id) => reportPost({ post_id: id, reason: "User report" })}
+                    onBan={handleBan}
+                    onDelete={(id) => handleDelete(id, 'thread')}
+                    onInvestigate={handleInvestigate}
+                />
             </div>
 
-            <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-6"
-            >
-                {/* OP Post */}
-                <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-                    <div className="bg-primary/5 px-6 py-4 border-b border-border/50">
-                        <div className="flex flex-wrap items-baseline gap-3">
-                            {data.thread.subject && <h1 className="text-xl font-bold text-primary">{data.thread.subject}</h1>}
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <span className="font-semibold text-green-600 dark:text-green-500">Anonymous</span>
-                                <span>•</span>
-                                <span>{formatDistanceToNow(new Date(data.thread.created_at))} ago</span>
-                                <span>•</span>
-                                <span className="font-mono">No. {data.thread.id}</span>
-                                {data.admin_role > 0 && <span className="text-[10px] font-black text-red-500 bg-red-100 dark:bg-red-900/30 px-1 rounded ml-1">ADMIN</span>}
-                            </div>
-                        </div>
+            <Separator className="my-6" />
+
+            {/* Replies */}
+            <div className="space-y-1">
+                {data.replies.map((post) => (
+                    <Post
+                        key={post.model.id}
+                        post={post}
+                        onReply={quotePost}
+                        onReport={(id) => reportPost({ post_id: id, reason: "User report" })}
+                        onBan={handleBan}
+                        onDelete={(id) => handleDelete(id, 'post')}
+                        onInvestigate={handleInvestigate}
+                    />
+                ))}
+            </div>
+
+            <div ref={bottomRef} className="h-4" />
+
+            {/* Sticky Reply Box */}
+            <div className="fixed bottom-0 left-0 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t p-4 shadow-lg z-40">
+                <div className="container max-w-4xl mx-auto flex gap-3 items-end">
+                    <div className="flex-1 space-y-2">
+                        <Textarea
+                            value={replyContent}
+                            onChange={(e) => setReplyContent(e.target.value)}
+                            placeholder="Write a reply..."
+                            className="min-h-[80px] resize-none"
+                        />
                     </div>
-
-                    <div className="p-6 grid gap-8 md:grid-cols-[1fr_minmax(200px,300px)]">
-                        <div className="order-2 md:order-1 text-base leading-7 whitespace-pre-wrap allow-select">
-                            {data.thread.content}
+                    <div className="flex flex-col gap-2 shrink-0">
+                        <div className="relative">
+                            <input
+                                type="file"
+                                id="file-upload"
+                                className="hidden"
+                                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                            />
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className={selectedFile ? "border-primary text-primary" : ""}
+                                onClick={() => document.getElementById('file-upload')?.click()}
+                            >
+                                <Upload className="h-4 w-4" />
+                            </Button>
                         </div>
 
-                        <div className="order-1 md:order-2">
-                            <ImageViewer images={data.op_images} cdnUrl={data.cdn_url} />
-                        </div>
+                        <Button onClick={handleReply} disabled={isPosting}>
+                            {isPosting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Reply"}
+                        </Button>
                     </div>
                 </div>
-
-                {/* Replies */}
-                <div className="space-y-3 relative before:absolute before:left-6 before:top-0 before:bottom-0 before:w-px before:bg-border/50 pl-0 md:pl-6">
-                    {data.replies.map((post) => (
-                        <div key={post.model.id} id={`p${post.model.id}`} className="group relative pl-8">
-                            {/* Connector dot */}
-                            <div className="absolute left-4 top-6 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-background bg-border group-hover:bg-primary transition-colors" />
-
-                            <div className="rounded-lg border bg-muted/10 p-4 transition-all hover:bg-card hover:shadow-md hover:border-primary/20">
-                                <div className="flex items-center justify-between mb-3 border-b border-border/30 pb-2">
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <span className="font-bold text-foreground">Anonymous</span>
-                                        <span>{formatDistanceToNow(new Date(post.model.created_at))} ago</span>
-                                        <Link to={`#p${post.model.id}`} className="hover:underline hover:text-primary">No. {post.model.id}</Link>
-                                        {post.admin_role > 0 && <span className="text-red-500 font-bold text-[10px]">## Admin</span>}
-                                    </div>
-                                </div>
-
-                                <div className="grid gap-4">
-                                    {post.images.length > 0 && (
-                                        <div><ImageViewer images={post.images} cdnUrl={data.cdn_url} /></div>
-                                    )}
-                                    <div className="whitespace-pre-wrap text-sm leading-relaxed allow-select text-foreground/90">
-                                        {post.model.content}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </motion.div>
-
-            {/* Reply Form */}
-            <div className="sticky bottom-6 z-40 mx-auto max-w-3xl">
-                <div className="absolute -inset-4 bg-gradient-to-t from-background via-background to-transparent -z-10 pointer-events-none" />
-                <PostForm boardSlug={slug!} threadId={threadId} onSuccess={() => refetch()} />
+                {selectedFile && (
+                    <div className="container max-w-4xl mx-auto text-xs text-muted-foreground mt-1">
+                        Attached: {selectedFile.name}
+                    </div>
+                )}
             </div>
         </div>
-    )
+    );
 }

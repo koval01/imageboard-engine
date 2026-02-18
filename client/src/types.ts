@@ -96,3 +96,48 @@ export interface ThreadResponse {
     is_bump_limit: boolean;
     is_time_limit: boolean;
 }
+
+// --- Admin & Reporting Types ---
+
+export interface AdminStats {
+    total_posts: number;
+    total_bans: number;
+    total_reports: number;
+    open_reports: number;
+}
+
+export interface AdminLog {
+    id: number;
+    admin_username: string;
+    action: string;
+    target_id: string | null;
+    details: string | null;
+    created_at: string;
+}
+
+export interface Report {
+    id: number;
+    reason: string;
+    status: string;
+    reporter_ip: string;
+    created_at: string;
+    post: Post | null;
+    images: Image[];
+}
+
+export interface InvestigationResult {
+    initial_target: string;
+    related_ips: string[];
+    related_sessions: string[];
+    posts_found: Post[];
+    images_found: Image[];
+    similar_images: [number, number, string][]; // [PostId, Distance, Url]
+}
+
+export interface BanPayload {
+    ip: string;
+    session?: string;
+    reason: string;
+    duration: number; // hours
+    delete_content: boolean;
+}
