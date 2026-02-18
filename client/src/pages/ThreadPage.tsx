@@ -228,7 +228,7 @@ export default function ThreadView() {
                                 value={replyContent}
                                 onChange={(e) => setReplyContent(e.target.value)}
                                 placeholder="Write a reply..."
-                                className="min-h-[88px] shadow-xl max-h-[200px] resize-none focus-visible:ring-primary bg-background"
+                                className="min-h-[88px] max-h-[200px] resize-none focus-visible:ring-primary bg-background"
                             />
                         </div>
 
