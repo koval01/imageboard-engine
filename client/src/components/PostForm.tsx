@@ -7,15 +7,20 @@ import { Button } from '@/components/ui/button'
 import { useCreateThreadMutation, usePostReplyMutation } from '@/store/apiSlice'
 
 export interface PostFormProps {
-    slug: string;
+    slug?: string;
+    boardSlug?: string; // Alias for slug to support legacy usages
     threadId?: number;
+    type?: string;      // Ignored logically but kept for prop compatibility
 }
 
 export interface PostFormHandle {
     setContent: (v: string) => void;
 }
 
-export const PostForm = forwardRef<PostFormHandle, PostFormProps>(({ slug, threadId }, ref) => {
+export const PostForm = forwardRef<PostFormHandle, PostFormProps>(({ slug, boardSlug, threadId }, ref) => {
+    // Determine the actual slug to use
+    const finalSlug = slug || boardSlug || '';
+
     const [subject, setSubject] = useState('')
     const [content, setContent] = useState('')
     const [file, setFile] = useState<File | null>(null)
@@ -33,6 +38,11 @@ export const PostForm = forwardRef<PostFormHandle, PostFormProps>(({ slug, threa
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
 
+        if (!finalSlug) {
+            console.error("No board slug provided")
+            return
+        }
+
         const formData = new FormData()
         if (subject) formData.append('subject', subject)
         formData.append('content', content)
@@ -41,15 +51,15 @@ export const PostForm = forwardRef<PostFormHandle, PostFormProps>(({ slug, threa
         try {
             if (threadId) {
                 // Reply mode
-                await postReply({ slug, id: threadId, formData }).unwrap()
+                await postReply({ slug: finalSlug, id: threadId, formData }).unwrap()
                 setContent('')
                 setFile(null)
                 setSubject('')
                 // Usually the query hook will auto-refetch due to tag invalidation
             } else {
                 // Thread creation mode
-                const res = await createThread({ slug, formData }).unwrap()
-                navigate(`/${slug}/thread/${res.thread_id}`)
+                const res = await createThread({ slug: finalSlug, formData }).unwrap()
+                navigate(`/${finalSlug}/thread/${res.thread_id}`)
             }
         } catch (err) {
             console.error("Failed to post:", err)
