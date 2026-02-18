@@ -12,8 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import type { PostItem } from "@/types";
-import { Loader2, Upload } from "lucide-react";
+import type { PostItem } from "@/types"; // Fixed: type-only import
+import { Loader2, Upload, Send } from "lucide-react";
 
 export default function ThreadPage() {
     const { slug, id } = useParams();
@@ -21,7 +21,7 @@ export default function ThreadPage() {
     const navigate = useNavigate();
     const bottomRef = useRef<HTMLDivElement>(null);
 
-    // Polling configuration: refetch every 10 seconds
+    // Polling configuration: refetch every 10 seconds to keep chat live
     const { data, isLoading, error, refetch } = useGetThreadQuery(
         { slug: slug!, id: threadId },
         { pollingInterval: 10000 }
@@ -34,6 +34,8 @@ export default function ThreadPage() {
 
     const [replyContent, setReplyContent] = useState("");
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+    // State to track auto-scrolling behavior
     const [shouldScroll, setShouldScroll] = useState(true);
     const prevPostCount = useRef(0);
 
@@ -42,13 +44,14 @@ export default function ThreadPage() {
         if (!data) return;
         const currentCount = data.replies.length;
 
-        // Initial load scroll
+        // Initial load: Scroll to bottom (or hash) if needed
         if (prevPostCount.current === 0 && currentCount > 0) {
             if (shouldScroll && !window.location.hash) {
+                // Small timeout ensures images/layout have stabilized slightly
                 setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 100);
             }
         }
-        // New posts added
+        // New posts added via polling or user action: Smooth scroll
         else if (currentCount > prevPostCount.current) {
             if (shouldScroll) {
                 bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -68,13 +71,13 @@ export default function ThreadPage() {
         if (selectedFile) formData.append("file", selectedFile);
 
         try {
-            setShouldScroll(true); // Ensure we scroll to the new post
+            setShouldScroll(true); // Force scroll to bottom for own post
             await postReply({ slug: slug!, id: threadId, formData }).unwrap();
 
-            // Cleanup
+            // Reset form
             setReplyContent("");
             setSelectedFile(null);
-            refetch(); // Fetch immediately to show the new post
+            refetch(); // Fetch immediately to show the new post without waiting for poll
             toast.success("Reply posted");
         } catch (err: any) {
             toast.error(err?.data?.error || "Failed to post reply");
@@ -83,6 +86,7 @@ export default function ThreadPage() {
 
     const quotePost = (postId: number) => {
         setReplyContent((prev) => {
+            // Add newline if text exists and doesn't end with one
             const prefix = prev.length > 0 && !prev.endsWith('\n') ? '\n' : '';
             return `${prev}${prefix}>>${postId}\n`;
         });
@@ -139,6 +143,7 @@ export default function ThreadPage() {
         </div>
     );
 
+    // Construct OP object matching PostItem interface
     const opPost: PostItem = {
         model: {
             ...data.thread,
@@ -149,62 +154,68 @@ export default function ThreadPage() {
         cdn_url: data.cdn_url,
         admin_role: data.admin_role,
         board_slug: data.board.slug,
-        thread_id: data.thread.id // Added missing property
+        thread_id: data.thread.id // Fixed: Included required thread_id
     };
 
     return (
-        <div className="container max-w-4xl mx-auto py-6 pb-40">
-            <Button variant="ghost" className="mb-4 pl-0" onClick={() => navigate(`/${slug}`)}>
-                &larr; Back to /{data.board.slug}/
-            </Button>
+        <div className="relative min-h-screen">
+            {/* Main Content Container - pb-48 ensures content isn't hidden behind the fixed footer */}
+            <div className="container max-w-4xl mx-auto py-6 pb-48">
+                <Button variant="ghost" className="mb-4 pl-0 hover:bg-transparent hover:underline" onClick={() => navigate(`/${slug}`)}>
+                    &larr; Back to /{data.board.slug}/
+                </Button>
 
-            {/* OP Post */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-primary mb-2 break-words">
-                    {data.thread.subject || "No Subject"}
-                </h1>
-                <Post
-                    post={opPost}
-                    isOp
-                    onReply={quotePost}
-                    onReport={(id) => reportPost({ post_id: id, reason: "User report" })}
-                    onBan={handleBan}
-                    onDelete={(id) => handleDelete(id, 'thread')}
-                    onInvestigate={handleInvestigate}
-                />
-            </div>
-
-            <Separator className="my-6" />
-
-            {/* Replies */}
-            <div className="space-y-1">
-                {data.replies.map((post) => (
+                {/* OP Post */}
+                <div className="mb-6">
+                    <h1 className="text-2xl font-bold text-primary mb-2 break-words">
+                        {data.thread.subject || "No Subject"}
+                    </h1>
                     <Post
-                        key={post.model.id}
-                        post={post}
+                        post={opPost}
+                        isOp
                         onReply={quotePost}
                         onReport={(id) => reportPost({ post_id: id, reason: "User report" })}
                         onBan={handleBan}
-                        onDelete={(id) => handleDelete(id, 'post')}
+                        onDelete={(id) => handleDelete(id, 'thread')}
                         onInvestigate={handleInvestigate}
                     />
-                ))}
+                </div>
+
+                <Separator className="my-6" />
+
+                {/* Replies List */}
+                <div className="space-y-1">
+                    {data.replies.map((post) => (
+                        <Post
+                            key={post.model.id}
+                            post={post}
+                            onReply={quotePost}
+                            onReport={(id) => reportPost({ post_id: id, reason: "User report" })}
+                            onBan={handleBan}
+                            onDelete={(id) => handleDelete(id, 'post')}
+                            onInvestigate={handleInvestigate}
+                        />
+                    ))}
+                </div>
+
+                {/* Invisible element to scroll to */}
+                <div ref={bottomRef} className="h-4" />
             </div>
 
-            <div ref={bottomRef} className="h-4" />
-
-            {/* Sticky Reply Box */}
-            <div className="fixed bottom-0 left-0 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t p-4 shadow-lg z-40">
+            {/* Sticky Reply Bar - The "following" input field */}
+            <div className="fixed bottom-0 left-0 w-full z-50 bg-background/80 backdrop-blur-md border-t border-border shadow-2xl p-4">
                 <div className="container max-w-4xl mx-auto flex gap-3 items-end">
-                    <div className="flex-1 space-y-2">
+                    <div className="flex-1">
                         <Textarea
                             value={replyContent}
                             onChange={(e) => setReplyContent(e.target.value)}
                             placeholder="Write a reply..."
-                            className="min-h-[80px] resize-none"
+                            className="min-h-[88px] max-h-[200px] resize-none focus-visible:ring-primary"
                         />
                     </div>
+
                     <div className="flex flex-col gap-2 shrink-0">
+                        {/* File Upload Button */}
                         <div className="relative">
                             <input
                                 type="file"
@@ -213,23 +224,32 @@ export default function ThreadPage() {
                                 onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
                             />
                             <Button
-                                variant="outline"
+                                variant={selectedFile ? "secondary" : "outline"}
                                 size="icon"
-                                className={selectedFile ? "border-primary text-primary" : ""}
+                                className={selectedFile ? "text-primary border-primary" : ""}
                                 onClick={() => document.getElementById('file-upload')?.click()}
+                                title="Attach Image"
                             >
                                 <Upload className="h-4 w-4" />
                             </Button>
                         </div>
 
-                        <Button onClick={handleReply} disabled={isPosting}>
-                            {isPosting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Reply"}
+                        {/* Send Button */}
+                        <Button onClick={handleReply} disabled={isPosting} size="icon">
+                            {isPosting ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                <Send className="h-4 w-4" />
+                            )}
                         </Button>
                     </div>
                 </div>
+
+                {/* Selected File Indicator */}
                 {selectedFile && (
-                    <div className="container max-w-4xl mx-auto text-xs text-muted-foreground mt-1">
-                        Attached: {selectedFile.name}
+                    <div className="container max-w-4xl mx-auto text-xs text-muted-foreground mt-2 flex items-center justify-between">
+                        <span>Attached: {selectedFile.name}</span>
+                        <span className="cursor-pointer hover:text-destructive" onClick={() => setSelectedFile(null)}>Remove</span>
                     </div>
                 )}
             </div>
