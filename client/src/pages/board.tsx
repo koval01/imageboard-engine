@@ -83,7 +83,7 @@ export default function BoardPage() {
                                 <div className="shrink-0">
                                     <Link to={`/${slug}/thread/${thread.model.id}`}>
                                         <img
-                                            src={`${data.cdn_url}/thumb/${thread.images[0].thumbnail_url}`}
+                                            src={`${data.cdn_url}/${thread.images[0].thumbnail_url}`}
                                             className="rounded-md w-32 h-32 object-cover border"
                                             alt="OP"
                                         />

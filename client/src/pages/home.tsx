@@ -45,7 +45,7 @@ export default function HomePage() {
                         <div key={img.id} className="relative group">
                             <Link to={`/thread/${img.thread_id}`}> {/* Note: Logic might need board slug, assuming ID linking works or redirect */}
                                 <img
-                                    src={`${data.cdn_url}/thumb/${img.thumbnail_url}`}
+                                    src={`${data.cdn_url}/${img.thumbnail_url}`}
                                     className="h-32 w-32 object-cover rounded-md border"
                                     alt={img.filename}
                                 />

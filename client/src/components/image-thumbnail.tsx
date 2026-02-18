@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Image as ImageType } from "@/types"
+import type { Image as ImageType } from "@/types" // Fixed: Added 'type'
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
 
 interface Props {
@@ -11,7 +11,7 @@ export function ImageThumbnail({ image, cdnUrl }: Props) {
     const [isOpen, setIsOpen] = useState(false)
 
     // Construct URLs
-    const thumbUrl = `${cdnUrl}/thumb/${image.thumbnail_url}`
+    const thumbUrl = `${cdnUrl}/${image.thumbnail_url}`
     const fullUrl = `${cdnUrl}/src/${image.url}`
 
     return (
