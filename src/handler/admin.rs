@@ -120,6 +120,15 @@ pub async fn admin_logout_action(
     Json(json!({"status": "logged_out"})).into_response()
 }
 
+pub async fn api_check_admin(
+    Extension(session): Extension<CurrentSession>,
+) -> Response {
+    if session.role < 1 {
+        return (StatusCode::FORBIDDEN, Json(json!({"status": "error", "role": session.role}))).into_response();
+    }
+    Json(json!({"status": "ok", "role": session.role})).into_response()
+}
+
 // --- JSON APIs ---
 
 pub async fn api_get_stats(

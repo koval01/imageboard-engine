@@ -20,7 +20,7 @@ use crate::{
     },
     AppState,
 };
-use crate::handler::admin::{admin_login_action, admin_logout_action, api_ban_user, api_delete_content, api_get_logs, api_get_reports, api_get_stats, api_investigate, api_visual_search};
+use crate::handler::admin::{admin_login_action, admin_logout_action, api_ban_user, api_delete_content, api_get_logs, api_get_reports, api_get_stats, api_investigate, api_visual_search, api_check_admin};
 
 async fn sanitize_error_response(req: axum::extract::Request, next: middleware::Next) -> Response {
     let response = next.run(req).await;
@@ -70,6 +70,7 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
         .route("/{slug}/thread/{id}/poll", get(poll_new_posts_handler))
         .route("/report", post(create_report))
         // Admin API
+        .route("/admin", get(api_check_admin)) // Added check handler
         .route("/admin/login", post(admin_login_action))
         .route("/admin/logout", post(admin_logout_action))
         .route("/admin/stats", get(api_get_stats))
