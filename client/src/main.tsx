@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { Provider } from 'react-redux'
-import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom'
+import {createBrowserRouter, RouterProvider, Outlet, Navigate} from 'react-router-dom'
 import { store } from './store/store'
 import './index.css'
 
@@ -10,6 +10,7 @@ import HomePage from './pages/HomePage'
 import BoardPage from './pages/BoardPage'
 import ThreadPage from './pages/ThreadPage'
 import NotFoundPage from './pages/NotFoundPage'
+import Admin from "@/pages/Admin.tsx";
 
 // Router Wrapper to pass Outlet to Layout
 const LayoutWrapper = () => (
@@ -30,6 +31,14 @@ const router = createBrowserRouter([
             {
                 path: "/",
                 element: <HomePage />,
+            },
+            {
+                path: "/home",
+                element: <Navigate to="/" replace />
+            },
+            {
+                path: "/admin",
+                element: <Admin />
             },
             {
                 path: "/:slug",

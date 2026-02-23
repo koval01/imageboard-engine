@@ -38,7 +38,7 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
     };
 
     return (
-        <div className="flex h-screen w-full items-center justify-center bg-muted/20">
+        <div className="flex h-screen w-full items-center justify-center bg-transparent">
             <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-lg border bg-card p-6 shadow-sm">
                 <div className="flex flex-col items-center gap-2 text-center">
                     <Shield className="h-10 w-10 text-primary" />
