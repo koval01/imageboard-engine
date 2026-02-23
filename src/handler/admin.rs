@@ -17,12 +17,11 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use sea_orm::sea_query::Expr;
 use serde_json::json;
 use crate::{
-    model::{admins, bans, admin_logs, posts, images, reports},
+    model::{admins, bans, admin_logs, posts, images, reports, threads},
     AppState,
     handler::middleware::CurrentSession,
     security::get_client_ip,
 };
-use crate::model::threads;
 
 // --- Data Structs for JSON API ---
 
@@ -43,7 +42,7 @@ struct ApiReport {
     created_at: NaiveDateTime,
     post: Option<posts::Model>,
     images: Vec<images::Model>,
-    board_slug: Option<String>, // Added to allow linking to the post
+    board_slug: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -56,12 +55,34 @@ struct InvestigationResult {
     similar_images: Vec<(i32, f32, String)>, // PostId, Distance, ImageUrl
 }
 
-// --- Handlers ---
+// --- Query Structs ---
+
+#[derive(Deserialize)]
+pub struct LogsQuery {
+    page: Option<u64>,
+    limit: Option<u64>,
+    search: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct ReportsQuery {
+    status: Option<String>, // "OPEN", "RESOLVED", "REJECTED", or null for all
+    page: Option<u64>,
+    limit: Option<u64>,
+}
+
+#[derive(Deserialize)]
+pub struct ContentSearchQuery {
+    query: String,
+    limit: Option<u64>,
+}
 
 #[derive(Deserialize)]
 pub struct LoginPayload { key: String }
 
-const MAX_LOGIN_ATTEMPTS: u32 = 3;
+const MAX_LOGIN_ATTEMPTS: u32 = 5;
+
+// --- Handlers ---
 
 pub async fn admin_login_action(
     State(state): State<Arc<RwLock<AppState>>>,
@@ -98,7 +119,6 @@ pub async fn admin_login_action(
         session.role = admin.role;
         session.version = admin.token_version;
 
-        // The middleware will see the updated session and issue a new JWT
         let mut response = Json(json!({"status": "ok", "role": admin.role})).into_response();
         response.extensions_mut().insert(session);
         return response;
@@ -118,7 +138,6 @@ pub async fn admin_logout_action(
 ) -> Response {
     session.role = 0;
     session.version = 1;
-    // Middleware will update the cookie to reflect role 0
     let mut response = Json(json!({"status": "logged_out"})).into_response();
     response.extensions_mut().insert(session);
     response
@@ -127,8 +146,6 @@ pub async fn admin_logout_action(
 pub async fn api_check_admin(
     Extension(session): Extension<CurrentSession>,
 ) -> Response {
-    // Always return 200 OK so the frontend doesn't throw a console error.
-    // The 'role' field determines the UI state.
     Json(json!({
         "status": if session.role > 0 { "ok" } else { "guest" },
         "role": session.role
@@ -155,33 +172,68 @@ pub async fn api_get_stats(
 pub async fn api_get_logs(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
+    Query(query): Query<LogsQuery>,
 ) -> Response {
     if session.role < 1 { return StatusCode::FORBIDDEN.into_response(); }
     let db = &state.read().await.pool;
 
-    let logs = admin_logs::Entity::find()
-        .order_by_desc(admin_logs::Column::CreatedAt)
-        .limit(100)
-        .all(db)
-        .await
-        .unwrap_or_default();
+    let page = query.page.unwrap_or(0);
+    let limit = query.limit.unwrap_or(50).min(100);
 
-    Json(logs).into_response()
+    let mut condition = Condition::all();
+    if let Some(s) = query.search {
+        if !s.is_empty() {
+            condition = condition.add(
+                Condition::any()
+                    .add(admin_logs::Column::Details.contains(&s))
+                    .add(admin_logs::Column::Action.contains(&s))
+                    .add(admin_logs::Column::TargetId.contains(&s))
+                    .add(admin_logs::Column::AdminUsername.contains(&s))
+            );
+        }
+    }
+
+    let paginator = admin_logs::Entity::find()
+        .filter(condition)
+        .order_by_desc(admin_logs::Column::CreatedAt)
+        .paginate(db, limit);
+
+    let logs = paginator.fetch_page(page).await.unwrap_or_default();
+    let total = paginator.num_pages().await.unwrap_or(0);
+
+    Json(json!({
+        "data": logs,
+        "total_pages": total,
+        "current_page": page
+    })).into_response()
 }
 
 pub async fn api_get_reports(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
+    Query(query): Query<ReportsQuery>,
 ) -> Response {
     if session.role < 1 { return StatusCode::FORBIDDEN.into_response(); }
     let db = &state.read().await.pool;
 
-    let reports_raw = reports::Entity::find()
-        .filter(reports::Column::Status.eq("OPEN"))
-        .order_by_asc(reports::Column::CreatedAt)
-        .all(db)
-        .await
-        .unwrap_or_default();
+    let page = query.page.unwrap_or(0);
+    let limit = query.limit.unwrap_or(20).min(100);
+
+    let mut select = reports::Entity::find();
+
+    if let Some(status) = query.status {
+        if !status.is_empty() && status != "ALL" {
+            select = select.filter(reports::Column::Status.eq(status));
+        }
+    }
+
+    let paginator = select
+        .order_by_asc(reports::Column::Status) // Open first
+        .order_by_desc(reports::Column::CreatedAt)
+        .paginate(db, limit);
+
+    let reports_raw = paginator.fetch_page(page).await.unwrap_or_default();
+    let total = paginator.num_pages().await.unwrap_or(0);
 
     let mut result = Vec::new();
     for r in reports_raw {
@@ -208,7 +260,37 @@ pub async fn api_get_reports(
         });
     }
 
-    Json(result).into_response()
+    Json(json!({
+        "data": result,
+        "total_pages": total,
+        "current_page": page
+    })).into_response()
+}
+
+pub async fn api_search_content(
+    State(state): State<Arc<RwLock<AppState>>>,
+    Extension(session): Extension<CurrentSession>,
+    Query(query): Query<ContentSearchQuery>,
+) -> Response {
+    if session.role < 2 { return StatusCode::FORBIDDEN.into_response(); }
+    let db = &state.read().await.pool;
+    let limit = query.limit.unwrap_or(50).min(100);
+
+    // Search posts by content or IP
+    let posts = posts::Entity::find()
+        .filter(
+            Condition::any()
+                .add(posts::Column::Content.contains(&query.query))
+                .add(posts::Column::IpAddress.eq(&query.query))
+                .add(posts::Column::SessionId.eq(&query.query))
+        )
+        .order_by_desc(posts::Column::CreatedAt)
+        .limit(limit)
+        .all(db)
+        .await
+        .unwrap_or_default();
+
+    Json(posts).into_response()
 }
 
 // --- INVESTIGATION LOGIC ---
@@ -270,7 +352,7 @@ pub async fn api_investigate(
 
     images_found.extend(imgs.clone());
 
-    // 4. FIND SIMILAR IMAGES (The Core Logic)
+    // 4. FIND SIMILAR IMAGES
     let all_images_with_hash = images::Entity::find()
         .filter(images::Column::Phash.ne(""))
         .all(db)
@@ -279,22 +361,18 @@ pub async fn api_investigate(
 
     for source_img in &imgs {
         if source_img.phash.is_empty() { continue; }
-        // Decode source hash
         if let Ok(src_hash_bytes) = BASE64.decode(&source_img.phash) {
-            // We use Box<[u8]> to match the default hasher's output type
             if let Ok(src_hash) = ImageHash::<Box<[u8]>>::from_bytes(&src_hash_bytes) {
                 for target_img in &all_images_with_hash {
-                    if target_img.id == source_img.id { continue; } // Skip self
+                    if target_img.id == source_img.id { continue; }
                     if target_img.phash.is_empty() { continue; }
 
                     if let Ok(tgt_hash_bytes) = BASE64.decode(&target_img.phash) {
                         if let Ok(tgt_hash) = ImageHash::<Box<[u8]>>::from_bytes(&tgt_hash_bytes) {
                             let dist = src_hash.dist(&tgt_hash);
                             if dist <= threshold {
-                                // FOUND A MATCH!
                                 if let Some(pid) = target_img.post_id {
                                     similar_images.push((pid, dist as f32, target_img.thumbnail_url.clone()));
-                                    // 5. Expand Network based on this match
                                     if let Ok(Some(linked_post)) = posts::Entity::find_by_id(pid).one(db).await {
                                         if !ips.contains(&linked_post.ip_address) || !sessions.contains(&linked_post.session_id) {
                                             ips.insert(linked_post.ip_address.clone());
@@ -348,12 +426,10 @@ pub async fn api_visual_search(
         if field.name() == Some("file") {
             let data = field.bytes().await.unwrap();
 
-            // Calculate pHash of uploaded file in memory
             let hasher = HasherConfig::new().hash_alg(image_hasher::HashAlg::Mean).to_hasher();
             if let Ok(img) = image::load_from_memory(&data) {
-                let hash = hasher.hash_image(&img); // Inferred as ImageHash<Box<[u8]>>
+                let hash = hasher.hash_image(&img);
 
-                // Compare against DB
                 let all_images = images::Entity::find()
                     .filter(images::Column::Phash.ne(""))
                     .all(db)
@@ -366,7 +442,7 @@ pub async fn api_visual_search(
                     if let Ok(db_hash_bytes) = BASE64.decode(&db_img.phash) {
                         if let Ok(db_hash) = ImageHash::<Box<[u8]>>::from_bytes(&db_hash_bytes) {
                             let dist = hash.dist(&db_hash);
-                            if dist < 15 { // Slightly looser threshold for manual search
+                            if dist < 15 {
                                 matches.push((db_img, dist));
                             }
                         }
@@ -375,17 +451,23 @@ pub async fn api_visual_search(
 
                 matches.sort_by(|a, b| a.1.cmp(&b.1));
 
-                // Fetch associated post details
                 let mut results = Vec::new();
                 for (img, dist) in matches.into_iter().take(50) {
                     let post = if let Some(pid) = img.post_id {
                         posts::Entity::find_by_id(pid).one(db).await.unwrap_or(None)
                     } else { None };
 
+                    let board_slug = if let Some(p) = &post {
+                        if let Ok(Some(t)) = threads::Entity::find_by_id(p.thread_id).one(db).await {
+                            Some(t.board_slug)
+                        } else { None }
+                    } else { None };
+
                     results.push(json!({
                         "image": img,
                         "distance": dist,
-                        "post": post
+                        "post": post,
+                        "board_slug": board_slug
                     }));
                 }
 
@@ -413,7 +495,7 @@ pub async fn api_ban_user(
     Extension(session): Extension<CurrentSession>,
     Json(payload): Json<BanPayload>,
 ) -> Response {
-    if session.role < 2 { return StatusCode::FORBIDDEN.into_response(); } // Changed to Role 2 (Mod)
+    if session.role < 2 { return StatusCode::FORBIDDEN.into_response(); }
     let state = state.read().await;
     let db = &state.pool;
     let storage = &state.storage;
@@ -430,7 +512,6 @@ pub async fn api_ban_user(
     let _ = ban.insert(db).await;
 
     if payload.delete_content {
-        // Delete posts logic
         let posts_to_del = posts::Entity::find()
             .filter(posts::Column::IpAddress.eq(&payload.ip))
             .all(db).await.unwrap_or_default();
@@ -444,7 +525,6 @@ pub async fn api_ban_user(
             let _ = posts::Entity::delete_by_id(p.id).exec(db).await;
         }
 
-        // Also cleanup reports
         let _ = reports::Entity::update_many()
             .col_expr(reports::Column::Status, Expr::value("RESOLVED"))
             .filter(reports::Column::IpAddress.eq(&payload.ip))
@@ -495,7 +575,6 @@ pub async fn api_delete_content(
         }
     }
 
-    // Log
     let log = admin_logs::ActiveModel {
         admin_username: Set(format!("Role-{}", session.role)),
         action: Set("DELETE".to_string()),

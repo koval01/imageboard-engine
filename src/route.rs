@@ -20,7 +20,7 @@ use crate::{
     },
     AppState,
 };
-use crate::handler::admin::{admin_login_action, admin_logout_action, api_ban_user, api_delete_content, api_get_logs, api_get_reports, api_get_stats, api_investigate, api_visual_search, api_check_admin};
+use crate::handler::admin::{admin_login_action, admin_logout_action, api_ban_user, api_delete_content, api_get_logs, api_get_reports, api_get_stats, api_investigate, api_visual_search, api_check_admin, api_search_content};
 
 async fn sanitize_error_response(req: axum::extract::Request, next: middleware::Next) -> Response {
     let response = next.run(req).await;
@@ -59,8 +59,6 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
     let port = 8082_u16;
     let address = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
 
-    // API Router
-    // Updated route syntax from /:param to /{param} for Axum 0.8
     let api_router = Router::new()
         .route("/home", get(home_handler))
         .route("/{slug}", get(view_board_handler))
@@ -77,18 +75,16 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
         .route("/admin/logs", get(api_get_logs))
         .route("/admin/reports", get(api_get_reports))
         .route("/admin/investigate", get(api_investigate))
+        .route("/admin/search", get(api_search_content))
         .route("/admin/visual-search", post(api_visual_search))
         .route("/admin/ban", post(api_ban_user))
         .route("/admin/delete", post(api_delete_content))
         .route("/admin/resolve", post(resolve_report))
-        .layer(from_fn_with_state(app_state.clone(), bot_guard_middleware)); // PoW check mainly for POSTs
+        .layer(from_fn_with_state(app_state.clone(), bot_guard_middleware));
 
-    // Main App
     let app = Router::new()
         .nest("/api", api_router)
-        // Serve static assets from the React build
         .nest_service("/assets", ServeDir::new("client/dist/assets"))
-        // Fallback for everything else (SPA)
         .fallback(spa_fallback)
         .layer(middleware::from_fn(sanitize_error_response))
         .layer(CatchPanicLayer::new())

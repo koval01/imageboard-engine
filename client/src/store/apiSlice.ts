@@ -1,7 +1,7 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react'
 import type {
     HomeResponse, BoardResponse, ThreadResponse, PostItem,
-    AdminStats, AdminLog, Report, InvestigationResult, BanPayload
+    AdminStats, LogsResponse, ReportsResponse, InvestigationResult, BanPayload, Post, VisualSearchResult
 } from '@/types'
 import { solvePoW } from '@/lib/pow'
 
@@ -17,7 +17,6 @@ export const apiSlice = createApi({
     baseQuery: fetchBaseQuery({
         baseUrl: '/api',
         prepareHeaders: async (headers, { endpoint }) => {
-            // Apply PoW to all POST mutations (User + Admin)
             const powEndpoints = [
                 'postReply', 'createThread', 'reportPost',
                 'adminLogin', 'adminLogout', 'resolveReport',
@@ -39,7 +38,7 @@ export const apiSlice = createApi({
             return headers;
         },
     }),
-    tagTypes: ['Board', 'Thread', 'AdminStats', 'Reports'],
+    tagTypes: ['Board', 'Thread', 'AdminStats', 'Reports', 'Logs'],
     endpoints: (builder) => ({
         getHome: builder.query<HomeResponse, void>({
             query: () => '/home',
@@ -86,11 +85,12 @@ export const apiSlice = createApi({
             query: () => '/admin/stats',
             providesTags: ['AdminStats'],
         }),
-        getAdminLogs: builder.query<AdminLog[], void>({
-            query: () => '/admin/logs',
+        getAdminLogs: builder.query<LogsResponse, { page: number; search?: string }>({
+            query: ({ page, search }) => `/admin/logs?page=${page}&limit=50&search=${search || ''}`,
+            providesTags: ['Logs'],
         }),
-        getReports: builder.query<Report[], void>({
-            query: () => '/admin/reports',
+        getReports: builder.query<ReportsResponse, { status?: string; page: number }>({
+            query: ({ status, page }) => `/admin/reports?status=${status || ''}&page=${page}&limit=20`,
             providesTags: ['Reports'],
         }),
         resolveReport: builder.mutation<void, { report_id: number; status: string }>({
@@ -108,7 +108,10 @@ export const apiSlice = createApi({
         investigate: builder.query<InvestigationResult, { target: string; threshold?: number }>({
             query: ({ target, threshold }) => `/admin/investigate?target=${target}&threshold=${threshold ?? 10}`,
         }),
-        visualSearch: builder.mutation<any, FormData>({
+        searchContent: builder.query<Post[], { query: string; limit?: number }>({
+            query: ({ query, limit }) => `/admin/search?query=${query}&limit=${limit || 50}`,
+        }),
+        visualSearch: builder.mutation<VisualSearchResult[], FormData>({
             query: (formData) => ({
                 url: '/admin/visual-search',
                 method: 'POST',
@@ -135,5 +138,6 @@ export const {
     useBanUserMutation,
     useDeleteContentMutation,
     useLazyInvestigateQuery,
+    useLazySearchContentQuery,
     useVisualSearchMutation,
 } = apiSlice

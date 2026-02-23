@@ -116,6 +116,12 @@ export interface AdminLog {
     created_at: string;
 }
 
+export interface LogsResponse {
+    data: AdminLog[];
+    total_pages: number;
+    current_page: number;
+}
+
 export interface Report {
     id: number;
     reason: string;
@@ -127,6 +133,12 @@ export interface Report {
     board_slug: string | null;
 }
 
+export interface ReportsResponse {
+    data: Report[];
+    total_pages: number;
+    current_page: number;
+}
+
 export interface InvestigationResult {
     initial_target: string;
     related_ips: string[];
@@ -134,6 +146,13 @@ export interface InvestigationResult {
     posts_found: Post[];
     images_found: Image[];
     similar_images: [number, number, string][]; // [PostId, Distance, Url]
+}
+
+export interface VisualSearchResult {
+    image: Image;
+    distance: number;
+    post: Post | null;
+    board_slug: string | null;
 }
 
 export interface BanPayload {
