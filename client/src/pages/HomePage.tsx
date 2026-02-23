@@ -52,10 +52,7 @@ export default function HomePage() {
                     {data.recent_images.slice(0, 12).map((img) => (
                         <Link
                             key={img.id}
-                            // We need the board slug to link properly, but it's not in the DTO from backend yet.
-                            // For now we link to root or disable, or rely on future backend update.
-                            // Assuming generic link or just display.
-                            to="#"
+                            to={`${img.board_slug}/thread/${img.thread_id}`}
                             className="group relative aspect-square overflow-hidden rounded-lg bg-muted border border-border transition-all hover:ring-2 hover:ring-primary/50"
                         >
                             <img
