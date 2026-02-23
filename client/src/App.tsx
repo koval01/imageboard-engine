@@ -8,10 +8,8 @@ import Home from "@/pages/Home";
 import BoardView from "@/pages/BoardPage";
 import ThreadView from "@/pages/ThreadView";
 
-// Admin Pages
-import AdminLogin from "@/pages/Admin/AdminLogin";
-import AdminDashboard from "@/pages/Admin/AdminDashboard";
-import { ProtectedRoute } from "@/components/admin/ProtectedRoute";
+// Admin Page (Acts as the Gatekeeper for Login vs Dashboard)
+import Admin from "@/pages/Admin";
 
 export default function App() {
     return (
@@ -22,17 +20,16 @@ export default function App() {
                     <Route path="/" element={<Home />} />
                     <Route path="/home" element={<Navigate to="/" replace />} />
 
+                    {/*
+                        Admin Route
+                        1. Must be placed BEFORE /:slug to prevent "admin" being treated as a board name.
+                        2. The <Admin /> component handles auth checking internally.
+                    */}
+                    <Route path="/admin" element={<Admin />} />
+
+                    {/* Dynamic Routes */}
                     <Route path="/:slug" element={<BoardView />} />
                     <Route path="/:slug/thread/:id" element={<ThreadView />} />
-
-                    {/* Admin Routes */}
-                    <Route path="/admin/login" element={<AdminLogin />} />
-
-                    {/* Protected Admin Zone */}
-                    <Route element={<ProtectedRoute />}>
-                        <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
-                        <Route path="/admin/dashboard" element={<AdminDashboard />} />
-                    </Route>
 
                     {/* Fallback for 404s inside React */}
                     <Route path="*" element={<div className="p-10 text-center">404 - Page Not Found</div>} />

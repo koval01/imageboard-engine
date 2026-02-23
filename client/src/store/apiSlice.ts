@@ -74,8 +74,14 @@ export const apiSlice = createApi({
         }),
 
         // --- Admin Endpoints ---
+        checkAdmin: builder.query<{ status: string; role: number }, void>({
+            query: () => '/admin/status',
+        }),
         adminLogin: builder.mutation<{ status: string; role: number }, { key: string }>({
             query: (body) => ({ url: '/admin/login', method: 'POST', body }),
+        }),
+        adminLogout: builder.mutation<{ status: string }, void>({
+            query: () => ({ url: '/admin/logout', method: 'POST' }),
         }),
         getAdminStats: builder.query<AdminStats, void>({
             query: () => '/admin/stats',
@@ -110,21 +116,19 @@ export const apiSlice = createApi({
                 body: formData,
             }),
         }),
-        checkAdmin: builder.query<{ status: string; role: number }, void>({
-            query: () => '/admin/status',
-        }),
     }),
 })
 
 export const {
-    useCheckAdminQuery,
     useGetHomeQuery,
     useGetBoardQuery,
     useGetThreadQuery,
     usePostReplyMutation,
     useCreateThreadMutation,
     useReportPostMutation,
+    useCheckAdminQuery,
     useAdminLoginMutation,
+    useAdminLogoutMutation,
     useGetAdminStatsQuery,
     useGetAdminLogsQuery,
     useGetReportsQuery,
