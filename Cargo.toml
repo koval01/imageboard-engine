@@ -26,6 +26,7 @@ sea-orm-migration = "1.1"
 time = "0.3"
 tokio = { version = "1.49", features = ["full"] }
 tower-http = { version = "0.6", features = ["fs", "trace", "cors", "catch-panic"] }
+tower = "0.5"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.20", features = ["serde", "v4"] }
 aws-config = "1.8"

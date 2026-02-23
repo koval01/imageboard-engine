@@ -50,15 +50,8 @@ async fn spa_fallback() -> impl IntoResponse {
     }
 }
 
-pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
-    tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-        .with(fmt::layer())
-        .init();
-
-    let port = 8082_u16;
-    let address = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-
+// Extracted router creation for testing
+pub fn create_router(app_state: Arc<RwLock<AppState>>) -> Router {
     let api_router = Router::new()
         .route("/home", get(home_handler))
         .route("/{slug}", get(view_board_handler))
@@ -82,7 +75,7 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
         .route("/admin/resolve", post(resolve_report))
         .layer(from_fn_with_state(app_state.clone(), bot_guard_middleware));
 
-    let app = Router::new()
+    Router::new()
         .nest("/api", api_router)
         .nest_service("/assets", ServeDir::new("client/dist/assets"))
         .fallback(spa_fallback)
@@ -91,7 +84,19 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
         .layer(from_fn_with_state(app_state.clone(), session_middleware))
         .layer(middleware::from_fn(response_time_middleware))
         .layer(TraceLayer::new_for_http())
-        .with_state(app_state);
+        .with_state(app_state)
+}
+
+pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with(fmt::layer())
+        .init();
+
+    let port = 8082_u16;
+    let address = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
+
+    let app = create_router(app_state);
 
     println!("Server running on http://0.0.0.0:{}", port);
     axum::serve(address, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;

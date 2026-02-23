@@ -7,6 +7,9 @@ mod route;
 mod security;
 mod service;
 
+#[cfg(test)]
+mod tests;
+
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -44,7 +47,7 @@ pub struct AppState {
     pub ip_cache: Cache<String, String>,
     pub rate_limit_cache: Cache<String, u64>,
     pub db_cache: Cache<String, CacheData>,
-    pub login_attempts: Cache<String, u32>, // Added: Tracks failed login attempts
+    pub login_attempts: Cache<String, u32>,
 }
 
 #[tokio::main]
@@ -73,15 +76,12 @@ async fn main() -> Result<()> {
         .time_to_live(Duration::from_secs(5))
         .build();
 
-    // Cache for admin login attempts: 15 minutes lockout
     let login_attempts = Cache::builder()
         .max_capacity(10_000)
         .time_to_live(Duration::from_secs(60 * 60))
         .build();
 
     if config.storage_type == StorageType::Local {
-        // ONLY run the internal media server in Debug mode.
-        // In Release mode, Nginx/Apache should serve the /media folder.
         #[cfg(debug_assertions)]
         {
             let media_path = config.media_path.clone();
