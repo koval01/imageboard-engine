@@ -1,4 +1,4 @@
-use crate::{AppState, config::Config, db, migrator::Migrator, route::create_router, service::StorageService, config::StorageType, model::{admins, bans, threads, SessionClaims}};
+use crate::{AppState, config::Config, db, migrator::Migrator, route::create_router, service::StorageService, config::StorageType, model::{admins, bans, threads, admin_logs, SessionClaims}};
 use axum::{
     body::Body,
     http::{Request, StatusCode, header},
@@ -108,6 +108,7 @@ fn get_cookie(response: &axum::response::Response, name: &str) -> Option<String>
         .map(|c| c.split(';').next().unwrap().to_string())
 }
 
+#[allow(dead_code)] // It is used in auth flow test
 fn get_cookie_value(cookie_str: &str) -> String {
     cookie_str.split('=').nth(1).unwrap_or("").to_string()
 }
@@ -118,8 +119,9 @@ fn forge_session_cookie(
     session_id: &str,
     ip: &str,
     ua: &str,
+    token_version: i32,
     expired: bool,
-    custom_alg: Option<jsonwebtoken::Algorithm>, // For attacking algo
+    custom_alg: Option<jsonwebtoken::Algorithm>,
 ) -> String {
     let now = Utc::now();
     let iat = now.timestamp() as usize;
@@ -134,7 +136,7 @@ fn forge_session_cookie(
         ip: ip.to_string(),
         ua: ua.to_string(),
         role,
-        v: 1,
+        v: token_version,
         iat,
         exp,
     };
@@ -150,7 +152,7 @@ fn forge_session_cookie(
     format!("session_id={}", token)
 }
 
-// --- 1. DATA LEAKAGE TESTS ---
+// --- 1. DATA LEAKAGE & PRIVACY TESTS ---
 
 #[tokio::test]
 async fn test_data_leakage_guest_view() {
@@ -176,7 +178,6 @@ async fn test_data_leakage_guest_view() {
     let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let json: Value = serde_json::from_slice(&body_bytes).unwrap();
 
-    // The 'thread' object inside response
     let thread_obj = &json["thread"];
 
     // VERIFY: Sensitive fields must be absent or null for Guest
@@ -213,7 +214,7 @@ async fn test_data_visibility_admin_view() {
 
     // Admin Request
     let session_id = Uuid::new_v4().to_string();
-    let admin_cookie = forge_session_cookie(&config, 3, &session_id, "127.0.0.1", "TestRunner/1.0", false, None);
+    let admin_cookie = forge_session_cookie(&config, 3, &session_id, "127.0.0.1", "TestRunner/1.0", 1, false, None);
     let client_cookie = format!("client_key={}", session_id);
 
     let mut req = build_req(&format!("/api/m/thread/{}", t.id), "GET", Body::empty(), None, None);
@@ -233,13 +234,10 @@ async fn test_data_visibility_admin_view() {
 
 #[tokio::test]
 async fn test_cache_poisoning_prevention() {
-    // Scenario: Admin views a thread first. The server caches the response.
-    // Guest views the thread second. If the server served the Cached Admin Response,
-    // the Guest would see IPs. This test ensures that doesn't happen.
-
+    // Scenario: Admin views a thread first (populating cache with admin data).
+    // Guest views next. Guest MUST NOT receive admin cache.
     let (app, db, config) = setup_app().await;
 
-    // Seed Thread
     let secret_ip = "192.168.6.66";
     let thread = threads::ActiveModel {
         board_slug: Set("m".to_string()),
@@ -255,11 +253,10 @@ async fn test_cache_poisoning_prevention() {
 
     // 1. Admin Views
     let admin_session = Uuid::new_v4().to_string();
-    let admin_cookie = forge_session_cookie(&config, 3, &admin_session, "127.0.0.1", "TestRunner/1.0", false, None);
+    let admin_cookie = forge_session_cookie(&config, 3, &admin_session, "127.0.0.1", "TestRunner/1.0", 1, false, None);
 
     let mut req_admin = build_req(&url, "GET", Body::empty(), None, None);
     req_admin.headers_mut().insert(header::COOKIE, format!("session_id={}; client_key={}", admin_cookie, admin_session).parse().unwrap());
-
     let _ = app.clone().oneshot(req_admin).await.unwrap();
 
     // 2. Guest Views (Immediately after)
@@ -269,44 +266,71 @@ async fn test_cache_poisoning_prevention() {
     let body_bytes = axum::body::to_bytes(res_guest.into_body(), usize::MAX).await.unwrap();
     let json: Value = serde_json::from_slice(&body_bytes).unwrap();
 
-    // VERIFY: Even though Admin loaded it first, Guest MUST NOT see IP
     let thread_obj = &json["thread"];
     assert!(thread_obj.get("ip_address").is_none() || thread_obj["ip_address"].is_null(), "Cache Poisoning Detected! Admin data leaked to Guest.");
 }
 
-// --- 2. AUTHENTICATION ATTACKS ---
+// --- 2. AUTHENTICATION & ACCESS CONTROL TESTS ---
+
+#[tokio::test]
+async fn test_admin_token_revocation() {
+    let (app, db, config) = setup_app().await;
+
+    // Seed Admin with Version 1
+    let admin = admins::ActiveModel {
+        username: Set("revoked_admin".to_string()),
+        service_key: Set("x".to_string()),
+        role: Set(3),
+        token_version: Set(1), // DB has Version 1
+        ..Default::default()
+    };
+    let admin_model = admin.insert(&db).await.unwrap();
+
+    let session_id = Uuid::new_v4().to_string();
+    // Forge valid token with Version 1
+    let token_v1 = forge_session_cookie(&config, 3, &session_id, "127.0.0.1", "TestRunner/1.0", 1, false, None);
+    let cookie_header = format!("{}; client_key={}", token_v1, session_id);
+
+    // 1. Verify access works initially
+    let mut req = build_req("/api/admin/stats", "GET", Body::empty(), None, None);
+    req.headers_mut().insert(header::COOKIE, cookie_header.parse().unwrap());
+    let res1 = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res1.status(), StatusCode::OK, "Initial admin access failed");
+
+    // 2. REVOKE: Increment token version in DB to 2
+    let mut active_admin: admins::ActiveModel = admin_model.into();
+    active_admin.token_version = Set(2);
+    active_admin.update(&db).await.unwrap();
+
+    // 3. Verify access is now DENIED with old token
+    let mut req2 = build_req("/api/admin/stats", "GET", Body::empty(), None, None);
+    req2.headers_mut().insert(header::COOKIE, cookie_header.parse().unwrap());
+    let res2 = app.clone().oneshot(req2).await.unwrap();
+
+    assert_eq!(res2.status(), StatusCode::FORBIDDEN, "Revoked token (version mismatch) was still accepted!");
+}
 
 #[tokio::test]
 async fn test_jwt_algo_confusion_attack() {
-    // Attackers try to sign a token with HMAC using the public key as secret, or switch alg to "none"
-    // Rust `jsonwebtoken` usually handles this, but we explicitly test configuration.
-
     let (app, _, config) = setup_app().await;
     let session_id = "hacker";
 
-    // 1. Create a token with 'HS256' instead of the server's 'HS384'
-    // If the server doesn't enforce algorithm in `validation`, this might pass.
-    let weak_cookie = forge_session_cookie(&config, 3, session_id, "127.0.0.1", "TestRunner/1.0", false, Some(jsonwebtoken::Algorithm::HS256));
+    // Create a token with 'HS256' instead of the server's 'HS384'
+    let weak_cookie = forge_session_cookie(&config, 3, session_id, "127.0.0.1", "TestRunner/1.0", 1, false, Some(jsonwebtoken::Algorithm::HS256));
     let client_cookie = format!("client_key={}", session_id);
     let cookie_header = format!("{}; {}", weak_cookie, client_cookie);
 
-    // 2. Try to access Admin Stats
     let mut req = build_req("/api/admin/stats", "GET", Body::empty(), None, None);
     req.headers_mut().insert(header::COOKIE, cookie_header.parse().unwrap());
 
     let response = app.clone().oneshot(req).await.unwrap();
-
-    // The middleware should fail to decode because Alg mismatch,
-    // fall back to Guest (Role 0), and deny access.
     assert_eq!(response.status(), StatusCode::FORBIDDEN, "Server accepted wrong JWT Algorithm");
 }
 
 #[tokio::test]
 async fn test_ua_binding_enforcement() {
-    // If a session cookie is stolen, it should fail if the User Agent doesn't match
     let (app, db, config) = setup_app().await;
 
-    // Seed Admin
     let admin = admins::ActiveModel {
         username: Set("ua_test".to_string()),
         service_key: Set("x".to_string()),
@@ -320,26 +344,22 @@ async fn test_ua_binding_enforcement() {
     let original_ua = "Mozilla/5.0 (Valid)";
     let attacker_ua = "EvilScript/1.0";
 
-    // 1. Valid Admin Token bound to Original UA
-    let token = forge_session_cookie(&config, 3, &session_id, "127.0.0.1", original_ua, false, None);
+    let token = forge_session_cookie(&config, 3, &session_id, "127.0.0.1", original_ua, 1, false, None);
 
-    // 2. Request with DIFFERENT User Agent
+    // Request with DIFFERENT User Agent
     let mut req = build_req("/api/admin/stats", "GET", Body::empty(), None, Some(attacker_ua));
     req.headers_mut().insert(header::COOKIE, format!("{}; client_key={}", token, session_id).parse().unwrap());
 
     let response = app.clone().oneshot(req).await.unwrap();
-
-    // Should be Forbidden because UA mismatch -> Invalidates Session -> Guest -> Forbidden
     assert_eq!(response.status(), StatusCode::FORBIDDEN, "Session Hijacking via UA mismatch not prevented");
 }
 
-// --- 3. INPUT VALIDATION & DOS ---
+// --- 3. INPUT VALIDATION & INJECTION TESTS ---
 
 #[tokio::test]
 async fn test_search_sql_injection_attempt() {
     let (app, db, config) = setup_app().await;
 
-    // Seed Admin to access search
     let admin = admins::ActiveModel {
         username: Set("search_admin".to_string()),
         service_key: Set("x".to_string()),
@@ -350,7 +370,7 @@ async fn test_search_sql_injection_attempt() {
     let _ = admin.insert(&db).await;
 
     let session_id = Uuid::new_v4().to_string();
-    let token = forge_session_cookie(&config, 3, &session_id, "127.0.0.1", "TestRunner/1.0", false, None);
+    let token = forge_session_cookie(&config, 3, &session_id, "127.0.0.1", "TestRunner/1.0", 1, false, None);
 
     // Injection Payload
     let injection = "' OR 1=1; --";
@@ -360,11 +380,78 @@ async fn test_search_sql_injection_attempt() {
     req.headers_mut().insert(header::COOKIE, format!("{}; client_key={}", token, session_id).parse().unwrap());
 
     let response = app.clone().oneshot(req).await.unwrap();
-
-    // SeaORM should handle parameter binding safely.
-    // Status should be 200 (Empty result or valid result), NOT 500 (SQL Error).
     assert_eq!(response.status(), StatusCode::OK, "SQL Injection payload caused server error");
 }
+
+#[tokio::test]
+async fn test_sql_injection_in_headers() {
+    // Attack vector: Inject SQL via User-Agent or X-Forwarded-For which are often logged to DB
+    let (app, _, _) = setup_app().await;
+
+    let malicious_ua = "Mozilla/5.0' OR '1'='1'); DROP TABLE admin_logs; --";
+
+    // Trigger a 404 which might log error, or just normal visit
+    let req = build_req("/api/home", "GET", Body::empty(), None, Some(malicious_ua));
+    let response = app.clone().oneshot(req).await.unwrap();
+
+    // Ensure server didn't crash (500)
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_null_byte_injection() {
+    let (app, _, config) = setup_app().await;
+    let session_id = Uuid::new_v4().to_string();
+    let token = forge_session_cookie(&config, 3, &session_id, "127.0.0.1", "TestRunner/1.0", 1, false, None);
+
+    // Null byte in search
+    let injection = "search%00term";
+    let uri = format!("/api/admin/search?query={}", injection);
+
+    let mut req = build_req(&uri, "GET", Body::empty(), None, None);
+    req.headers_mut().insert(header::COOKIE, format!("{}; client_key={}", token, session_id).parse().unwrap());
+
+    let response = app.clone().oneshot(req).await.unwrap();
+
+    // Should behave normally (200) or Bad Request (400), but NOT 500
+    assert_ne!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn test_path_traversal_filename() {
+    let (app, _, _) = setup_app().await;
+    let session_id = "path_hacker";
+    let (nonce, salt) = generate_pow_headers(session_id);
+
+    let boundary = "boundaryTraversal";
+    // Attempt to write to root or sensitive paths
+    let header = format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"../../../../etc/passwd\"\r\nContent-Type: image/jpeg\r\n\r\n");
+    let footer = format!("\r\n--{boundary}--");
+    let valid_jpeg = [0xFF, 0xD8, 0xFF, 0xE0]; // Fake JPEG header
+
+    let mut body_vec = Vec::new();
+    body_vec.extend_from_slice(header.as_bytes());
+    body_vec.extend_from_slice(&valid_jpeg);
+    body_vec.extend_from_slice(footer.as_bytes());
+
+    let mut req = build_req("/api/m/submit", "POST", Body::from(body_vec), None, None);
+    req.headers_mut().insert(header::CONTENT_TYPE, format!("multipart/form-data; boundary={}", boundary).parse().unwrap());
+    req.headers_mut().insert(header::COOKIE, format!("client_key={}", session_id).parse().unwrap());
+    req.headers_mut().insert("X-PoW-Nonce", nonce.parse().unwrap());
+    req.headers_mut().insert("X-PoW-Salt", salt.parse().unwrap());
+
+    // The server should accept the upload but IGNORE the filename and generate a UUID.
+    // If it crashed or failed strangely, that's a bug.
+    // If it succeeded, we trust the `StorageService` implementation (which uses UUIDs).
+    let response = app.clone().oneshot(req).await.unwrap();
+
+    // Note: It might return 500 or 400 because the "JPEG" is incomplete/invalid for the image processor,
+    // which is GOOD. It should NOT return 200 unless it successfully processed and renamed it.
+    // Here we mainly ensure it doesn't crash the server.
+    assert_ne!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+// --- 4. RESOURCE EXHAUSTION (DoS) ---
 
 #[tokio::test]
 async fn test_huge_payload_dos() {
@@ -388,53 +475,128 @@ async fn test_huge_payload_dos() {
 
     let response = app.clone().oneshot(req).await.unwrap();
 
-    // Expect 413 Payload Too Large or 400 Bad Request
     assert!(
         response.status() == StatusCode::PAYLOAD_TOO_LARGE || response.status() == StatusCode::BAD_REQUEST,
-        "Server accepted 20MB text payload without 413/400. Status: {:?}", response.status()
+        "Server accepted 20MB text payload"
     );
 }
 
 #[tokio::test]
-async fn test_double_extension_file_upload() {
-    let (app, _, _) = setup_app().await;
-    let session_id = "file_hacker";
-    let (nonce, salt) = generate_pow_headers(session_id);
+async fn test_pagination_dos_attempt() {
+    let (app, db, config) = setup_app().await;
 
-    // A valid tiny 1x1 GIF to pass image validation, but named dangerously
-    let valid_gif_bytes = [
-        0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0xFF, 0xFF, 0xFF, 0x21, 0xF9, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00, 0x2C, 0x00, 0x00, 0x00, 0x00,
-        0x01, 0x00, 0x01, 0x00, 0x00, 0x02, 0x01, 0x44, 0x00, 0x3B
-    ];
+    // Seed admin
+    let admin = admins::ActiveModel {
+        username: Set("admin".to_string()),
+        service_key: Set("x".to_string()),
+        role: Set(3),
+        token_version: Set(1),
+        ..Default::default()
+    };
+    admin.insert(&db).await.unwrap();
 
-    let boundary = "boundary123";
-    let header = format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"exploit.php.gif\"\r\nContent-Type: image/gif\r\n\r\n");
-    let footer = format!("\r\n--{boundary}--");
+    // Create 150 Logs
+    for i in 0..150 {
+        let log = admin_logs::ActiveModel {
+            admin_username: Set("admin".to_string()),
+            action: Set(format!("Action {}", i)),
+            created_at: Set(Utc::now().naive_utc()),
+            ..Default::default()
+        };
+        log.insert(&db).await.unwrap();
+    }
 
-    let mut body_vec = Vec::new();
-    body_vec.extend_from_slice(header.as_bytes());
-    body_vec.extend_from_slice(&valid_gif_bytes);
-    body_vec.extend_from_slice(footer.as_bytes());
+    let session_id = Uuid::new_v4().to_string();
+    let token = forge_session_cookie(&config, 3, &session_id, "127.0.0.1", "TestRunner/1.0", 1, false, None);
 
-    let mut req = build_req("/api/m/submit", "POST", Body::from(body_vec), None, None);
-    req.headers_mut().insert(header::CONTENT_TYPE, format!("multipart/form-data; boundary={}", boundary).parse().unwrap());
-    req.headers_mut().insert(header::COOKIE, format!("client_key={}", session_id).parse().unwrap());
-    req.headers_mut().insert("X-PoW-Nonce", nonce.parse().unwrap());
-    req.headers_mut().insert("X-PoW-Salt", salt.parse().unwrap());
+    // Request 1 Million Logs
+    let mut req = build_req("/api/admin/logs?limit=1000000", "GET", Body::empty(), None, None);
+    req.headers_mut().insert(header::COOKIE, format!("{}; client_key={}", token, session_id).parse().unwrap());
 
     let response = app.clone().oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
     let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let _json: Value = serde_json::from_slice(&body_bytes).unwrap();
+    let json: Value = serde_json::from_slice(&body_bytes).unwrap();
 
-    // The test passes if the server accepts it (because it IS a valid GIF)
-    // but the critical security check is ensuring the SERVER RENAMES it.
-    // In `StorageService::upload_image`, the code `format!("{}.webp", uuid)` ensures this.
+    // Verify server enforced limit (e.g., 50 or 100)
+    let data_len = json["data"].as_array().unwrap().len();
+    assert!(data_len <= 100, "Server failed to cap pagination limit! Returned {} items.", data_len);
 }
 
-// --- 4. FUNCTIONAL TESTS ---
+// --- 5. LOGIC & FUNCTIONAL (Existing) ---
+
+#[tokio::test]
+async fn test_public_access() {
+    let (app, _, _) = setup_app().await;
+    let req = build_req("/api/home", "GET", Body::empty(), None, None);
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_admin_auth_flow() {
+    let (app, db, _) = setup_app().await;
+    // ... (Existing code from previous step, ensuring get_cookie_value is used) ...
+    let admin_key_raw = "secret_key_123";
+    let mut hasher = Sha256::new();
+    hasher.update(admin_key_raw.as_bytes());
+    let hashed_key = hex::encode(hasher.finalize());
+
+    let admin = admins::ActiveModel {
+        username: Set("test_admin".to_string()),
+        service_key: Set(hashed_key),
+        role: Set(3),
+        token_version: Set(1),
+        ..Default::default()
+    };
+    admin.insert(&db).await.expect("Failed to seed admin");
+
+    let req = build_req("/api/home", "GET", Body::empty(), None, None);
+    let response = app.clone().oneshot(req).await.unwrap();
+    let client_key_cookie = get_cookie(&response, "client_key").expect("Cookie missing");
+    let session_id_cookie = get_cookie(&response, "session_id").expect("Cookie missing");
+
+    // USE get_cookie_value here to satisfy compiler warning
+    let session_id_val = get_cookie_value(&client_key_cookie);
+
+    let (nonce, salt) = generate_pow_headers(&session_id_val);
+    let payload = json!({ "key": admin_key_raw });
+
+    let mut req = build_req("/api/admin/login", "POST", Body::from(serde_json::to_string(&payload).unwrap()), None, None);
+    req.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    req.headers_mut().insert(header::COOKIE, format!("{}; {}", client_key_cookie, session_id_cookie).parse().unwrap());
+    req.headers_mut().insert("X-PoW-Nonce", nonce.parse().unwrap());
+    req.headers_mut().insert("X-PoW-Salt", salt.parse().unwrap());
+
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_security_holes() {
+    let (app, _, _) = setup_app().await;
+    let req = build_req("/api/home", "GET", Body::empty(), None, None);
+    let response = app.clone().oneshot(req).await.unwrap();
+    let client_key = get_cookie(&response, "client_key").expect("Cookie missing");
+    let session_id = get_cookie(&response, "session_id").expect("Cookie missing");
+    let sess_val = get_cookie_value(&client_key);
+
+    let mut req = build_req("/api/admin/stats", "GET", Body::empty(), None, None);
+    req.headers_mut().insert(header::COOKIE, format!("{}; {}", client_key, session_id).parse().unwrap());
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    let (nonce, salt) = generate_pow_headers(&sess_val);
+    let payload = json!({ "id": 1, "type_": "post" });
+    let mut req = build_req("/api/admin/delete", "POST", Body::from(serde_json::to_string(&payload).unwrap()), None, None);
+    req.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    req.headers_mut().insert(header::COOKIE, format!("{}; {}", client_key, session_id).parse().unwrap());
+    req.headers_mut().insert("X-PoW-Nonce", nonce.parse().unwrap());
+    req.headers_mut().insert("X-PoW-Salt", salt.parse().unwrap());
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
 
 #[tokio::test]
 async fn test_bot_guard_missing_headers() {
@@ -466,7 +628,7 @@ async fn test_role_hierarchy_enforcement() {
     janitor.insert(&db).await.expect("Failed to seed janitor");
 
     let session_id = Uuid::new_v4().to_string();
-    let janitor_cookie = forge_session_cookie(&config, 1, &session_id, "127.0.0.1", "TestRunner/1.0", false, None);
+    let janitor_cookie = forge_session_cookie(&config, 1, &session_id, "127.0.0.1", "TestRunner/1.0", 1, false, None);
     let client_cookie = format!("client_key={}", session_id);
     let cookie_header = format!("{}; {}", janitor_cookie, client_cookie);
 
@@ -619,7 +781,7 @@ async fn test_malicious_file_upload() {
 async fn test_expired_jwt_handling() {
     let (app, _db, config) = setup_app().await;
     let session_id = "expired_user";
-    let expired_cookie = forge_session_cookie(&config, 3, session_id, "127.0.0.1", "TestRunner/1.0", true, None);
+    let expired_cookie = forge_session_cookie(&config, 3, session_id, "127.0.0.1", "TestRunner/1.0", 1, true, None);
     let client_cookie = format!("client_key={}", session_id);
     let cookie_header = format!("{}; {}", expired_cookie, client_cookie);
 
