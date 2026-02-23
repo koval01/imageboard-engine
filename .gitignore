@@ -9,3 +9,4 @@ sqlite.*
 .env.local
 
 media
+test_media
