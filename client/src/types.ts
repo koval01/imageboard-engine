@@ -25,6 +25,7 @@ export interface Image {
 
 export interface RecentImage extends Omit<Image, 'thread_id'> {
     thread_id: string;
+    board_slug: string;
 }
 
 export interface Post {
@@ -123,6 +124,7 @@ export interface Report {
     created_at: string;
     post: Post | null;
     images: Image[];
+    board_slug: string | null;
 }
 
 export interface InvestigationResult {

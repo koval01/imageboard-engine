@@ -136,6 +136,7 @@ pub struct RecentImageDto {
     #[serde(flatten)]
     pub model: SafeImage,
     pub thread_id: String,
+    pub board_slug: String,
 }
 
 #[derive(Serialize)]
@@ -169,7 +170,7 @@ pub struct PostsListResponse {
 
 #[derive(Deserialize)]
 pub struct PollQuery {
-    after: i32,
+    pub after: i32,
 }
 
 // --- Helper Functions ---
@@ -335,17 +336,27 @@ pub async fn home_handler(
     let mut recent_images_dto = Vec::new();
 
     for img in recent_images_raw {
-        let thread_id = if let Some(tid) = img.thread_id {
-            tid.to_string()
+        let mut t_id = "0".to_string();
+        let mut b_slug = "unknown".to_string();
+
+        if let Some(tid) = img.thread_id {
+            if let Ok(Some(thread)) = threads::Entity::find_by_id(tid).one(db).await {
+                t_id = tid.to_string();
+                b_slug = thread.board_slug;
+            }
         } else if let Some(pid) = img.post_id {
-            let post = posts::Entity::find_by_id(pid).one(db).await.unwrap();
-            post.map(|p| p.thread_id.to_string()).unwrap_or_default()
-        } else {
-            "0".to_string()
-        };
+            if let Ok(Some(post)) = posts::Entity::find_by_id(pid).one(db).await {
+                if let Ok(Some(thread)) = threads::Entity::find_by_id(post.thread_id).one(db).await {
+                    t_id = thread.id.to_string();
+                    b_slug = thread.board_slug;
+                }
+            }
+        }
+
         recent_images_dto.push(RecentImageDto {
             model: SafeImage::from(img),
-            thread_id
+            thread_id: t_id,
+            board_slug: b_slug,
         });
     }
 

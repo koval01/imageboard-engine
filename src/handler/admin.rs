@@ -43,6 +43,7 @@ struct ApiReport {
     created_at: NaiveDateTime,
     post: Option<posts::Model>,
     images: Vec<images::Model>,
+    board_slug: Option<String>, // Added to allow linking to the post
 }
 
 #[derive(Serialize)]
@@ -170,11 +171,16 @@ pub async fn api_get_reports(
     let mut result = Vec::new();
     for r in reports_raw {
         let post = posts::Entity::find_by_id(r.post_id).one(db).await.unwrap_or(None);
-        let imgs = if let Some(ref p) = post {
-            images::Entity::find().filter(images::Column::PostId.eq(p.id)).all(db).await.unwrap_or_default()
-        } else {
-            vec![]
-        };
+        let mut board_slug = None;
+        let mut imgs = vec![];
+
+        if let Some(ref p) = post {
+            imgs = images::Entity::find().filter(images::Column::PostId.eq(p.id)).all(db).await.unwrap_or_default();
+            if let Ok(Some(t)) = threads::Entity::find_by_id(p.thread_id).one(db).await {
+                board_slug = Some(t.board_slug);
+            }
+        }
+
         result.push(ApiReport {
             id: r.id,
             reason: r.reason,
@@ -182,7 +188,8 @@ pub async fn api_get_reports(
             reporter_ip: r.ip_address,
             created_at: r.created_at,
             post,
-            images: imgs
+            images: imgs,
+            board_slug,
         });
     }
 
@@ -391,7 +398,7 @@ pub async fn api_ban_user(
     Extension(session): Extension<CurrentSession>,
     Json(payload): Json<BanPayload>,
 ) -> Response {
-    if session.role < 3 { return StatusCode::FORBIDDEN.into_response(); }
+    if session.role < 2 { return StatusCode::FORBIDDEN.into_response(); } // Changed to Role 2 (Mod)
     let state = state.read().await;
     let db = &state.pool;
     let storage = &state.storage;
