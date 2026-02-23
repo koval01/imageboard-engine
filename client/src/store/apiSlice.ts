@@ -17,7 +17,14 @@ export const apiSlice = createApi({
     baseQuery: fetchBaseQuery({
         baseUrl: '/api',
         prepareHeaders: async (headers, { endpoint }) => {
-            if (endpoint === 'postReply' || endpoint === 'createThread' || endpoint === 'reportPost') {
+            // Apply PoW to all POST mutations (User + Admin)
+            const powEndpoints = [
+                'postReply', 'createThread', 'reportPost',
+                'adminLogin', 'adminLogout', 'resolveReport',
+                'banUser', 'deleteContent', 'visualSearch'
+            ];
+
+            if (powEndpoints.includes(endpoint)) {
                 const sessionId = getCookie('client_key');
                 if (sessionId) {
                     try {

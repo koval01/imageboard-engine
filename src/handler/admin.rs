@@ -99,7 +99,9 @@ pub async fn admin_login_action(
         session.version = admin.token_version;
 
         // The middleware will see the updated session and issue a new JWT
-        return Json(json!({"status": "ok", "role": admin.role})).into_response();
+        let mut response = Json(json!({"status": "ok", "role": admin.role})).into_response();
+        response.extensions_mut().insert(session);
+        return response;
     }
 
     state_read.login_attempts.insert(ip, attempts + 1).await;
@@ -117,7 +119,9 @@ pub async fn admin_logout_action(
     session.role = 0;
     session.version = 1;
     // Middleware will update the cookie to reflect role 0
-    Json(json!({"status": "logged_out"})).into_response()
+    let mut response = Json(json!({"status": "logged_out"})).into_response();
+    response.extensions_mut().insert(session);
+    response
 }
 
 pub async fn api_check_admin(

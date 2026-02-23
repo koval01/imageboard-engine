@@ -249,11 +249,6 @@ pub async fn bot_guard_middleware(
     next: Next,
 ) -> Result<Response, Response> {
     if req.method() == axum::http::Method::POST {
-        // Skip PoW check for admin routes (protected by auth/rate-limit instead)
-        if req.uri().path().contains("/admin/") {
-            return Ok(next.run(req).await);
-        }
-
         let headers = req.headers();
 
         let nonce = headers.get("X-PoW-Nonce")
