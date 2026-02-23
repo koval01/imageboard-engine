@@ -1,16 +1,24 @@
-import React, { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
     useGetAdminStatsQuery, useGetReportsQuery, useGetAdminLogsQuery,
     useResolveReportMutation, useBanUserMutation, useDeleteContentMutation,
     useLazyInvestigateQuery, useVisualSearchMutation, useLazySearchContentQuery,
     useAdminLogoutMutation
-} from '@/store/apiSlice'
+} from '../store/apiSlice'
 import { format } from 'date-fns'
 import { AlertTriangle, Ban, CheckCircle, Search, Eye, Image as ImageIcon, FileText, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function AdminPanel() {
-    const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'logs' | 'investigate'>('overview')
+    const [searchParams] = useSearchParams()
+    const urlTarget = searchParams.get('target')
+
+    // Auto-switch tab if target is present in URL
+    const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'logs' | 'investigate'>(
+        urlTarget ? 'investigate' : 'overview'
+    )
+
     const [logout] = useAdminLogoutMutation()
 
     return (
@@ -38,7 +46,7 @@ export default function AdminPanel() {
                 {activeTab === 'overview' && <OverviewTab />}
                 {activeTab === 'reports' && <ReportsTab />}
                 {activeTab === 'logs' && <LogsTab />}
-                {activeTab === 'investigate' && <InvestigationTab />}
+                {activeTab === 'investigate' && <InvestigationTab initialTarget={urlTarget || ''} />}
             </div>
         </div>
     )
@@ -215,19 +223,36 @@ function LogsTab() {
     )
 }
 
-function InvestigationTab() {
-    const [target, setTarget] = useState('')
+function InvestigationTab({ initialTarget }: { initialTarget: string }) {
+    const [target, setTarget] = useState(initialTarget)
     const [triggerTextSearch, { data: textResults }] = useLazySearchContentQuery()
     const [triggerInvestigate, { data: invResults }] = useLazyInvestigateQuery()
     const [triggerVisual, { data: visResults, isLoading: isUploading }] = useVisualSearchMutation()
 
-    const handleTextSearch = (e: React.FormEvent) => {
-        e.preventDefault()
-        if (target.includes('.') || target.length > 20) {
-            triggerInvestigate({ target })
-        } else {
-            triggerTextSearch({ query: target })
+    // Auto-trigger search if initialTarget is provided via URL
+    useEffect(() => {
+        if (initialTarget) {
+            handleSearch(initialTarget)
         }
+    }, [initialTarget])
+
+    const handleSearch = (term: string) => {
+        // Simple heuristic: IPs or long session IDs vs content
+        // If it looks like an IP or has a specific length (session ID ~32 chars), investigate.
+        // Otherwise, text search.
+        const isIp = term.includes('.') || term.includes(':')
+        const isSession = term.length > 20 && !term.includes(' ')
+
+        if (isIp || isSession) {
+            triggerInvestigate({ target: term })
+        } else {
+            triggerTextSearch({ query: term })
+        }
+    }
+
+    const onFormSubmit = (e: React.FormEvent) => {
+        e.preventDefault()
+        handleSearch(target)
     }
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -243,7 +268,7 @@ function InvestigationTab() {
             <div className="space-y-6">
                 <div className="border rounded p-4 bg-background">
                     <h3 className="font-bold mb-2 flex items-center gap-2"><Search size={18} /> Search & Investigate</h3>
-                    <form onSubmit={handleTextSearch} className="flex gap-2">
+                    <form onSubmit={onFormSubmit} className="flex gap-2">
                         <input
                             className="border p-2 rounded flex-1"
                             placeholder="IP, Session ID, or Text Content..."
@@ -274,7 +299,7 @@ function InvestigationTab() {
                             <div key={p.id} className="text-sm border p-2 rounded">
                                 <div className="flex justify-between text-xs text-muted-foreground">
                                     <span>No. {p.id}</span>
-                                    <span>{p.ip_address}</span>
+                                    <span className="font-mono">{p.ip_address}</span>
                                 </div>
                                 <div>{p.content}</div>
                             </div>
@@ -304,8 +329,27 @@ function InvestigationTab() {
                                 <div className="flex flex-wrap gap-2">
                                     {invResults.similar_images.map(([pid, dist, url]) => (
                                         <div key={pid} className="relative group">
-                                            <img src={url} className="w-16 h-16 object-cover rounded border" alt="" />
+                                            <a href={url} target="_blank" rel="noreferrer">
+                                                <img src={url} className="w-16 h-16 object-cover rounded border" alt="" />
+                                            </a>
                                             <span className="absolute bottom-0 right-0 bg-black/70 text-white text-[10px] px-1">{dist.toFixed(0)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        {/* Display Posts Found in Investigation */}
+                        {invResults.posts_found.length > 0 && (
+                            <div>
+                                <h4 className="font-bold text-sm mb-2">Related Posts ({invResults.posts_found.length})</h4>
+                                <div className="space-y-2 max-h-60 overflow-y-auto">
+                                    {invResults.posts_found.map(p => (
+                                        <div key={p.id} className="text-xs border p-2 rounded hover:bg-muted/10">
+                                            <div className="flex justify-between font-mono text-muted-foreground">
+                                                <span>No. {p.id}</span>
+                                                <span>{p.ip_address}</span>
+                                            </div>
+                                            <div className="truncate">{p.content}</div>
                                         </div>
                                     ))}
                                 </div>
