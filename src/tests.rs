@@ -4,7 +4,7 @@ use axum::{
     http::{Request, StatusCode, header},
     Router,
 };
-use sea_orm::{DatabaseConnection, ActiveModelTrait, Set};
+use sea_orm::{DatabaseConnection, ActiveModelTrait, Set, EntityTrait};
 use sea_orm_migration::MigratorTrait;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -275,6 +275,9 @@ async fn test_cache_poisoning_prevention() {
 #[tokio::test]
 async fn test_admin_token_revocation() {
     let (app, db, config) = setup_app().await;
+
+    // Clear default admin from migration to ensure we query the correct one
+    let _ = admins::Entity::delete_many().exec(&db).await;
 
     // Seed Admin with Version 1
     let admin = admins::ActiveModel {
