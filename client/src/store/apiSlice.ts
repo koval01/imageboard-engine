@@ -5,7 +5,6 @@ import type {
 } from '@/types'
 import { solvePoW } from '@/lib/pow'
 
-// Helper to get session ID from cookie
 function getCookie(name: string): string | null {
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${name}=`);
@@ -18,7 +17,6 @@ export const apiSlice = createApi({
     baseQuery: fetchBaseQuery({
         baseUrl: '/api',
         prepareHeaders: async (headers, { endpoint }) => {
-            // Apply Proof of Work for mutation endpoints
             if (endpoint === 'postReply' || endpoint === 'createThread' || endpoint === 'reportPost') {
                 const sessionId = getCookie('client_key');
                 if (sessionId) {
@@ -63,14 +61,8 @@ export const apiSlice = createApi({
             }),
             invalidatesTags: ['Board'],
         }),
-
-        // --- Reporting ---
         reportPost: builder.mutation<{ status: string }, { post_id: number; reason: string }>({
-            query: (body) => ({
-                url: '/report',
-                method: 'POST',
-                body,
-            }),
+            query: (body) => ({ url: '/report', method: 'POST', body }),
         }),
 
         // --- Admin Endpoints ---

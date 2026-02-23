@@ -99,7 +99,6 @@ function AdminDashboard({ role, onLogout }: { role: number, onLogout: () => void
                     title="Active Reports"
                     value={stats?.open_reports}
                     icon={Activity}
-                    // Fix: Ensure comparison against a defined number
                     highlight={(stats?.open_reports ?? 0) > 0}
                 />
                 <StatCard title="Total Bans" value={stats?.total_bans} icon={Lock} />
