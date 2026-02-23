@@ -2,18 +2,26 @@ import { useState } from 'react'
 import {
     useGetAdminStatsQuery, useGetReportsQuery, useGetAdminLogsQuery,
     useResolveReportMutation, useBanUserMutation, useDeleteContentMutation,
-    useLazyInvestigateQuery, useVisualSearchMutation, useLazySearchContentQuery
+    useLazyInvestigateQuery, useVisualSearchMutation, useLazySearchContentQuery,
+    useAdminLogoutMutation
 } from '../store/apiSlice'
 import { format } from 'date-fns'
-import { AlertTriangle, Ban, CheckCircle, Search, Trash2, Eye, Image as ImageIcon, FileText } from 'lucide-react'
+import { AlertTriangle, Ban, CheckCircle, Search, Eye, Image as ImageIcon, FileText, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function AdminPanel() {
     const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'logs' | 'investigate'>('overview')
+    const [logout] = useAdminLogoutMutation()
 
     return (
         <div className="container mx-auto p-4 max-w-7xl">
-            <h1 className="text-3xl font-bold mb-6">Admin Panel</h1>
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-3xl font-bold">Admin Panel</h1>
+                <button onClick={() => logout()} className="flex items-center gap-2 px-3 py-1 rounded hover:bg-muted">
+                    <LogOut size={16} /> Logout
+                </button>
+            </div>
+
             <div className="flex gap-2 mb-6 border-b pb-2 overflow-x-auto">
                 {['overview', 'reports', 'logs', 'investigate'].map((tab) => (
                     <button
@@ -81,10 +89,9 @@ function ReportsTab() {
         if (!reason) return
         await banUser({ ip, reason, duration: 24, delete_content: false })
         toast.success("User banned")
-        // Optionally delete post too
         if (confirm("Delete this post?")) {
             await delContent({ id: post_id, type_: 'post' })
-            await resolveReport({ report_id: post_id, status: 'RESOLVED' }) // Hacky match id
+            await resolveReport({ report_id: post_id, status: 'RESOLVED' })
             refetch()
         }
     }
@@ -143,7 +150,7 @@ function ReportsTab() {
                                     </div>
                                 )}
                                 <div className="mt-2 flex gap-2">
-                                    <button onClick={() => handleBan(r.post!.ip_address, r.post!.id)} className="text-xs bg-destructive text-destructive-foreground px-2 py-1 rounded flex items-center gap-1">
+                                    <button onClick={() => handleBan(r.post!.ip_address as string, r.post!.id)} className="text-xs bg-destructive text-destructive-foreground px-2 py-1 rounded flex items-center gap-1">
                                         <Ban size={12} /> Ban & Delete
                                     </button>
                                 </div>
@@ -209,7 +216,6 @@ function LogsTab() {
 }
 
 function InvestigationTab() {
-    const [mode, setMode] = useState<'text' | 'image'>('text')
     const [target, setTarget] = useState('')
     const [triggerTextSearch, { data: textResults }] = useLazySearchContentQuery()
     const [triggerInvestigate, { data: invResults }] = useLazyInvestigateQuery()
@@ -262,7 +268,6 @@ function InvestigationTab() {
             <div className="border rounded p-4 bg-background min-h-[400px] overflow-y-auto">
                 <h3 className="font-bold mb-4 border-b pb-2">Results</h3>
 
-                {/* Text Search Results */}
                 {textResults && (
                     <div className="space-y-4">
                         <h4 className="text-sm font-semibold text-muted-foreground">Found {textResults.length} posts matching text</h4>
@@ -278,7 +283,6 @@ function InvestigationTab() {
                     </div>
                 )}
 
-                {/* Investigation Results */}
                 {invResults && (
                     <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-4 text-sm">
@@ -311,7 +315,6 @@ function InvestigationTab() {
                     </div>
                 )}
 
-                {/* Visual Search Results */}
                 {visResults && (
                     <div className="space-y-2">
                         {visResults.map((res, i) => (
