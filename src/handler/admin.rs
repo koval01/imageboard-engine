@@ -82,6 +82,18 @@ pub struct LoginPayload { key: String }
 
 const MAX_LOGIN_ATTEMPTS: u32 = 5;
 
+// --- Helper ---
+fn fix_image_urls(imgs: &mut Vec<images::Model>, cdn_url: &str) {
+    for img in imgs {
+        if !img.url.starts_with("http") {
+            img.url = format!("{}/{}", cdn_url, img.url);
+        }
+        if !img.thumbnail_url.starts_with("http") {
+            img.thumbnail_url = format!("{}/{}", cdn_url, img.thumbnail_url);
+        }
+    }
+}
+
 // --- Handlers ---
 
 pub async fn admin_login_action(
@@ -214,7 +226,9 @@ pub async fn api_get_reports(
     Query(query): Query<ReportsQuery>,
 ) -> Response {
     if session.role < 1 { return StatusCode::FORBIDDEN.into_response(); }
-    let db = &state.read().await.pool;
+    let state_read = state.read().await;
+    let db = &state_read.pool;
+    let cdn_url = &state_read.config.cdn_url;
 
     let page = query.page.unwrap_or(0);
     let limit = query.limit.unwrap_or(20).min(100);
@@ -243,6 +257,9 @@ pub async fn api_get_reports(
 
         if let Some(ref p) = post {
             imgs = images::Entity::find().filter(images::Column::PostId.eq(p.id)).all(db).await.unwrap_or_default();
+            // Prepend CDN URL for admin view
+            fix_image_urls(&mut imgs, cdn_url);
+
             if let Ok(Some(t)) = threads::Entity::find_by_id(p.thread_id).one(db).await {
                 board_slug = Some(t.board_slug);
             }
@@ -307,7 +324,9 @@ pub async fn api_investigate(
     Query(query): Query<InvestigateQuery>,
 ) -> Response {
     if session.role < 2 { return StatusCode::FORBIDDEN.into_response(); }
-    let db = &state.read().await.pool;
+    let state_read = state.read().await;
+    let db = &state_read.pool;
+    let cdn_url = &state_read.config.cdn_url;
     let threshold = query.threshold.unwrap_or(10);
 
     let mut ips = HashSet::new();
@@ -344,12 +363,14 @@ pub async fn api_investigate(
     }
 
     // 3. Find Images uploaded by these posts
-    let imgs = images::Entity::find()
+    let mut imgs = images::Entity::find()
         .filter(images::Column::PostId.is_in(post_ids.clone()))
         .all(db)
         .await
         .unwrap_or_default();
 
+    // Fix URLs for direct investigation results
+    fix_image_urls(&mut imgs, cdn_url);
     images_found.extend(imgs.clone());
 
     // 4. FIND SIMILAR IMAGES
@@ -372,7 +393,10 @@ pub async fn api_investigate(
                             let dist = src_hash.dist(&tgt_hash);
                             if dist <= threshold {
                                 if let Some(pid) = target_img.post_id {
-                                    similar_images.push((pid, dist as f32, target_img.thumbnail_url.clone()));
+                                    let thumb_full = format!("{}/{}", cdn_url, target_img.thumbnail_url);
+                                    similar_images.push((pid, dist as f32, thumb_full));
+
+                                    // Expand network
                                     if let Ok(Some(linked_post)) = posts::Entity::find_by_id(pid).one(db).await {
                                         if !ips.contains(&linked_post.ip_address) || !sessions.contains(&linked_post.session_id) {
                                             ips.insert(linked_post.ip_address.clone());
@@ -420,7 +444,9 @@ pub async fn api_visual_search(
     mut multipart: Multipart,
 ) -> Response {
     if session.role < 2 { return StatusCode::FORBIDDEN.into_response(); }
-    let db = &state.read().await.pool;
+    let state_read = state.read().await;
+    let db = &state_read.pool;
+    let cdn_url = &state_read.config.cdn_url;
 
     while let Some(field) = multipart.next_field().await.unwrap() {
         if field.name() == Some("file") {
@@ -438,11 +464,14 @@ pub async fn api_visual_search(
 
                 let mut matches = Vec::new();
 
-                for db_img in all_images {
+                for mut db_img in all_images {
                     if let Ok(db_hash_bytes) = BASE64.decode(&db_img.phash) {
                         if let Ok(db_hash) = ImageHash::<Box<[u8]>>::from_bytes(&db_hash_bytes) {
                             let dist = hash.dist(&db_hash);
                             if dist < 15 {
+                                // Fix URLs here
+                                db_img.url = format!("{}/{}", cdn_url, db_img.url);
+                                db_img.thumbnail_url = format!("{}/{}", cdn_url, db_img.thumbnail_url);
                                 matches.push((db_img, dist));
                             }
                         }
