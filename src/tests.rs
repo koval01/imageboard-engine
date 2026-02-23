@@ -13,6 +13,8 @@ use tower::ServiceExt;
 use moka::future::Cache;
 use sha2::{Sha256, Digest};
 use uuid::Uuid;
+use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+use axum::extract::ConnectInfo;
 
 // --- Test Utilities ---
 
@@ -60,6 +62,19 @@ async fn setup_app() -> (Router, DatabaseConnection, Config) {
     (app, pool, config)
 }
 
+// Build a request with mocked ConnectInfo
+fn build_req(uri: &str, method: &str, body: Body) -> Request<Body> {
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    let mut req = Request::builder()
+        .uri(uri)
+        .method(method)
+        .body(body)
+        .unwrap();
+
+    req.extensions_mut().insert(ConnectInfo(addr));
+    req
+}
+
 // Helper to solve PoW for Bot Guard
 fn generate_pow_headers(session_id: &str) -> (String, String) {
     let salt = Uuid::new_v4().to_string().replace("-", "");
@@ -98,11 +113,9 @@ async fn test_public_access() {
     let (app, _db, _) = setup_app().await;
 
     // 1. Home Page
-    let response = app.clone().oneshot(
-        Request::builder().uri("/api/home").body(Body::empty()).unwrap()
-    ).await.unwrap();
+    let req = build_req("/api/home", "GET", Body::empty());
+    let response = app.clone().oneshot(req).await.unwrap();
 
-    // Debug output if status is not 200
     if response.status() != StatusCode::OK {
         let status = response.status();
         let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
@@ -112,9 +125,8 @@ async fn test_public_access() {
     }
 
     // 2. View Board (m)
-    let response = app.clone().oneshot(
-        Request::builder().uri("/api/m").body(Body::empty()).unwrap()
-    ).await.unwrap();
+    let req = build_req("/api/m", "GET", Body::empty());
+    let response = app.clone().oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 }
 
@@ -138,9 +150,8 @@ async fn test_admin_auth_flow() {
     admin.insert(&db).await.expect("Failed to seed admin");
 
     // 2. Get initial session (Guest)
-    let response = app.clone().oneshot(
-        Request::builder().uri("/api/home").body(Body::empty()).unwrap()
-    ).await.unwrap();
+    let req = build_req("/api/home", "GET", Body::empty());
+    let response = app.clone().oneshot(req).await.unwrap();
 
     let client_key_cookie = get_cookie(&response, "client_key").expect("No client_key cookie from home");
     let session_id_cookie = get_cookie(&response, "session_id").expect("No session_id cookie from home");
@@ -150,36 +161,28 @@ async fn test_admin_auth_flow() {
     let (nonce, salt) = generate_pow_headers(&session_id_val);
     let payload = json!({ "key": "wrong_key" });
 
-    let response = app.clone().oneshot(
-        Request::builder()
-            .uri("/api/admin/login")
-            .method("POST")
-            .header(header::CONTENT_TYPE, "application/json")
-            .header(header::COOKIE, format!("{}; {}", client_key_cookie, session_id_cookie))
-            .header("X-PoW-Nonce", &nonce)
-            .header("X-PoW-Salt", &salt)
-            .body(Body::from(serde_json::to_string(&payload).unwrap()))
-            .unwrap()
-    ).await.unwrap();
+    let mut req = build_req("/api/admin/login", "POST", Body::from(serde_json::to_string(&payload).unwrap()));
+    req.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    req.headers_mut().insert(header::COOKIE, format!("{}; {}", client_key_cookie, session_id_cookie).parse().unwrap());
+    req.headers_mut().insert("X-PoW-Nonce", nonce.parse().unwrap());
+    req.headers_mut().insert("X-PoW-Salt", salt.parse().unwrap());
+
+    let response = app.clone().oneshot(req).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
     // 4. Attempt Login (Success)
-    // IMPORTANT: Generate NEW nonce/salt because the previous one is now in the rate_limit_cache
+    // Generate fresh pow headers as cache might block reuse
     let (nonce, salt) = generate_pow_headers(&session_id_val);
     let payload = json!({ "key": admin_key_raw });
 
-    let response = app.clone().oneshot(
-        Request::builder()
-            .uri("/api/admin/login")
-            .method("POST")
-            .header(header::CONTENT_TYPE, "application/json")
-            .header(header::COOKIE, format!("{}; {}", client_key_cookie, session_id_cookie))
-            .header("X-PoW-Nonce", &nonce)
-            .header("X-PoW-Salt", &salt)
-            .body(Body::from(serde_json::to_string(&payload).unwrap()))
-            .unwrap()
-    ).await.unwrap();
+    let mut req = build_req("/api/admin/login", "POST", Body::from(serde_json::to_string(&payload).unwrap()));
+    req.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    req.headers_mut().insert(header::COOKIE, format!("{}; {}", client_key_cookie, session_id_cookie).parse().unwrap());
+    req.headers_mut().insert("X-PoW-Nonce", nonce.parse().unwrap());
+    req.headers_mut().insert("X-PoW-Salt", salt.parse().unwrap());
+
+    let response = app.clone().oneshot(req).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -187,13 +190,10 @@ async fn test_admin_auth_flow() {
     let new_session_cookie = get_cookie(&response, "session_id").expect("Should update session cookie after login");
 
     // 5. Verify Admin Access (Check Status)
-    let response = app.clone().oneshot(
-        Request::builder()
-            .uri("/api/admin/status")
-            .header(header::COOKIE, format!("{}; {}", client_key_cookie, new_session_cookie))
-            .body(Body::empty())
-            .unwrap()
-    ).await.unwrap();
+    let mut req = build_req("/api/admin/status", "GET", Body::empty());
+    req.headers_mut().insert(header::COOKIE, format!("{}; {}", client_key_cookie, new_session_cookie).parse().unwrap());
+
+    let response = app.clone().oneshot(req).await.unwrap();
 
     let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let body_json: Value = serde_json::from_slice(&body_bytes).unwrap();
@@ -207,39 +207,31 @@ async fn test_security_holes() {
     let (app, _db, _) = setup_app().await;
 
     // 1. Get Guest Session
-    let response = app.clone().oneshot(
-        Request::builder().uri("/api/home").body(Body::empty()).unwrap()
-    ).await.unwrap();
+    let req = build_req("/api/home", "GET", Body::empty());
+    let response = app.clone().oneshot(req).await.unwrap();
 
     let client_key = get_cookie(&response, "client_key").expect("Guest client_key missing");
     let session_id = get_cookie(&response, "session_id").expect("Guest session_id missing");
     let sess_val = get_cookie_value(&client_key);
 
     // 2. Try to access Admin Stats (Should Fail)
-    let response = app.clone().oneshot(
-        Request::builder()
-            .uri("/api/admin/stats")
-            .header(header::COOKIE, format!("{}; {}", client_key, session_id))
-            .body(Body::empty())
-            .unwrap()
-    ).await.unwrap();
+    let mut req = build_req("/api/admin/stats", "GET", Body::empty());
+    req.headers_mut().insert(header::COOKIE, format!("{}; {}", client_key, session_id).parse().unwrap());
+
+    let response = app.clone().oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 
     // 3. Try to Delete Content (Should Fail)
     let (nonce, salt) = generate_pow_headers(&sess_val);
     let payload = json!({ "id": 1, "type_": "post" });
 
-    let response = app.clone().oneshot(
-        Request::builder()
-            .uri("/api/admin/delete")
-            .method("POST")
-            .header(header::CONTENT_TYPE, "application/json")
-            .header(header::COOKIE, format!("{}; {}", client_key, session_id))
-            .header("X-PoW-Nonce", &nonce)
-            .header("X-PoW-Salt", &salt)
-            .body(Body::from(serde_json::to_string(&payload).unwrap()))
-            .unwrap()
-    ).await.unwrap();
+    let mut req = build_req("/api/admin/delete", "POST", Body::from(serde_json::to_string(&payload).unwrap()));
+    req.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    req.headers_mut().insert(header::COOKIE, format!("{}; {}", client_key, session_id).parse().unwrap());
+    req.headers_mut().insert("X-PoW-Nonce", nonce.parse().unwrap());
+    req.headers_mut().insert("X-PoW-Salt", salt.parse().unwrap());
+
+    let response = app.clone().oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 
     // 4. Try to Ban User (Should Fail)
@@ -251,17 +243,13 @@ async fn test_security_holes() {
         "delete_content": false
     });
 
-    let response = app.clone().oneshot(
-        Request::builder()
-            .uri("/api/admin/ban")
-            .method("POST")
-            .header(header::CONTENT_TYPE, "application/json")
-            .header(header::COOKIE, format!("{}; {}", client_key, session_id))
-            .header("X-PoW-Nonce", &nonce)
-            .header("X-PoW-Salt", &salt)
-            .body(Body::from(serde_json::to_string(&payload).unwrap()))
-            .unwrap()
-    ).await.unwrap();
+    let mut req = build_req("/api/admin/ban", "POST", Body::from(serde_json::to_string(&payload).unwrap()));
+    req.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    req.headers_mut().insert(header::COOKIE, format!("{}; {}", client_key, session_id).parse().unwrap());
+    req.headers_mut().insert("X-PoW-Nonce", nonce.parse().unwrap());
+    req.headers_mut().insert("X-PoW-Salt", salt.parse().unwrap());
+
+    let response = app.clone().oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
@@ -270,24 +258,19 @@ async fn test_bot_guard_missing_headers() {
     let (app, _, _) = setup_app().await;
 
     // Get session
-    let response = app.clone().oneshot(
-        Request::builder().uri("/api/home").body(Body::empty()).unwrap()
-    ).await.unwrap();
+    let req = build_req("/api/home", "GET", Body::empty());
+    let response = app.clone().oneshot(req).await.unwrap();
     let client_key = get_cookie(&response, "client_key").expect("Cookie missing");
     let session_id = get_cookie(&response, "session_id").expect("Cookie missing");
 
     // Try to post without PoW headers
     let payload = json!({ "post_id": 1, "reason": "spam" });
 
-    let response = app.clone().oneshot(
-        Request::builder()
-            .uri("/api/report")
-            .method("POST")
-            .header(header::CONTENT_TYPE, "application/json")
-            .header(header::COOKIE, format!("{}; {}", client_key, session_id))
-            .body(Body::from(serde_json::to_string(&payload).unwrap()))
-            .unwrap()
-    ).await.unwrap();
+    let mut req = build_req("/api/report", "POST", Body::from(serde_json::to_string(&payload).unwrap()));
+    req.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    req.headers_mut().insert(header::COOKIE, format!("{}; {}", client_key, session_id).parse().unwrap());
+
+    let response = app.clone().oneshot(req).await.unwrap();
 
     // Should be Forbidden because PoW is missing
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
