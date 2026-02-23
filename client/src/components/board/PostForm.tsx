@@ -62,7 +62,7 @@ export default function PostForm({ boardSlug, threadId, onSuccess }: PostFormPro
 
     return (
         <div className={cn(
-            "rounded-xl border bg-card p-4 shadow-sm transition-all duration-300",
+            "rounded-xl bg-card p-4 shadow-sm transition-all duration-300",
             isLoading && "opacity-80 pointer-events-none grayscale-[0.5]"
         )}>
             <form onSubmit={handleSubmit} className="space-y-4">
