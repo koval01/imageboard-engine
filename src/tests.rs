@@ -25,7 +25,7 @@ async fn setup_app() -> (Router, DatabaseConnection, Config) {
         jwt_maxage: 3600,
         cdn_url: "http://localhost:8083".to_string(),
         storage_type: StorageType::Local,
-        media_path: "./test_media".to_string(), // Ensure this dir exists or is ignored
+        media_path: "./test_media".to_string(),
         media_port: 8083,
     };
 
@@ -95,13 +95,21 @@ fn get_cookie_value(cookie_str: &str) -> String {
 
 #[tokio::test]
 async fn test_public_access() {
-    let (app, _, _) = setup_app().await;
+    let (app, _db, _) = setup_app().await;
 
     // 1. Home Page
     let response = app.clone().oneshot(
         Request::builder().uri("/api/home").body(Body::empty()).unwrap()
     ).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+
+    // Debug output if status is not 200
+    if response.status() != StatusCode::OK {
+        let status = response.status();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        println!("Home error: {:?} - {:?}", status, body);
+    } else {
+        assert_eq!(response.status(), StatusCode::OK);
+    }
 
     // 2. View Board (m)
     let response = app.clone().oneshot(
@@ -134,8 +142,8 @@ async fn test_admin_auth_flow() {
         Request::builder().uri("/api/home").body(Body::empty()).unwrap()
     ).await.unwrap();
 
-    let client_key_cookie = get_cookie(&response, "client_key").expect("No client_key cookie");
-    let session_id_cookie = get_cookie(&response, "session_id").expect("No session_id cookie");
+    let client_key_cookie = get_cookie(&response, "client_key").expect("No client_key cookie from home");
+    let session_id_cookie = get_cookie(&response, "session_id").expect("No session_id cookie from home");
     let session_id_val = get_cookie_value(&client_key_cookie);
 
     // 3. Attempt Login (Fail)
@@ -157,8 +165,8 @@ async fn test_admin_auth_flow() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
     // 4. Attempt Login (Success)
-    let (nonce, salt) = generate_pow_headers(&session_id_val); // Re-generate/use new nonce if cache prevents replay
-    // Note: In local test environment, rate limit might block same salt replay, so generate fresh.
+    // IMPORTANT: Generate NEW nonce/salt because the previous one is now in the rate_limit_cache
+    let (nonce, salt) = generate_pow_headers(&session_id_val);
     let payload = json!({ "key": admin_key_raw });
 
     let response = app.clone().oneshot(
@@ -176,7 +184,7 @@ async fn test_admin_auth_flow() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Verify we got a NEW session cookie with admin privileges
-    let new_session_cookie = get_cookie(&response, "session_id").expect("Should update session cookie");
+    let new_session_cookie = get_cookie(&response, "session_id").expect("Should update session cookie after login");
 
     // 5. Verify Admin Access (Check Status)
     let response = app.clone().oneshot(
@@ -196,14 +204,15 @@ async fn test_admin_auth_flow() {
 
 #[tokio::test]
 async fn test_security_holes() {
-    let (app, db, _) = setup_app().await;
+    let (app, _db, _) = setup_app().await;
 
     // 1. Get Guest Session
     let response = app.clone().oneshot(
         Request::builder().uri("/api/home").body(Body::empty()).unwrap()
     ).await.unwrap();
-    let client_key = get_cookie(&response, "client_key").unwrap();
-    let session_id = get_cookie(&response, "session_id").unwrap();
+
+    let client_key = get_cookie(&response, "client_key").expect("Guest client_key missing");
+    let session_id = get_cookie(&response, "session_id").expect("Guest session_id missing");
     let sess_val = get_cookie_value(&client_key);
 
     // 2. Try to access Admin Stats (Should Fail)
@@ -264,8 +273,8 @@ async fn test_bot_guard_missing_headers() {
     let response = app.clone().oneshot(
         Request::builder().uri("/api/home").body(Body::empty()).unwrap()
     ).await.unwrap();
-    let client_key = get_cookie(&response, "client_key").unwrap();
-    let session_id = get_cookie(&response, "session_id").unwrap();
+    let client_key = get_cookie(&response, "client_key").expect("Cookie missing");
+    let session_id = get_cookie(&response, "session_id").expect("Cookie missing");
 
     // Try to post without PoW headers
     let payload = json!({ "post_id": 1, "reason": "spam" });
