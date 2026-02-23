@@ -1423,43 +1423,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
-name = "ebala"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "aws-config",
- "aws-credential-types",
- "aws-sdk-s3",
- "axum",
- "axum-extra",
- "base64",
- "bytes",
- "chrono",
- "dotenv",
- "hex",
- "image",
- "image_hasher",
- "jsonwebtoken",
- "kamadak-exif",
- "moka",
- "reqwest",
- "sea-orm",
- "sea-orm-migration",
- "serde",
- "serde_json",
- "sha2",
- "tikv-jemallocator",
- "time",
- "tokio",
- "tower",
- "tower-http",
- "tracing-subscriber",
- "urlencoding",
- "uuid",
- "webp",
-]
-
-[[package]]
 name = "ecdsa"
 version = "0.14.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2604,6 +2567,43 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1130d80c7374efad55a117d715a3af9368f0fa7a2c54573afc15a188cd984837"
 dependencies = [
  "mutate_once",
+]
+
+[[package]]
+name = "kryivka_org"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "aws-config",
+ "aws-credential-types",
+ "aws-sdk-s3",
+ "axum",
+ "axum-extra",
+ "base64",
+ "bytes",
+ "chrono",
+ "dotenv",
+ "hex",
+ "image",
+ "image_hasher",
+ "jsonwebtoken",
+ "kamadak-exif",
+ "moka",
+ "reqwest",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tikv-jemallocator",
+ "time",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing-subscriber",
+ "urlencoding",
+ "uuid",
+ "webp",
 ]
 
 [[package]]

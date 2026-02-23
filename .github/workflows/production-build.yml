@@ -10,7 +10,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  DATABASE_URL: "postgres://postgres:password@localhost:5432/ebala_test"
+  DATABASE_URL: "postgres://postgres:password@localhost:5432/kryivka_org_test"
   JWT_SECRET: "ci-testing-secret-key-change-this"
   JWT_EXPIRED_IN: "60m"
   JWT_MAXAGE: "60"
@@ -35,7 +35,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: password
-          POSTGRES_DB: ebala_test
+          POSTGRES_DB: kryivka_org_test
         ports:
           - 5432:5432
         options: >-
@@ -78,7 +78,7 @@ jobs:
       - name: Runtime Health Check
         timeout-minutes: 2
         run: |
-          ./target/release/ebala &
+          ./target/release/kryivka_org &
           SERVER_PID=$!
           echo "Waiting for server to start on port 8082..."
           
@@ -105,13 +105,13 @@ jobs:
           mkdir -p release-assets
           
           # 1. Copy the raw binary (easy download)
-          cp target/release/ebala release-assets/ebala
+          cp target/release/kryivka_org release-assets/kryivka_org
           
           # 2. Create a compressed tarball (preserves permissions)
-          tar -czvf release-assets/ebala-linux-x86_64.tar.gz -C target/release ebala
+          tar -czvf release-assets/kryivka_org-linux-x86_64.tar.gz -C target/release kryivka_org
           
           # 3. Calculate SHA256 checksum
-          sha256sum release-assets/ebala-linux-x86_64.tar.gz > release-assets/checksum.sha256
+          sha256sum release-assets/kryivka_org-linux-x86_64.tar.gz > release-assets/checksum.sha256
 
       - name: Upload to "Continuous" Release
         uses: softprops/action-gh-release@v2
@@ -127,13 +127,13 @@ jobs:
             
             ### How to update on server:
             ```bash
-            wget -O ebala.tar.gz https://github.com/${{ github.repository }}/releases/download/continuous/ebala-linux-x86_64.tar.gz
-            tar -xzvf ebala.tar.gz
-            chmod +x ebala
-            systemctl restart ebala
+            wget -O kryivka_org.tar.gz https://github.com/${{ github.repository }}/releases/download/continuous/kryivka_org-linux-x86_64.tar.gz
+            tar -xzvf kryivka_org.tar.gz
+            chmod +x kryivka_org
+            systemctl restart kryivka_org
             ```
           prerelease: true
           files: |
-            release-assets/ebala
-            release-assets/ebala-linux-x86_64.tar.gz
+            release-assets/kryivka_org
+            release-assets/kryivka_org-linux-x86_64.tar.gz
             release-assets/checksum.sha256
