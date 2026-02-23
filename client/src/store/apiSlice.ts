@@ -110,10 +110,14 @@ export const apiSlice = createApi({
                 body: formData,
             }),
         }),
+        checkAdmin: builder.query<{ status: string; role: number }, void>({
+            query: () => '/admin/status',
+        }),
     }),
 })
 
 export const {
+    useCheckAdminQuery,
     useGetHomeQuery,
     useGetBoardQuery,
     useGetThreadQuery,

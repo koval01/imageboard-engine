@@ -70,7 +70,7 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
         .route("/{slug}/thread/{id}/poll", get(poll_new_posts_handler))
         .route("/report", post(create_report))
         // Admin API
-        .route("/admin", get(api_check_admin)) // Added check handler
+        .route("/admin/status", get(api_check_admin))
         .route("/admin/login", post(admin_login_action))
         .route("/admin/logout", post(admin_logout_action))
         .route("/admin/stats", get(api_get_stats))
