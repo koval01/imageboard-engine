@@ -1,6 +1,6 @@
+import React, { useState } from 'react'
 import { useCheckAdminQuery, useAdminLoginMutation } from '@/store/apiSlice'
 import AdminPanel from '@/components/AdminPanel'
-import { useState } from 'react'
 import { toast } from 'sonner'
 
 export default function AdminPage() {
@@ -14,7 +14,6 @@ export default function AdminPage() {
             const res = await login({ key }).unwrap()
             if (res.status === 'ok') {
                 toast.success('Logged in successfully')
-                // No reload needed due to RTK Query tags
             }
         } catch (err) {
             toast.error('Invalid service key')
@@ -27,6 +26,7 @@ export default function AdminPage() {
         </div>
     )
 
+    // Role 0 = Guest/User, Role 1+ = Admin/Mod
     if (!adminStatus || adminStatus.role < 1) {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-background">
@@ -46,7 +46,7 @@ export default function AdminPage() {
                         </div>
                         <button
                             disabled={isLoggingIn}
-                            className="bg-primary text-primary-foreground w-full py-2 rounded font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+                            className="bg-primary text-primary-foreground w-full py-2 rounded font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer"
                         >
                             {isLoggingIn ? 'Verifying...' : 'Login'}
                         </button>

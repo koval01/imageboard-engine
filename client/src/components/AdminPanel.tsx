@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import {
     useGetAdminStatsQuery, useGetReportsQuery, useGetAdminLogsQuery,
     useResolveReportMutation, useBanUserMutation, useDeleteContentMutation,
     useLazyInvestigateQuery, useVisualSearchMutation, useLazySearchContentQuery,
     useAdminLogoutMutation
-} from '../store/apiSlice'
+} from '@/store/apiSlice'
 import { format } from 'date-fns'
 import { AlertTriangle, Ban, CheckCircle, Search, Eye, Image as ImageIcon, FileText, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
@@ -14,10 +14,10 @@ export default function AdminPanel() {
     const [logout] = useAdminLogoutMutation()
 
     return (
-        <div className="container mx-auto p-4 max-w-7xl">
+        <div className="container mx-auto p-4 max-w-7xl min-h-screen">
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold">Admin Panel</h1>
-                <button onClick={() => logout()} className="flex items-center gap-2 px-3 py-1 rounded hover:bg-muted">
+                <button onClick={() => logout()} className="flex items-center gap-2 px-3 py-1 rounded hover:bg-muted cursor-pointer border">
                     <LogOut size={16} /> Logout
                 </button>
             </div>
@@ -27,7 +27,7 @@ export default function AdminPanel() {
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab as any)}
-                        className={`px-4 py-2 rounded capitalize ${activeTab === tab ? 'bg-primary text-primary-foreground font-bold' : 'hover:bg-muted'}`}
+                        className={`px-4 py-2 rounded capitalize cursor-pointer ${activeTab === tab ? 'bg-primary text-primary-foreground font-bold' : 'hover:bg-muted'}`}
                     >
                         {tab}
                     </button>
@@ -104,15 +104,15 @@ function ReportsTab() {
                 <div className="space-x-2">
                     {['OPEN', 'RESOLVED', 'REJECTED', 'ALL'].map(s => (
                         <button key={s} onClick={() => { setStatus(s); setPage(0) }}
-                                className={`text-xs px-2 py-1 rounded border ${status === s ? 'bg-secondary' : ''}`}>
+                                className={`text-xs px-2 py-1 rounded border cursor-pointer ${status === s ? 'bg-secondary' : ''}`}>
                             {s}
                         </button>
                     ))}
                 </div>
                 <div className="space-x-2">
-                    <button disabled={page === 0} onClick={() => setPage(p => p - 1)} className="px-2 border rounded">&lt;</button>
+                    <button disabled={page === 0} onClick={() => setPage(p => p - 1)} className="px-2 border rounded cursor-pointer disabled:opacity-50">&lt;</button>
                     <span>Page {page + 1} of {data.total_pages || 1}</span>
-                    <button disabled={page >= data.total_pages - 1} onClick={() => setPage(p => p + 1)} className="px-2 border rounded">&gt;</button>
+                    <button disabled={page >= data.total_pages - 1} onClick={() => setPage(p => p + 1)} className="px-2 border rounded cursor-pointer disabled:opacity-50">&gt;</button>
                 </div>
             </div>
 
@@ -144,13 +144,13 @@ function ReportsTab() {
                                     <div className="flex gap-2 mt-2">
                                         {r.images.map(img => (
                                             <a key={img.id} href={img.url} target="_blank" rel="noreferrer">
-                                                <img src={img.thumbnail_url} className="h-20 w-20 object-cover rounded border" />
+                                                <img src={img.thumbnail_url} className="h-20 w-20 object-cover rounded border" alt="" />
                                             </a>
                                         ))}
                                     </div>
                                 )}
                                 <div className="mt-2 flex gap-2">
-                                    <button onClick={() => handleBan(r.post!.ip_address as string, r.post!.id)} className="text-xs bg-destructive text-destructive-foreground px-2 py-1 rounded flex items-center gap-1">
+                                    <button onClick={() => handleBan(r.post!.ip_address as string, r.post!.id)} className="text-xs bg-destructive text-destructive-foreground px-2 py-1 rounded flex items-center gap-1 cursor-pointer hover:bg-destructive/90">
                                         <Ban size={12} /> Ban & Delete
                                     </button>
                                 </div>
@@ -207,9 +207,9 @@ function LogsTab() {
                 </table>
             </div>
             <div className="mt-4 flex justify-between items-center text-sm">
-                <button disabled={page === 0} onClick={() => setPage(p => p - 1)} className="disabled:opacity-50">Previous</button>
+                <button disabled={page === 0} onClick={() => setPage(p => p - 1)} className="disabled:opacity-50 px-2 py-1 border rounded cursor-pointer">Previous</button>
                 <span>Page {page + 1}</span>
-                <button disabled={page >= (data?.total_pages || 0) - 1} onClick={() => setPage(p => p + 1)} className="disabled:opacity-50">Next</button>
+                <button disabled={page >= (data?.total_pages || 0) - 1} onClick={() => setPage(p => p + 1)} className="disabled:opacity-50 px-2 py-1 border rounded cursor-pointer">Next</button>
             </div>
         </div>
     )
@@ -223,7 +223,6 @@ function InvestigationTab() {
 
     const handleTextSearch = (e: React.FormEvent) => {
         e.preventDefault()
-        // Determine if it's an IP/Session lookup or Content search
         if (target.includes('.') || target.length > 20) {
             triggerInvestigate({ target })
         } else {
@@ -251,7 +250,7 @@ function InvestigationTab() {
                             value={target}
                             onChange={e => setTarget(e.target.value)}
                         />
-                        <button type="submit" className="bg-primary text-primary-foreground px-4 rounded">Go</button>
+                        <button type="submit" className="bg-primary text-primary-foreground px-4 rounded cursor-pointer">Go</button>
                     </form>
                     <p className="text-xs text-muted-foreground mt-2">
                         Enter an IP or Session ID to perform a network analysis. Enter text to search post content.
@@ -260,7 +259,7 @@ function InvestigationTab() {
 
                 <div className="border rounded p-4 bg-background">
                     <h3 className="font-bold mb-2 flex items-center gap-2"><ImageIcon size={18} /> Visual Search</h3>
-                    <input type="file" accept="image/*" onChange={handleImageUpload} className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90" />
+                    <input type="file" accept="image/*" onChange={handleImageUpload} className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer" />
                     {isUploading && <p className="text-sm mt-2">Scanning...</p>}
                 </div>
             </div>
@@ -305,7 +304,7 @@ function InvestigationTab() {
                                 <div className="flex flex-wrap gap-2">
                                     {invResults.similar_images.map(([pid, dist, url]) => (
                                         <div key={pid} className="relative group">
-                                            <img src={url} className="w-16 h-16 object-cover rounded border" />
+                                            <img src={url} className="w-16 h-16 object-cover rounded border" alt="" />
                                             <span className="absolute bottom-0 right-0 bg-black/70 text-white text-[10px] px-1">{dist.toFixed(0)}</span>
                                         </div>
                                     ))}
@@ -319,7 +318,7 @@ function InvestigationTab() {
                     <div className="space-y-2">
                         {visResults.map((res, i) => (
                             <div key={i} className="flex gap-3 border p-2 rounded hover:bg-muted/20">
-                                <img src={res.image.thumbnail_url} className="w-16 h-16 object-cover rounded" />
+                                <img src={res.image.thumbnail_url} className="w-16 h-16 object-cover rounded" alt="" />
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-start">
                                         <div className="text-xs font-mono">Dist: {res.distance.toFixed(1)}</div>
@@ -329,7 +328,7 @@ function InvestigationTab() {
                                 </div>
                             </div>
                         ))}
-                        {visResults.length === 0 && <p>No matches found.</p>}
+                        {visResults.length === 0 && <p className="text-muted-foreground text-sm">No matches found.</p>}
                     </div>
                 )}
             </div>
