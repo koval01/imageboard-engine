@@ -98,7 +98,7 @@ export interface ThreadResponse {
     is_time_limit: boolean;
 }
 
-// --- Admin & Reporting Types ---
+// --- Типи адміністратора та скарг (Admin & Reporting Types) ---
 
 export interface AdminStats {
     total_posts: number;

@@ -31,7 +31,7 @@ export const apiSlice = createApi({
                         headers.set('X-PoW-Nonce', nonce);
                         headers.set('X-PoW-Salt', salt);
                     } catch (e) {
-                        console.error("PoW generation failed", e);
+                        console.error("Помилка генерації PoW", e);
                     }
                 }
             }
@@ -71,7 +71,7 @@ export const apiSlice = createApi({
             query: (body) => ({ url: '/report', method: 'POST', body }),
         }),
 
-        // --- Admin Endpoints ---
+        // --- Кінцеві точки адміністратора (Admin Endpoints) ---
         checkAdmin: builder.query<{ status: string; role: number }, void>({
             query: () => '/admin/status',
             providesTags: ['AdminAuth'],
