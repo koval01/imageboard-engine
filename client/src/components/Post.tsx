@@ -50,18 +50,19 @@ export function Post({ post, isOp, onReply, onReport, onBan, onDelete, onInvesti
                         />
                     )}
 
-                    <span className="font-semibold text-primary">Anonymous</span>
+                    <span className="font-semibold text-primary">Анонім</span>
 
                     <span className="text-xs">
-            {format(new Date(model.created_at), "MM/dd/yy(E)HH:mm:ss")}
-          </span>
+                        {/* Український формат дати: DD.MM.YY */}
+                        {format(new Date(model.created_at), "dd.MM.yy(E)HH:mm:ss")}
+                    </span>
 
                     <span
                         className="cursor-pointer hover:underline text-foreground font-medium"
                         onClick={() => onReply(model.id)}
                     >
-            No.{model.id}
-          </span>
+                        №{model.id}
+                    </span>
 
                     {/* Admin Info - Only visible to role >= 2 (Mods/Admins) */}
                     {admin_role >= 2 && (
@@ -69,7 +70,7 @@ export function Post({ post, isOp, onReply, onReport, onBan, onDelete, onInvesti
               <span
                   className="cursor-pointer hover:underline"
                   onClick={() => onInvestigate?.(model.ip_address!)}
-                  title="Investigate IP"
+                  title="Розслідувати IP"
               >
                 {model.ip_address}
               </span>
@@ -77,7 +78,7 @@ export function Post({ post, isOp, onReply, onReport, onBan, onDelete, onInvesti
                             <span
                                 className="cursor-pointer hover:underline truncate max-w-[80px]"
                                 onClick={() => onInvestigate?.(model.session_id!)}
-                                title="Investigate Session"
+                                title="Розслідувати сесію"
                             >
                 {model.session_id}
               </span>
@@ -92,7 +93,7 @@ export function Post({ post, isOp, onReply, onReport, onBan, onDelete, onInvesti
                         size="icon"
                         className="h-7 w-7"
                         onClick={() => onReply(model.id)}
-                        title="Reply"
+                        title="Відповісти"
                     >
                         <MessageSquare className="w-4 h-4" />
                     </Button>
@@ -104,27 +105,27 @@ export function Post({ post, isOp, onReply, onReport, onBan, onDelete, onInvesti
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuLabel>Дії</DropdownMenuLabel>
                             <DropdownMenuItem onClick={() => onReport(model.id)}>
-                                Report Post
+                                Поскаржитись
                             </DropdownMenuItem>
 
                             {/* Admin Actions */}
                             {admin_role >= 2 && (
                                 <>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuLabel className="text-red-500">Moderation</DropdownMenuLabel>
+                                    <DropdownMenuLabel className="text-red-500">Модерація</DropdownMenuLabel>
                                     <DropdownMenuItem
                                         className="text-red-600 focus:text-red-600 focus:bg-red-100 dark:focus:bg-red-900/20"
                                         onClick={() => onDelete?.(model.id)}
                                     >
-                                        <Trash2 className="w-4 h-4 mr-2" /> Delete Post
+                                        <Trash2 className="w-4 h-4 mr-2" /> Видалити
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
                                         className="text-red-600 focus:text-red-600 focus:bg-red-100 dark:focus:bg-red-900/20"
                                         onClick={() => onBan?.(model.ip_address!, model.session_id!)}
                                     >
-                                        <Ban className="w-4 h-4 mr-2" /> Ban User
+                                        <Ban className="w-4 h-4 mr-2" /> Забанити
                                     </DropdownMenuItem>
                                 </>
                             )}

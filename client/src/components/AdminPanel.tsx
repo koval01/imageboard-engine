@@ -21,12 +21,20 @@ export default function AdminPanel() {
 
     const [logout] = useAdminLogoutMutation()
 
+    // Мапінг для назв вкладок
+    const tabLabels: Record<string, string> = {
+        overview: 'Огляд',
+        reports: 'Скарги',
+        logs: 'Логи',
+        investigate: 'Розслідування'
+    }
+
     return (
         <div className="container mx-auto p-4 max-w-7xl min-h-screen">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold">Admin Panel</h1>
+                <h1 className="text-3xl font-bold">Адмін-панель</h1>
                 <button onClick={() => logout()} className="flex items-center gap-2 px-3 py-1 rounded hover:bg-muted cursor-pointer border">
-                    <LogOut size={16} /> Logout
+                    <LogOut size={16} /> Вийти
                 </button>
             </div>
 
@@ -37,7 +45,7 @@ export default function AdminPanel() {
                         onClick={() => setActiveTab(tab as any)}
                         className={`px-4 py-2 rounded capitalize cursor-pointer ${activeTab === tab ? 'bg-primary text-primary-foreground font-bold' : 'hover:bg-muted'}`}
                     >
-                        {tab}
+                        {tabLabels[tab]}
                     </button>
                 ))}
             </div>
@@ -54,13 +62,13 @@ export default function AdminPanel() {
 
 function OverviewTab() {
     const { data: stats } = useGetAdminStatsQuery()
-    if (!stats) return <div>Loading stats...</div>
+    if (!stats) return <div>Завантаження статистики...</div>
 
     const cards = [
-        { label: 'Total Posts', val: stats.total_posts, icon: FileText },
-        { label: 'Active Bans', val: stats.total_bans, icon: Ban },
-        { label: 'Total Reports', val: stats.total_reports, icon: AlertTriangle },
-        { label: 'Open Reports', val: stats.open_reports, icon: Eye, color: 'text-red-500' },
+        { label: 'Всього постів', val: stats.total_posts, icon: FileText },
+        { label: 'Активні бани', val: stats.total_bans, icon: Ban },
+        { label: 'Всього скарг', val: stats.total_reports, icon: AlertTriangle },
+        { label: 'Відкриті скарги', val: stats.open_reports, icon: Eye, color: 'text-red-500' },
     ]
 
     return (
@@ -88,23 +96,23 @@ function ReportsTab() {
 
     const handleResolve = async (id: number, stat: string) => {
         await resolveReport({ report_id: id, status: stat })
-        toast.success(`Report marked as ${stat}`)
+        toast.success(`Скаргу позначено як ${stat}`)
         refetch()
     }
 
     const handleBan = async (ip: string, post_id: number) => {
-        const reason = prompt("Ban reason:", "Rule violation")
+        const reason = prompt("Причина бану:", "Порушення правил")
         if (!reason) return
         await banUser({ ip, reason, duration: 24, delete_content: false })
-        toast.success("User banned")
-        if (confirm("Delete this post?")) {
+        toast.success("Користувача забанено")
+        if (confirm("Видалити цей пост?")) {
             await delContent({ id: post_id, type_: 'post' })
             await resolveReport({ report_id: post_id, status: 'RESOLVED' })
             refetch()
         }
     }
 
-    if (!data) return <div>Loading...</div>
+    if (!data) return <div>Завантаження...</div>
 
     return (
         <div>
@@ -119,7 +127,7 @@ function ReportsTab() {
                 </div>
                 <div className="space-x-2">
                     <button disabled={page === 0} onClick={() => setPage(p => p - 1)} className="px-2 border rounded cursor-pointer disabled:opacity-50">&lt;</button>
-                    <span>Page {page + 1} of {data.total_pages || 1}</span>
+                    <span>Сторінка {page + 1} з {data.total_pages || 1}</span>
                     <button disabled={page >= data.total_pages - 1} onClick={() => setPage(p => p + 1)} className="px-2 border rounded cursor-pointer disabled:opacity-50">&gt;</button>
                 </div>
             </div>
@@ -132,19 +140,19 @@ function ReportsTab() {
                                 <span className={`text-xs font-bold px-2 py-0.5 rounded ${r.status === 'OPEN' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
                                     {r.status}
                                 </span>
-                                <span className="ml-2 text-sm text-muted-foreground">{format(new Date(r.created_at), 'MMM d, HH:mm')}</span>
-                                <div className="mt-1 font-medium">Reason: {r.reason}</div>
+                                <span className="ml-2 text-sm text-muted-foreground">{format(new Date(r.created_at), 'dd.MM, HH:mm')}</span>
+                                <div className="mt-1 font-medium">Причина: {r.reason}</div>
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => handleResolve(r.id, 'RESOLVED')} className="p-1 hover:bg-green-100 rounded text-green-600" title="Resolve"><CheckCircle size={18} /></button>
-                                <button onClick={() => handleResolve(r.id, 'REJECTED')} className="p-1 hover:bg-yellow-100 rounded text-yellow-600" title="Reject"><Ban size={18} /></button>
+                                <button onClick={() => handleResolve(r.id, 'RESOLVED')} className="p-1 hover:bg-green-100 rounded text-green-600" title="Вирішити"><CheckCircle size={18} /></button>
+                                <button onClick={() => handleResolve(r.id, 'REJECTED')} className="p-1 hover:bg-yellow-100 rounded text-yellow-600" title="Відхилити"><Ban size={18} /></button>
                             </div>
                         </div>
 
                         {r.post ? (
                             <div className="bg-muted p-3 rounded text-sm mt-2">
                                 <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                                    <span>{r.board_slug ? `/${r.board_slug}/` : ''} &bull; No. {r.post.id}</span>
+                                    <span>{r.board_slug ? `/${r.board_slug}/` : ''} &bull; № {r.post.id}</span>
                                     <span>IP: {r.post.ip_address}</span>
                                 </div>
                                 <div className="whitespace-pre-wrap">{r.post.content}</div>
@@ -159,16 +167,16 @@ function ReportsTab() {
                                 )}
                                 <div className="mt-2 flex gap-2">
                                     <button onClick={() => handleBan(r.post!.ip_address as string, r.post!.id)} className="text-xs bg-destructive text-destructive-foreground px-2 py-1 rounded flex items-center gap-1 cursor-pointer hover:bg-destructive/90">
-                                        <Ban size={12} /> Ban & Delete
+                                        <Ban size={12} /> Бан та Видалення
                                     </button>
                                 </div>
                             </div>
                         ) : (
-                            <div className="text-sm text-muted-foreground italic">Post was deleted</div>
+                            <div className="text-sm text-muted-foreground italic">Пост було видалено</div>
                         )}
                     </div>
                 ))}
-                {data.data.length === 0 && <div className="text-center text-muted-foreground py-8">No reports found.</div>}
+                {data.data.length === 0 && <div className="text-center text-muted-foreground py-8">Скарг не знайдено.</div>}
             </div>
         </div>
     )
@@ -184,7 +192,7 @@ function LogsTab() {
             <div className="flex gap-2 mb-4">
                 <input
                     type="text"
-                    placeholder="Search logs..."
+                    placeholder="Пошук у логах..."
                     className="border px-3 py-2 rounded w-full max-w-sm"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -194,17 +202,17 @@ function LogsTab() {
                 <table className="w-full text-sm">
                     <thead className="bg-muted">
                     <tr>
-                        <th className="p-2 text-left">Time</th>
-                        <th className="p-2 text-left">Admin</th>
-                        <th className="p-2 text-left">Action</th>
-                        <th className="p-2 text-left">Target</th>
-                        <th className="p-2 text-left">Details</th>
+                        <th className="p-2 text-left">Час</th>
+                        <th className="p-2 text-left">Адмін</th>
+                        <th className="p-2 text-left">Дія</th>
+                        <th className="p-2 text-left">Ціль</th>
+                        <th className="p-2 text-left">Деталі</th>
                     </tr>
                     </thead>
                     <tbody>
                     {data?.data.map(log => (
                         <tr key={log.id} className="border-t hover:bg-muted/50">
-                            <td className="p-2 font-mono text-xs">{format(new Date(log.created_at), 'MM/dd HH:mm')}</td>
+                            <td className="p-2 font-mono text-xs">{format(new Date(log.created_at), 'dd.MM HH:mm')}</td>
                             <td className="p-2">{log.admin_username}</td>
                             <td className="p-2 font-bold text-xs">{log.action}</td>
                             <td className="p-2 font-mono text-xs truncate max-w-[150px]">{log.target_id}</td>
@@ -215,9 +223,9 @@ function LogsTab() {
                 </table>
             </div>
             <div className="mt-4 flex justify-between items-center text-sm">
-                <button disabled={page === 0} onClick={() => setPage(p => p - 1)} className="disabled:opacity-50 px-2 py-1 border rounded cursor-pointer">Previous</button>
-                <span>Page {page + 1}</span>
-                <button disabled={page >= (data?.total_pages || 0) - 1} onClick={() => setPage(p => p + 1)} className="disabled:opacity-50 px-2 py-1 border rounded cursor-pointer">Next</button>
+                <button disabled={page === 0} onClick={() => setPage(p => p - 1)} className="disabled:opacity-50 px-2 py-1 border rounded cursor-pointer">Назад</button>
+                <span>Сторінка {page + 1}</span>
+                <button disabled={page >= (data?.total_pages || 0) - 1} onClick={() => setPage(p => p + 1)} className="disabled:opacity-50 px-2 py-1 border rounded cursor-pointer">Далі</button>
             </div>
         </div>
     )
@@ -267,38 +275,38 @@ function InvestigationTab({ initialTarget }: { initialTarget: string }) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-6">
                 <div className="border rounded p-4 bg-background">
-                    <h3 className="font-bold mb-2 flex items-center gap-2"><Search size={18} /> Search & Investigate</h3>
+                    <h3 className="font-bold mb-2 flex items-center gap-2"><Search size={18} /> Пошук та Аналіз</h3>
                     <form onSubmit={onFormSubmit} className="flex gap-2">
                         <input
                             className="border p-2 rounded flex-1"
-                            placeholder="IP, Session ID, or Text Content..."
+                            placeholder="IP, Session ID або текст..."
                             value={target}
                             onChange={e => setTarget(e.target.value)}
                         />
                         <button type="submit" className="bg-primary text-primary-foreground px-4 rounded cursor-pointer">Go</button>
                     </form>
                     <p className="text-xs text-muted-foreground mt-2">
-                        Enter an IP or Session ID to perform a network analysis. Enter text to search post content.
+                        Введіть IP або Session ID для аналізу мережі. Введіть текст для пошуку по контенту.
                     </p>
                 </div>
 
                 <div className="border rounded p-4 bg-background">
-                    <h3 className="font-bold mb-2 flex items-center gap-2"><ImageIcon size={18} /> Visual Search</h3>
+                    <h3 className="font-bold mb-2 flex items-center gap-2"><ImageIcon size={18} /> Візуальний пошук</h3>
                     <input type="file" accept="image/*" onChange={handleImageUpload} className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer" />
-                    {isUploading && <p className="text-sm mt-2">Scanning...</p>}
+                    {isUploading && <p className="text-sm mt-2">Сканування...</p>}
                 </div>
             </div>
 
             <div className="border rounded p-4 bg-background min-h-[400px] overflow-y-auto">
-                <h3 className="font-bold mb-4 border-b pb-2">Results</h3>
+                <h3 className="font-bold mb-4 border-b pb-2">Результати</h3>
 
                 {textResults && (
                     <div className="space-y-4">
-                        <h4 className="text-sm font-semibold text-muted-foreground">Found {textResults.length} posts matching text</h4>
+                        <h4 className="text-sm font-semibold text-muted-foreground">Знайдено {textResults.length} постів за текстом</h4>
                         {textResults.map(p => (
                             <div key={p.id} className="text-sm border p-2 rounded">
                                 <div className="flex justify-between text-xs text-muted-foreground">
-                                    <span>No. {p.id}</span>
+                                    <span>№ {p.id}</span>
                                     <span className="font-mono">{p.ip_address}</span>
                                 </div>
                                 <div>{p.content}</div>
@@ -311,13 +319,13 @@ function InvestigationTab({ initialTarget }: { initialTarget: string }) {
                     <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-4 text-sm">
                             <div className="bg-muted p-2 rounded">
-                                <div className="font-bold">Related IPs ({invResults.related_ips.length})</div>
+                                <div className="font-bold">Пов'язані IP ({invResults.related_ips.length})</div>
                                 <div className="max-h-24 overflow-y-auto font-mono text-xs">
                                     {invResults.related_ips.map(ip => <div key={ip}>{ip}</div>)}
                                 </div>
                             </div>
                             <div className="bg-muted p-2 rounded">
-                                <div className="font-bold">Related Sessions ({invResults.related_sessions.length})</div>
+                                <div className="font-bold">Пов'язані сесії ({invResults.related_sessions.length})</div>
                                 <div className="max-h-24 overflow-y-auto font-mono text-xs">
                                     {invResults.related_sessions.map(s => <div key={s}>{s.substring(0, 12)}...</div>)}
                                 </div>
@@ -325,7 +333,7 @@ function InvestigationTab({ initialTarget }: { initialTarget: string }) {
                         </div>
                         {invResults.similar_images.length > 0 && (
                             <div>
-                                <h4 className="font-bold text-sm mb-2">Linked Images (Visual Match)</h4>
+                                <h4 className="font-bold text-sm mb-2">Пов'язані зображення (Візуальний збіг)</h4>
                                 <div className="flex flex-wrap gap-2">
                                     {invResults.similar_images.map(([pid, dist, url]) => (
                                         <div key={pid} className="relative group">
@@ -341,12 +349,12 @@ function InvestigationTab({ initialTarget }: { initialTarget: string }) {
                         {/* Display Posts Found in Investigation */}
                         {invResults.posts_found.length > 0 && (
                             <div>
-                                <h4 className="font-bold text-sm mb-2">Related Posts ({invResults.posts_found.length})</h4>
+                                <h4 className="font-bold text-sm mb-2">Пов'язані пости ({invResults.posts_found.length})</h4>
                                 <div className="space-y-2 max-h-60 overflow-y-auto">
                                     {invResults.posts_found.map(p => (
                                         <div key={p.id} className="text-xs border p-2 rounded hover:bg-muted/10">
                                             <div className="flex justify-between font-mono text-muted-foreground">
-                                                <span>No. {p.id}</span>
+                                                <span>№ {p.id}</span>
                                                 <span>{p.ip_address}</span>
                                             </div>
                                             <div className="truncate">{p.content}</div>
@@ -365,14 +373,14 @@ function InvestigationTab({ initialTarget }: { initialTarget: string }) {
                                 <img src={res.image.thumbnail_url} className="w-16 h-16 object-cover rounded" alt="" />
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-start">
-                                        <div className="text-xs font-mono">Dist: {res.distance.toFixed(1)}</div>
+                                        <div className="text-xs font-mono">Відстань: {res.distance.toFixed(1)}</div>
                                         <div className="text-xs text-muted-foreground">{res.board_slug ? `/${res.board_slug}/` : ''} {res.post?.id}</div>
                                     </div>
-                                    <p className="text-sm line-clamp-2 mt-1">{res.post?.content || 'No content'}</p>
+                                    <p className="text-sm line-clamp-2 mt-1">{res.post?.content || 'Без контенту'}</p>
                                 </div>
                             </div>
                         ))}
-                        {visResults.length === 0 && <p className="text-muted-foreground text-sm">No matches found.</p>}
+                        {visResults.length === 0 && <p className="text-muted-foreground text-sm">Збігів не знайдено.</p>}
                     </div>
                 )}
             </div>

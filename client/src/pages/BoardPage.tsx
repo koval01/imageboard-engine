@@ -4,6 +4,7 @@ import PostForm from '@/components/board/PostForm.tsx'
 import ImageViewer from '@/components/ImageViewer'
 import { Loader2, MessageCircle, ImageIcon, Info, ArrowUpRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+import { uk } from 'date-fns/locale' // Імпортуємо українську локаль
 import { motion } from 'framer-motion'
 
 const container = {
@@ -25,8 +26,8 @@ export default function BoardPage() {
     const { slug } = useParams<{ slug: string }>()
     const { data, isLoading, error } = useGetBoardQuery(slug || '', { skip: !slug })
 
-    if (isLoading) return <div className="flex h-[50vh] flex-col items-center justify-center gap-2"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="text-muted-foreground animate-pulse">Loading board...</p></div>
-    if (error) return <div className="p-12 text-center rounded-lg border border-destructive/20 bg-destructive/5 text-destructive">Failed to load board content.</div>
+    if (isLoading) return <div className="flex h-[50vh] flex-col items-center justify-center gap-2"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="text-muted-foreground animate-pulse">Завантаження дошки...</p></div>
+    if (error) return <div className="p-12 text-center rounded-lg border border-destructive/20 bg-destructive/5 text-destructive">Не вдалося завантажити вміст.</div>
     if (!data) return null
 
     return (
@@ -44,8 +45,8 @@ export default function BoardPage() {
                 </div>
 
                 <div className="flex items-center justify-between pb-2 border-b border-border/50">
-                    <h2 className="text-lg font-semibold tracking-tight">Active Threads</h2>
-                    <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">{data.threads.length} threads</span>
+                    <h2 className="text-lg font-semibold tracking-tight">Активні треди</h2>
+                    <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">{data.threads.length} тредів</span>
                 </div>
 
                 {/* Threads List */}
@@ -63,17 +64,17 @@ export default function BoardPage() {
                         >
                             <div className="bg-muted/30 px-4 py-3 border-b border-border/50 flex flex-wrap items-center justify-between gap-2">
                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <span className="font-bold text-foreground">Anonymous</span>
+                                    <span className="font-bold text-foreground">Анонім</span>
                                     <span>•</span>
-                                    <span>{formatDistanceToNow(new Date(thread.model.created_at))} ago</span>
+                                    <span>{formatDistanceToNow(new Date(thread.model.created_at), { addSuffix: true, locale: uk })}</span>
                                     <span>•</span>
-                                    <span className="font-mono opacity-70">No. {thread.model.id}</span>
+                                    <span className="font-mono opacity-70">№ {thread.model.id}</span>
                                 </div>
                                 <Link
                                     to={`/${slug}/thread/${thread.model.id}`}
                                     className="text-xs font-medium text-primary flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
                                 >
-                                    Open Thread <ArrowUpRight className="h-3 w-3" />
+                                    Відкрити тред <ArrowUpRight className="h-3 w-3" />
                                 </Link>
                             </div>
 
@@ -109,11 +110,11 @@ export default function BoardPage() {
                                     <div>
                                         <div className="flex gap-4 text-xs font-medium text-muted-foreground mb-3">
                                             <div className="flex items-center gap-1.5 bg-muted/50 px-2 py-1 rounded-md">
-                                                <MessageCircle className="h-3.5 w-3.5" /> {thread.reply_count} Replies
+                                                <MessageCircle className="h-3.5 w-3.5" /> {thread.reply_count} відп.
                                             </div>
                                             {thread.image_count > 0 && (
                                                 <div className="flex items-center gap-1.5 bg-muted/50 px-2 py-1 rounded-md">
-                                                    <ImageIcon className="h-3.5 w-3.5" /> {thread.image_count} Images
+                                                    <ImageIcon className="h-3.5 w-3.5" /> {thread.image_count} фото
                                                 </div>
                                             )}
                                         </div>
@@ -122,15 +123,15 @@ export default function BoardPage() {
                                             <div className="space-y-2 relative">
                                                 {thread.omitted_posts > 0 && (
                                                     <div className="text-xs text-muted-foreground/70 italic px-2">
-                                                        {thread.omitted_posts} posts omitted...
+                                                        {thread.omitted_posts} постів пропущено...
                                                     </div>
                                                 )}
                                                 <div className="border-l-2 border-primary/10 pl-3 space-y-2">
                                                     {thread.replies_preview.map((reply) => (
                                                         <div key={reply.model.id} className="bg-muted/10 rounded p-2 text-sm hover:bg-muted/20 transition-colors">
                                                             <div className="flex items-center gap-2 mb-1">
-                                                                <span className="text-[10px] font-bold text-muted-foreground">No. {reply.model.id}</span>
-                                                                <span className="text-[10px] text-muted-foreground/60">{formatDistanceToNow(new Date(reply.model.created_at))} ago</span>
+                                                                <span className="text-[10px] font-bold text-muted-foreground">№ {reply.model.id}</span>
+                                                                <span className="text-[10px] text-muted-foreground/60">{formatDistanceToNow(new Date(reply.model.created_at), { addSuffix: true, locale: uk })}</span>
                                                             </div>
                                                             <p className="line-clamp-2 text-muted-foreground allow-select">{reply.model.content}</p>
                                                         </div>
@@ -158,13 +159,13 @@ export default function BoardPage() {
 
                     <div className="rounded-xl border bg-card p-4 shadow-sm">
                         <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-2">
-                            <Info className="h-4 w-4" /> Board Rules
+                            <Info className="h-4 w-4" /> Правила дошки
                         </div>
                         <ul className="text-xs text-muted-foreground space-y-2 list-disc list-inside opacity-80">
-                            <li>No spam or flood.</li>
-                            <li>Do not post illegal content.</li>
-                            <li>Respect anonymity.</li>
-                            <li>Global rules apply.</li>
+                            <li>Жодного спаму та флуду.</li>
+                            <li>Не публікуйте незаконний контент.</li>
+                            <li>Поважайте анонімність.</li>
+                            <li>Глобальні правила також діють.</li>
                         </ul>
                     </div>
                 </div>

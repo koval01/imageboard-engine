@@ -13,16 +13,16 @@ export default function AdminPage() {
         try {
             const res = await login({ key }).unwrap()
             if (res.status === 'ok') {
-                toast.success('Logged in successfully')
+                toast.success('Успішний вхід')
             }
         } catch (err) {
-            toast.error('Invalid service key')
+            toast.error('Невірний ключ доступу')
         }
     }
 
     if (isLoading) return (
         <div className="flex items-center justify-center min-h-screen text-muted-foreground">
-            Loading admin status...
+            Перевірка статусу адміністратора...
         </div>
     )
 
@@ -31,14 +31,14 @@ export default function AdminPage() {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-background">
                 <div className="bg-card p-8 rounded-lg shadow-lg border w-full max-w-sm">
-                    <h1 className="text-2xl font-bold mb-6 text-center">Admin Access</h1>
+                    <h1 className="text-2xl font-bold mb-6 text-center">Вхід для адміністратора</h1>
                     <form onSubmit={handleLogin}>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium mb-2">Service Key</label>
+                            <label className="block text-sm font-medium mb-2">Ключ доступу</label>
                             <input
                                 type="password"
                                 className="border bg-input text-foreground w-full p-2 rounded focus:ring-2 focus:ring-primary outline-none"
-                                placeholder="Enter key..."
+                                placeholder="Введіть ключ..."
                                 value={key}
                                 onChange={e => setKey(e.target.value)}
                                 autoFocus
@@ -48,7 +48,7 @@ export default function AdminPage() {
                             disabled={isLoggingIn}
                             className="bg-primary text-primary-foreground w-full py-2 rounded font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer"
                         >
-                            {isLoggingIn ? 'Verifying...' : 'Login'}
+                            {isLoggingIn ? 'Перевірка...' : 'Увійти'}
                         </button>
                     </form>
                 </div>

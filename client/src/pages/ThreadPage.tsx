@@ -100,7 +100,7 @@ export default function ThreadView() {
 
     const handleReply = async () => {
         if (!replyContent.trim() && !selectedFile) {
-            toast.error("Reply cannot be empty");
+            toast.error("Відповідь не може бути порожньою");
             return;
         }
 
@@ -115,9 +115,9 @@ export default function ThreadView() {
             setReplyContent("");
             setSelectedFile(null);
             refetch();
-            toast.success("Reply posted");
+            toast.success("Відповідь надіслано");
         } catch (err: any) {
-            toast.error(err?.data?.error || "Failed to post reply");
+            toast.error(err?.data?.error || "Не вдалося надіслати відповідь");
             setUserJustReplied(false);
         }
     };
@@ -127,35 +127,34 @@ export default function ThreadView() {
             const prefix = prev.length > 0 && !prev.endsWith('\n') ? '\n' : '';
             return `${prev}${prefix}>>${postId}\n`;
         });
-        // Optional: Focus logic could trigger scrolling to input
     };
 
     // --- Admin Actions ---
     const handleBan = async (ip: string, session: string) => {
-        if (window.confirm(`Are you sure you want to ban ${ip}?`)) {
+        if (window.confirm(`Ви впевнені, що хочете забанити ${ip}?`)) {
             try {
                 await banUser({
-                    ip, session, reason: "Manual ban", duration: 24, delete_content: true
+                    ip, session, reason: "Ручний бан", duration: 24, delete_content: true
                 }).unwrap();
-                toast.success("User banned");
+                toast.success("Користувача забанено");
                 refetch();
-            } catch (e) { toast.error("Failed"); }
+            } catch (e) { toast.error("Помилка"); }
         }
     };
 
     const handleDelete = async (itemId: number, type: 'post' | 'thread') => {
-        if(window.confirm(`Delete this ${type}?`)) {
+        if(window.confirm(`Видалити цей ${type === 'post' ? 'пост' : 'тред'}?`)) {
             try {
                 await deleteContent({ id: itemId, type_: type }).unwrap();
-                toast.success("Deleted");
+                toast.success("Видалено");
                 if (type === 'thread') navigate(`/${slug}`);
                 else refetch();
-            } catch (e) { toast.error("Failed"); }
+            } catch (e) { toast.error("Помилка"); }
         }
     };
 
     if (isLoading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
-    if (!data) return <div className="container py-10">Thread not found</div>;
+    if (!data) return <div className="container py-10">Тред не знайдено</div>;
 
     const opPost: PostItem = {
         model: { ...data.thread, thread_id: data.thread.id, id: data.thread.id } as any,
@@ -171,16 +170,16 @@ export default function ThreadView() {
             {/* Thread Content */}
             <div className="container max-w-4xl mx-auto py-6 flex-1">
                 <Button variant="ghost" className="mb-4 pl-0" onClick={() => navigate(`/${slug}`)}>
-                    &larr; Back to /{data.board.slug}/
+                    &larr; Назад до /{data.board.slug}/
                 </Button>
 
                 <div className="mb-6">
                     <h1 className="text-2xl font-bold text-primary mb-2 break-words">
-                        {data.thread.subject || "No Subject"}
+                        {data.thread.subject || "Без теми"}
                     </h1>
                     <Post
                         post={opPost} isOp onReply={quotePost}
-                        onReport={(id) => reportPost({ post_id: id, reason: "Report" })}
+                        onReport={(id) => reportPost({ post_id: id, reason: "Скарга" })}
                         onBan={handleBan} onDelete={(id) => handleDelete(id, 'thread')}
                         onInvestigate={(t) => window.open(`/admin?target=${t}`, '_blank')}
                     />
@@ -192,7 +191,7 @@ export default function ThreadView() {
                     {data.replies.map((post) => (
                         <Post
                             key={post.model.id} post={post} onReply={quotePost}
-                            onReport={(id) => reportPost({ post_id: id, reason: "Report" })}
+                            onReport={(id) => reportPost({ post_id: id, reason: "Скарга" })}
                             onBan={handleBan} onDelete={(id) => handleDelete(id, 'post')}
                             onInvestigate={(t) => window.open(`/admin?target=${t}`, '_blank')}
                         />
@@ -200,11 +199,7 @@ export default function ThreadView() {
                 </div>
             </div>
 
-            {/*
-        Sticky Input Container
-        position: sticky; bottom: 0; ensures it scrolls WITH the page
-        but sticks to the bottom of the viewport when content is long.
-      */}
+            {/* Sticky Input Container */}
             <div className="sticky bottom-0 z-40 w-full">
 
                 {/* Twitter-style New Posts Notification */}
@@ -215,7 +210,7 @@ export default function ThreadView() {
                             className="pointer-events-auto rounded-full shadow-xl bg-primary text-primary-foreground animate-in fade-in slide-in-from-bottom-2"
                         >
                             <ArrowDown className="mr-2 h-4 w-4" />
-                            {unreadCount} New Post{unreadCount > 1 ? 's' : ''}
+                            {unreadCount} нових постів
                         </Button>
                     </div>
                 )}
@@ -227,7 +222,7 @@ export default function ThreadView() {
                             <Textarea
                                 value={replyContent}
                                 onChange={(e) => setReplyContent(e.target.value)}
-                                placeholder="Write a reply..."
+                                placeholder="Написати відповідь..."
                                 className="min-h-[88px] max-h-[200px] resize-none focus-visible:ring-primary bg-background"
                             />
                         </div>
@@ -243,20 +238,21 @@ export default function ThreadView() {
                                     size="icon"
                                     className={cn(selectedFile && "border-primary text-primary")}
                                     onClick={() => document.getElementById('file-upload')?.click()}
+                                    title="Прикріпити файл"
                                 >
                                     <Upload className="h-4 w-4" />
                                 </Button>
                             </div>
 
-                            <Button onClick={handleReply} disabled={isPosting} size="icon" className="shadow-2xl">
+                            <Button onClick={handleReply} disabled={isPosting} size="icon" className="shadow-2xl" title="Надіслати">
                                 {isPosting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                             </Button>
                         </div>
                     </div>
                     {selectedFile && (
                         <div className="container max-w-4xl mx-auto text-xs text-muted-foreground mt-2 flex justify-between">
-                            <span>Attached: {selectedFile.name}</span>
-                            <span className="cursor-pointer hover:text-destructive" onClick={() => setSelectedFile(null)}>Remove</span>
+                            <span>Прикріплено: {selectedFile.name}</span>
+                            <span className="cursor-pointer hover:text-destructive" onClick={() => setSelectedFile(null)}>Видалити</span>
                         </div>
                     )}
                 </div>

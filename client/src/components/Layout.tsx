@@ -54,6 +54,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     <button
                         onClick={toggleTheme}
                         className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-transparent shadow-sm transition-all hover:bg-accent hover:text-accent-foreground hover:rotate-12 active:scale-90"
+                        title={theme === 'light' ? "Увімкнути темну тему" : "Увімкнути світлу тему"}
                     >
                         {theme === 'light' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                     </button>
@@ -62,7 +63,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
             <main className="flex-1 container mx-auto max-w-6xl p-4 md:py-8">
                 <AnimatePresence mode='wait'>
-                    {/* Clone children to inject key for AnimatePresence if needed, or wrap in route element */}
                     <PageTransition key={location.pathname}>
                         {children}
                     </PageTransition>
@@ -72,10 +72,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <footer className="border-t border-border/40 py-6 md:py-8 bg-muted/20">
                 <div className="container mx-auto flex flex-col items-center justify-center gap-4 px-4 text-center md:flex-row md:justify-between">
                     <p className="text-sm text-muted-foreground">
-                        © {new Date().getFullYear()} Kryivka.org. Права на паузі.
+                        © {new Date().getFullYear()} Kryivka.org. Всі права захищені (або ні).
                     </p>
                     <div className="text-xs text-muted-foreground opacity-50">
-                        Powered by PHP5 & Apache
+                        Працює на чесному слові та Rust
                     </div>
                 </div>
             </footer>

@@ -25,7 +25,7 @@ export default function PostForm({ boardSlug, threadId, onSuccess }: PostFormPro
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!content.trim() && (!files || files.length === 0)) {
-            toast.error("Please enter text or attach an image.")
+            toast.error("Введіть текст або прикріпіть зображення.")
             return
         }
 
@@ -44,18 +44,18 @@ export default function PostForm({ boardSlug, threadId, onSuccess }: PostFormPro
             : createThread({ slug: boardSlug, formData }).unwrap()
 
         toast.promise(promise, {
-            loading: 'Solving Proof of Work & Uploading...',
+            loading: 'Вирішення PoW та публікація...',
             success: () => {
                 setContent('')
                 setSubject('')
                 setFiles(null)
                 if (fileInputRef.current) fileInputRef.current.value = ''
                 if (onSuccess) onSuccess()
-                return threadId ? "Reply posted successfully!" : "Thread created successfully!"
+                return threadId ? "Відповідь успішно надіслано!" : "Тред успішно створено!"
             },
             error: (err) => {
                 console.error(err)
-                return `Failed: ${err?.data?.error || "Unknown error"}`
+                return `Помилка: ${err?.data?.error || "Невідома помилка"}`
             }
         })
     }
@@ -70,7 +70,7 @@ export default function PostForm({ boardSlug, threadId, onSuccess }: PostFormPro
                     {!threadId && (
                         <input
                             type="text"
-                            placeholder="Subject"
+                            placeholder="Тема"
                             value={subject}
                             disabled={isLoading}
                             onChange={(e) => setSubject(e.target.value)}
@@ -79,7 +79,7 @@ export default function PostForm({ boardSlug, threadId, onSuccess }: PostFormPro
                     )}
 
                     <textarea
-                        placeholder={threadId ? "Write a reply..." : "Thread content..."}
+                        placeholder={threadId ? "Написати відповідь..." : "Текст треду..."}
                         value={content}
                         disabled={isLoading}
                         onChange={(e) => setContent(e.target.value)}
@@ -133,7 +133,7 @@ export default function PostForm({ boardSlug, threadId, onSuccess }: PostFormPro
                             )}
                         >
                             <ImagePlus className="h-4 w-4" />
-                            {files && files.length > 0 ? <span className="text-primary font-bold">{files.length} attached</span> : "Attach Images"}
+                            {files && files.length > 0 ? <span className="text-primary font-bold">{files.length} долучено</span> : "Додати фото"}
                         </label>
                     </div>
 
@@ -148,12 +148,12 @@ export default function PostForm({ boardSlug, threadId, onSuccess }: PostFormPro
                         {isLoading ? (
                             <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Processing...
+                                Обробка...
                             </>
                         ) : (
                             <>
                                 <Send className="mr-2 h-4 w-4" />
-                                {threadId ? "Reply" : "Post"}
+                                {threadId ? "Відповісти" : "Створити"}
                             </>
                         )}
                     </button>

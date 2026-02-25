@@ -20,7 +20,7 @@ export default function HomePage() {
     const { data, isLoading, error } = useGetHomeQuery()
 
     if (isLoading) return <div className="flex h-[50vh] items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>
-    if (error) return <div className="p-8 text-center text-destructive">Failed to load system data.</div>
+    if (error) return <div className="p-8 text-center text-destructive">Не вдалося завантажити системні дані.</div>
     if (!data) return null
 
     return (
@@ -29,11 +29,11 @@ export default function HomePage() {
             <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/5 via-transparent to-primary/5 p-8 md:p-12 border border-border/50">
                 <div className="relative z-10 max-w-2xl">
                     <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">
-                        Welcome to <span className="text-primary">Kryivka</span>
+                        Ласкаво просимо до <span className="text-primary">Kryivka</span>
                     </h1>
                     <p className="text-lg text-muted-foreground mb-6">
-                        A high-performance, anonymous imageboard built with Rust and React.
-                        Secure, fast, and ephemeral.
+                        Високопродуктивний, анонімний іміджборд, побудований на Rust та React.
+                        Безпечно, швидко та ефемерно.
                     </p>
                 </div>
                 <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 opacity-10">
@@ -45,7 +45,7 @@ export default function HomePage() {
             <section>
                 <div className="flex items-center gap-2 mb-6">
                     <TrendingUp className="h-5 w-5 text-primary" />
-                    <h2 className="text-2xl font-bold tracking-tight">Fresh Content</h2>
+                    <h2 className="text-2xl font-bold tracking-tight">Свіжий контент</h2>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -73,7 +73,7 @@ export default function HomePage() {
             <section>
                 <div className="flex items-center gap-2 mb-6">
                     <Layers className="h-5 w-5 text-primary" />
-                    <h2 className="text-2xl font-bold tracking-tight">Boards</h2>
+                    <h2 className="text-2xl font-bold tracking-tight">Дошки</h2>
                 </div>
 
                 <motion.div
@@ -98,7 +98,7 @@ export default function HomePage() {
 
                                     <div className="mt-6 flex items-center text-xs font-medium text-muted-foreground group-hover:text-primary transition-colors">
                                         <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
-                                        {post_count.toLocaleString()} posts
+                                        {post_count.toLocaleString()} постів
                                     </div>
                                 </div>
                             </Link>
