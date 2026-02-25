@@ -10,12 +10,23 @@ export default function LogsTable() {
     return (
         <div>
             <div className="flex gap-2 mb-4">
-                <input type="text" placeholder="Пошук..." className="border px-3 py-2 rounded w-full max-w-sm bg-background" value={search} onChange={(e) => setSearch(e.target.value)} />
+                <input
+                    type="text"
+                    placeholder="Пошук..."
+                    className="border px-3 py-2 rounded w-full max-w-sm bg-background"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                />
             </div>
             <div className="rounded border overflow-hidden">
                 <table className="w-full text-sm">
                     <thead className="bg-muted">
-                    <tr><th className="p-2 text-left">Час</th><th className="p-2 text-left">Адмін</th><th className="p-2 text-left">Дія</th><th className="p-2 text-left">Деталі</th></tr>
+                    <tr>
+                        <th className="p-2 text-left">Час</th>
+                        <th className="p-2 text-left">Адмін</th>
+                        <th className="p-2 text-left">Дія</th>
+                        <th className="p-2 text-left">Деталі</th>
+                    </tr>
                     </thead>
                     <tbody>
                     {data?.data.map(log => (
@@ -28,6 +39,12 @@ export default function LogsTable() {
                     ))}
                     </tbody>
                 </table>
+            </div>
+            {/* Додана пагінація, щоб setPage використовувався */}
+            <div className="mt-4 flex justify-between items-center text-sm">
+                <button disabled={page === 0} onClick={() => setPage(p => p - 1)} className="disabled:opacity-50 px-2 py-1 border rounded cursor-pointer">Назад</button>
+                <span>Сторінка {page + 1}</span>
+                <button disabled={page >= (data?.total_pages || 0) - 1} onClick={() => setPage(p => p + 1)} className="disabled:opacity-50 px-2 py-1 border rounded cursor-pointer">Далі</button>
             </div>
         </div>
     )
