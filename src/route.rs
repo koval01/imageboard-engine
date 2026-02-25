@@ -14,7 +14,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 use crate::{
     handler::{
-        board::{home_handler, view_board_handler, view_thread_handler, create_thread_handler, reply_handler, poll_new_posts_handler},
+        board::{home_handler, view_board_handler, view_thread_handler, create_thread_handler, reply_handler, poll_new_posts_handler, get_single_post_handler},
         middleware::{session_middleware, bot_guard_middleware, response_time_middleware},
         admin::{create_report, resolve_report},
     },
@@ -59,6 +59,7 @@ pub fn create_router(app_state: Arc<RwLock<AppState>>) -> Router {
         .route("/{slug}/thread/{id}", get(view_thread_handler))
         .route("/{slug}/thread/{id}/reply", post(reply_handler))
         .route("/{slug}/thread/{id}/poll", get(poll_new_posts_handler))
+        .route("/post/{id}", get(get_single_post_handler)) // New route
         .route("/report", post(create_report))
         // Admin API
         .route("/admin/status", get(api_check_admin))

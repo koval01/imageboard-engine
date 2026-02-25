@@ -57,3 +57,7 @@ export interface ThreadResponse {
     is_bump_limit: boolean;
     is_time_limit: boolean;
 }
+
+export interface SinglePostResponse {
+    post: PostItem;
+}

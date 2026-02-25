@@ -1,5 +1,5 @@
 import { baseApi } from './base'
-import type { HomeResponse, BoardResponse, ThreadResponse, PostItem } from '@/types/api'
+import type { HomeResponse, BoardResponse, ThreadResponse, PostItem, SinglePostResponse } from '@/types/api'
 
 export const boardApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
@@ -13,6 +13,9 @@ export const boardApi = baseApi.injectEndpoints({
         getThread: builder.query<ThreadResponse, { slug: string; id: number }>({
             query: ({ slug, id }) => `/${slug}/thread/${id}`,
             providesTags: ['Thread'],
+        }),
+        getPost: builder.query<SinglePostResponse, number>({
+            query: (id) => `/post/${id}`,
         }),
         postReply: builder.mutation<PostItem, { slug: string; id: number; formData: FormData }>({
             query: ({ slug, id, formData }) => ({
@@ -43,4 +46,6 @@ export const {
     usePostReplyMutation,
     useCreateThreadMutation,
     useReportPostMutation,
+    useGetPostQuery,
+    useLazyGetPostQuery,
 } = boardApi

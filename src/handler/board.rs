@@ -26,7 +26,6 @@ use crate::{
 };
 
 // --- SAFE DTOs (Data Transfer Objects) ---
-// These structs explicitly define what is sent to the client.
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SafeImage {
@@ -37,7 +36,6 @@ pub struct SafeImage {
     pub width: i32,
     pub height: i32,
     pub size: i64,
-    // Excluded: storage_key, hash, phash
 }
 
 impl From<images::Model> for SafeImage {
@@ -61,7 +59,6 @@ pub struct SafePost {
     pub content: String,
     pub country_code: Option<String>,
     pub created_at: NaiveDateTime,
-    // Sensitive fields that are conditionally included
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ip_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -77,7 +74,6 @@ pub struct SafeThread {
     pub country_code: Option<String>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
-    // Sensitive fields
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ip_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -112,7 +108,6 @@ pub struct BoardStat {
     pub post_count: u64,
 }
 
-// Updated CacheData to store the Safe structs to prevent accidental leaks via cache
 #[derive(Clone, Serialize, Deserialize)]
 pub enum CacheData {
     Home(Vec<BoardStat>, Vec<RecentImageDto>, Vec<SafeThread>),
@@ -168,6 +163,11 @@ pub struct PostsListResponse {
     pub thread_id: i32,
 }
 
+#[derive(Serialize)]
+pub struct SinglePostResponse {
+    pub post: PostItem,
+}
+
 #[derive(Deserialize)]
 pub struct PollQuery {
     pub after: i32,
@@ -175,7 +175,6 @@ pub struct PollQuery {
 
 // --- Helper Functions ---
 
-// Helper to convert DB models to Safe DTOs with permission checks
 fn to_safe_post(m: posts::Model, role: i32) -> SafePost {
     SafePost {
         id: m.id,
@@ -183,7 +182,6 @@ fn to_safe_post(m: posts::Model, role: i32) -> SafePost {
         content: m.content,
         country_code: m.country_code,
         created_at: m.created_at,
-        // Only show IP and Session to Mods (Role >= 2) or Admins
         ip_address: if role >= 2 { Some(m.ip_address) } else { None },
         session_id: if role >= 2 { Some(m.session_id) } else { None },
     }
@@ -198,7 +196,6 @@ fn to_safe_thread(m: threads::Model, role: i32) -> SafeThread {
         country_code: m.country_code,
         created_at: m.created_at,
         updated_at: m.updated_at,
-        // Only show IP and Session to Mods (Role >= 2) or Admins
         ip_address: if role >= 2 { Some(m.ip_address) } else { None },
         session_id: if role >= 2 { Some(m.session_id) } else { None },
     }
@@ -219,7 +216,7 @@ async fn parse_multipart_form(
     let mut content = String::new();
     let mut processed_images = Vec::new();
 
-    let max_file_size = 5 * 1024 * 1024; // 5 MB
+    let max_file_size = 5 * 1024 * 1024;
     let max_files = 5;
 
     while let Some(field) = multipart.next_field().await.map_err(|e| e.body_text())? {
@@ -287,9 +284,6 @@ pub async fn home_handler(
     let state_read = state.read().await;
     let cache_key = "home_view".to_string();
 
-    // Cache logic: Note that cache stores SAFE structs now.
-    // If cache exists, we return it. Note: Cached data does NOT contain IPs.
-    // Admin IPs won't show up in cached home views, which is acceptable for performance.
     if let Some(CacheData::Home(c_boards, c_images, c_threads)) = state_read.db_cache.get(&cache_key).await {
         return Json(HomeResponse {
             boards: c_boards,
@@ -367,7 +361,6 @@ pub async fn home_handler(
         .await
         .unwrap_or_default();
 
-    // Cache stores data without IPs (Role 0 view)
     let recent_threads_safe: Vec<SafeThread> = recent_threads_raw.into_iter()
         .map(|t| to_safe_thread(t, 0))
         .collect();
@@ -401,10 +394,6 @@ pub async fn view_board_handler(
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
 
-    // Note: Cached Board Data acts as Role 0 (No IPs).
-    // If an Admin views the board, we *could* bypass cache to show IPs,
-    // but typically admins view IPs inside threads or mod view.
-    // For now, we serve cached safe data to everyone for performance.
     let cached_threads = if let Some(CacheData::Board(items)) = state_read.db_cache.get(&cache_key).await {
         Some(items)
     } else {
@@ -460,7 +449,7 @@ pub async fn view_board_handler(
             let mut replies_preview = Vec::new();
             for j in start_idx..reply_count {
                 replies_preview.push(PostItem {
-                    model: to_safe_post(posts_raw[j].clone(), 0), // Cache as safe (Role 0)
+                    model: to_safe_post(posts_raw[j].clone(), 0),
                     images: post_images_raw[j].iter().map(|i| SafeImage::from(i.clone())).collect(),
                     cdn_url: cdn_url.clone(),
                     admin_role: 0,
@@ -469,7 +458,7 @@ pub async fn view_board_handler(
             }
 
             items.push(ThreadItem {
-                model: to_safe_thread(thread, 0), // Cache as safe (Role 0)
+                model: to_safe_thread(thread, 0),
                 images: thread_images[i].iter().map(|i| SafeImage::from(i.clone())).collect(),
                 replies_preview,
                 reply_count,
@@ -485,8 +474,6 @@ pub async fn view_board_handler(
         items
     };
 
-    // If User is Admin, we *could* re-fetch to show IPs, but for Board Index it's usually overkill.
-    // We just update the admin_role field in the DTO so the frontend shows buttons.
     let final_threads: Vec<ThreadItem> = thread_items.into_iter().map(|mut t| {
         t.replies_preview.iter_mut().for_each(|r| r.admin_role = session.role);
         t
@@ -515,12 +502,8 @@ pub async fn view_thread_handler(
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
 
-    // FOR THREAD VIEW: If user is ADMIN/MOD, we bypass cache or re-fetch to ensure they see IPs.
-    // Standard users get cached safe data.
-
     if session.role < 2 {
         if let Some(CacheData::Thread(th, op, reps)) = state_read.db_cache.get(&cache_key).await {
-            // Update admin_role for UI logic
             let final_replies: Vec<PostItem> = reps.into_iter().map(|mut p| {
                 p.admin_role = session.role;
                 p
@@ -546,7 +529,6 @@ pub async fn view_thread_handler(
         }
     }
 
-    // Fetch fresh data (either because cache miss OR user is admin/mod)
     let thread = threads::Entity::find_by_id(thread_id).one(db).await.unwrap();
     if let Some(thread) = thread {
         if thread.board_slug != slug {
@@ -567,7 +549,7 @@ pub async fn view_thread_handler(
         let mut posts_dto = Vec::new();
         for (i, post) in posts_raw.into_iter().enumerate() {
             posts_dto.push(PostItem {
-                model: to_safe_post(post, session.role), // Inject IPs if Admin
+                model: to_safe_post(post, session.role),
                 images: post_images_vec[i].iter().map(|img| SafeImage::from(img.clone())).collect(),
                 cdn_url: cdn_url.clone(),
                 admin_role: session.role,
@@ -577,7 +559,6 @@ pub async fn view_thread_handler(
 
         let safe_thread = to_safe_thread(thread.clone(), session.role);
 
-        // Only cache if it's the public view (role < 2)
         if session.role < 2 {
             state_read.db_cache.insert(
                 cache_key,
@@ -606,6 +587,44 @@ pub async fn view_thread_handler(
     } else {
         StatusCode::NOT_FOUND.into_response()
     }
+}
+
+pub async fn get_single_post_handler(
+    State(state): State<Arc<RwLock<AppState>>>,
+    Extension(session): Extension<CurrentSession>,
+    Path(post_id): Path<i32>,
+) -> Response {
+    let state_read = state.read().await;
+    let db = &state_read.pool;
+    let cdn_url = state_read.config.cdn_url.clone();
+
+    let post = match posts::Entity::find_by_id(post_id).one(db).await {
+        Ok(Some(p)) => p,
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    };
+
+    let thread = match threads::Entity::find_by_id(post.thread_id).one(db).await {
+        Ok(Some(t)) => t,
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    };
+
+    let images_raw = images::Entity::find()
+        .filter(images::Column::PostId.eq(post.id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+
+    let images_dto: Vec<SafeImage> = images_raw.into_iter().map(SafeImage::from).collect();
+
+    let post_item = PostItem {
+        model: to_safe_post(post, session.role),
+        images: images_dto,
+        cdn_url,
+        admin_role: session.role,
+        board_slug: thread.board_slug,
+    };
+
+    Json(SinglePostResponse { post: post_item }).into_response()
 }
 
 pub async fn create_thread_handler(
