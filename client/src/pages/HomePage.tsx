@@ -20,7 +20,7 @@ export default function HomePage() {
                     <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">
                         <span className="text-primary">Kryivka</span>
                     </h1>
-                    <p className="text-lg text-muted-foreground mb-6">Анонімний іміджборд на Rust & React.</p>
+                    <p className="text-lg text-muted-foreground mb-6">Анонімний український іміджборд.</p>
                 </div>
             </section>
 

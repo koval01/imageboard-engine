@@ -70,10 +70,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <footer className="border-t border-border/40 py-6 md:py-8 bg-muted/20">
                 <div className="container mx-auto flex flex-col items-center justify-center gap-4 px-4 text-center md:flex-row md:justify-between">
                     <p className="text-sm text-muted-foreground">
-                        © {new Date().getFullYear()} Kryivka.org.
+                        © {new Date().getFullYear()} Kryivka.org. Уявіть що тут дуже діловий текст.
                     </p>
                     <div className="text-xs text-muted-foreground opacity-50">
-                        Built with Rust & React
+                        Зліпили з гівна і палок
                     </div>
                 </div>
             </footer>
