@@ -13,6 +13,7 @@ import {
     DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { uk } from "date-fns/locale";
 
 interface PostProps {
     post: PostItem;
@@ -54,7 +55,7 @@ export function Post({ post, isOp, onReply, onReport, onBan, onDelete, onInvesti
 
                     <span className="text-xs">
                         {/* Український формат дати: DD.MM.YY */}
-                        {format(new Date(model.created_at), "dd.MM.yy(E)HH:mm:ss")}
+                        {format(new Date(model.created_at), "dd.MM.yy (EEE) HH:mm:ss", { locale: uk })}
                     </span>
 
                     <span

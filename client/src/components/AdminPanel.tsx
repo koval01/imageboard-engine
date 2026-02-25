@@ -193,7 +193,7 @@ function LogsTab() {
                 <input
                     type="text"
                     placeholder="Пошук у логах..."
-                    className="border px-3 py-2 rounded w-full max-w-sm"
+                    className="border px-3 py-2 rounded w-full max-w-sm bg-background text-foreground placeholder:text-muted-foreground"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                 />
@@ -278,7 +278,7 @@ function InvestigationTab({ initialTarget }: { initialTarget: string }) {
                     <h3 className="font-bold mb-2 flex items-center gap-2"><Search size={18} /> Пошук та Аналіз</h3>
                     <form onSubmit={onFormSubmit} className="flex gap-2">
                         <input
-                            className="border p-2 rounded flex-1"
+                            className="border px-3 py-2 rounded w-full max-w-sm bg-background text-foreground placeholder:text-muted-foreground"
                             placeholder="IP, Session ID або текст..."
                             value={target}
                             onChange={e => setTarget(e.target.value)}
