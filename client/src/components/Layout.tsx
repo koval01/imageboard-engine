@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Toaster } from 'sonner'
 
-// Helper for page transitions
 const PageTransition = ({ children }: { children: React.ReactNode }) => {
     return (
         <motion.div
@@ -54,7 +53,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     <button
                         onClick={toggleTheme}
                         className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-transparent shadow-sm transition-all hover:bg-accent hover:text-accent-foreground hover:rotate-12 active:scale-90"
-                        title={theme === 'light' ? "Увімкнути темну тему" : "Увімкнути світлу тему"}
                     >
                         {theme === 'light' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                     </button>
@@ -72,10 +70,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <footer className="border-t border-border/40 py-6 md:py-8 bg-muted/20">
                 <div className="container mx-auto flex flex-col items-center justify-center gap-4 px-4 text-center md:flex-row md:justify-between">
                     <p className="text-sm text-muted-foreground">
-                        © {new Date().getFullYear()} Kryivka.org. Всі права захищені (або ні).
+                        © {new Date().getFullYear()} Kryivka.org.
                     </p>
                     <div className="text-xs text-muted-foreground opacity-50">
-                        Працює на чесному слові та Rust
+                        Built with Rust & React
                     </div>
                 </div>
             </footer>

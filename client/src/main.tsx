@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { Provider } from 'react-redux'
-import {createBrowserRouter, RouterProvider, Outlet, Navigate} from 'react-router-dom'
+import { createBrowserRouter, RouterProvider, Outlet, Navigate } from 'react-router-dom'
 import { store } from './store/store'
 import './index.css'
 
@@ -11,49 +11,25 @@ import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
 import '@fontsource/jetbrains-mono/400.css';
 
-import Layout from './components/Layout'
-import HomePage from './pages/HomePage'
-import BoardPage from './pages/BoardPage'
-import ThreadPage from './pages/ThreadPage'
-import NotFoundPage from './pages/NotFoundPage'
-import Admin from "@/pages/Admin.tsx";
+import Layout from '@/components/common/Layout'
+import HomePage from '@/pages/HomePage'
+import BoardPage from '@/pages/BoardPage'
+import ThreadPage from '@/pages/ThreadPage'
+import NotFoundPage from '@/pages/NotFoundPage'
+import AdminPage from "@/pages/Admin"
 
-// Router Wrapper to pass Outlet to Layout
-const LayoutWrapper = () => (
-    <Layout>
-        <Outlet />
-    </Layout>
-)
+const LayoutWrapper = () => (<Layout><Outlet /></Layout>)
 
 const router = createBrowserRouter([
     {
         element: <LayoutWrapper />,
-        errorElement: (
-            <Layout>
-                <NotFoundPage />
-            </Layout>
-        ),
+        errorElement: <Layout><NotFoundPage /></Layout>,
         children: [
-            {
-                path: "/",
-                element: <HomePage />,
-            },
-            {
-                path: "/home",
-                element: <Navigate to="/" replace />
-            },
-            {
-                path: "/admin",
-                element: <Admin />
-            },
-            {
-                path: "/:slug",
-                element: <BoardPage />,
-            },
-            {
-                path: "/:slug/thread/:id",
-                element: <ThreadPage />,
-            },
+            { path: "/", element: <HomePage /> },
+            { path: "/home", element: <Navigate to="/" replace /> },
+            { path: "/admin", element: <AdminPage /> },
+            { path: "/:slug", element: <BoardPage /> },
+            { path: "/:slug/thread/:id", element: <ThreadPage /> },
         ],
     },
 ])
