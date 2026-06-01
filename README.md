@@ -1,10 +1,3 @@
-<div align="center">
-  
-<h1 align="center">kryivka.org</h1>
-
-<hr />
-</div>
-
 ## 👨‍🚀 Getting Started
 
 #### How to build for production
