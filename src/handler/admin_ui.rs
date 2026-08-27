@@ -78,12 +78,12 @@ pub async fn admin_gate_js(State(state): State<Arc<RwLock<AppState>>>) -> Respon
             .header("X-Content-Type-Options", "nosniff")
             .body(Body::from(bytes))
             .unwrap(),
-        Err(_) => (
-            StatusCode::NOT_FOUND,
-            "application/javascript",
-            "// gate unavailable",
-        )
-            .into_response(),
+        Err(_) => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header(header::CONTENT_TYPE, "application/javascript; charset=utf-8")
+            .header(header::CACHE_CONTROL, "no-store")
+            .body(Body::from("// gate unavailable"))
+            .unwrap(),
     }
 }
 

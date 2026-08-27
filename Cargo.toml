@@ -26,7 +26,7 @@ sea-orm = { version = "1.1", features = ["sqlx-sqlite", "sqlx-postgres", "runtim
 sea-orm-migration = { version = "1.1", features = ["runtime-tokio-rustls", "sqlx-sqlite", "sqlx-postgres"] }
 time = "0.3"
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.6", features = ["fs", "trace", "cors", "catch-panic"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "cors", "catch-panic", "set-header"] }
 tower = "0.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

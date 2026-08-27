@@ -59,24 +59,9 @@ export const adminApi = baseApi.injectEndpoints({
             query: () => '/admin/staff',
             providesTags: ['Staff'],
         }),
-        createStaff: builder.mutation<void, { username: string; password: string; role: number }>({
-            query: ({ username, password, role }) => ({
-                url: '/admin/staff',
-                method: 'POST',
-                body: { username, role, password_enc: sealPassword(password) },
-            }),
-            invalidatesTags: ['Staff', 'Logs'],
-        }),
         updateStaff: builder.mutation<void, { id: number } & Record<string, unknown>>({
             query: ({ id, ...body }) => ({ url: `/admin/staff/${id}`, method: 'POST', body }),
             invalidatesTags: ['Staff'],
-        }),
-        resetStaffPassword: builder.mutation<void, { id: number; password: string }>({
-            query: ({ id, password }) => ({
-                url: `/admin/staff/${id}/password`,
-                method: 'POST',
-                body: { password_enc: sealPassword(password) },
-            }),
         }),
         deleteStaff: builder.mutation<void, number>({
             query: (id) => ({ url: `/admin/staff/${id}/delete`, method: 'POST' }),
@@ -109,7 +94,6 @@ export const adminApi = baseApi.injectEndpoints({
 export const {
     useCheckAdminQuery,
     useAdminLogoutMutation,
-    useChangePasswordMutation,
     useGetAdminStatsQuery,
     useGetAdminLogsQuery,
     useGetReportsQuery,
@@ -121,9 +105,7 @@ export const {
     useDeleteContentMutation,
     useHideContentMutation,
     useListStaffQuery,
-    useCreateStaffMutation,
     useUpdateStaffMutation,
-    useResetStaffPasswordMutation,
     useDeleteStaffMutation,
     useGetStaffSettingsQuery,
     useSaveStaffSettingsMutation,

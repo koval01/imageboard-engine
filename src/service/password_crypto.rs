@@ -40,6 +40,7 @@ impl PasswordCrypto {
     }
 }
 
+#[allow(deprecated)]
 fn seal_nonce(
     ephemeral_pk: &[u8],
     recipient_pk: &[u8],
