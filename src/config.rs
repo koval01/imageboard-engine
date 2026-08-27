@@ -26,12 +26,14 @@ pub struct Config {
     pub janitor_bootstrap_user: Option<String>,
     pub janitor_bootstrap_key: Option<String>,
     pub thread_age_limit_days: i64,
+    pub media_ttl_days: i64,
     pub purge_interval_secs: u64,
     pub rate_limit_secs: u64,
 }
 
 pub const BUMP_LIMIT: u64 = 500;
 pub const THREAD_AGE_LIMIT_DAYS: i64 = 30;
+pub const MEDIA_TTL_DAYS: i64 = 30;
 
 fn env_bool(key: &str, default: bool) -> bool {
     std::env::var(key)
@@ -89,6 +91,11 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(THREAD_AGE_LIMIT_DAYS),
+            media_ttl_days: std::env::var("MEDIA_TTL_DAYS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(MEDIA_TTL_DAYS)
+                .max(1),
             purge_interval_secs: std::env::var("PURGE_INTERVAL_SECS")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -122,6 +129,7 @@ impl Config {
             janitor_bootstrap_user: None,
             janitor_bootstrap_key: None,
             thread_age_limit_days: THREAD_AGE_LIMIT_DAYS,
+            media_ttl_days: MEDIA_TTL_DAYS,
             purge_interval_secs: 600,
             rate_limit_secs: 60,
         }

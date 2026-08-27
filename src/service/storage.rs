@@ -1,12 +1,13 @@
 use crate::config::{Config, StorageType};
 use crate::model::images;
+use crate::service::sanitize_exif_value;
 use anyhow::{anyhow, Context, Result};
 use aws_config::meta::region::RegionProviderChain;
 use aws_config::BehaviorVersion;
 use aws_credential_types::Credentials;
 use aws_sdk_s3::{config::Region, Client};
 use bytes::Bytes;
-use image::{imageops::FilterType, GenericImageView};
+use image::{imageops::FilterType, DynamicImage, GenericImageView, ImageDecoder, ImageFormat, ImageReader, Limits};
 use exif::{Reader as ExifReader, Tag};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use sha2::{Digest, Sha256};
@@ -22,6 +23,7 @@ pub struct StorageService {
     s3_bucket: String,
     local_path: PathBuf,
     storage_type: StorageType,
+    cache_control: String,
 }
 
 #[derive(Debug)]
@@ -38,11 +40,62 @@ pub struct ProcessedImage {
     pub exif: Option<serde_json::Value>,
 }
 
-// Configuration constants
-const MAX_WIDTH: u32 = 2000;
-const MAX_HEIGHT: u32 = 2000;
-const IMAGE_QUALITY: f32 = 72.0;
-const THUMB_QUALITY: f32 = 55.0;
+const MAX_WIDTH: u32 = 1280;
+const MAX_HEIGHT: u32 = 1280;
+const MAX_SRC_SIDE: u32 = 8000;
+const MAX_PIXELS: u64 = 25_000_000;
+const IMAGE_QUALITY: f32 = 48.0;
+const THUMB_QUALITY: f32 = 36.0;
+const THUMB_SIZE: u32 = 256;
+
+pub fn is_declared_raster_content_type(ct: &str) -> bool {
+    matches!(
+        ct.trim().to_ascii_lowercase().as_str(),
+        "image/jpeg" | "image/jpg" | "image/pjpeg" | "image/png" | "image/gif" | "image/webp"
+    )
+}
+
+pub fn sniff_raster_image(data: &[u8]) -> bool {
+    if data.len() < 12 {
+        return false;
+    }
+    data.starts_with(&[0xFF, 0xD8, 0xFF])
+        || data.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A])
+        || data.starts_with(b"GIF87a")
+        || data.starts_with(b"GIF89a")
+        || (data.starts_with(b"RIFF") && data.get(8..12) == Some(&b"WEBP"[..]))
+}
+
+pub fn decode_allowed_raster(bytes: &[u8]) -> Result<DynamicImage> {
+    if !sniff_raster_image(bytes) {
+        return Err(anyhow!("Потрібне зображення (JPEG, PNG, WebP, GIF)."));
+    }
+    let reader = ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .context("Потрібне зображення (JPEG, PNG, WebP, GIF).")?;
+    match reader.format() {
+        Some(ImageFormat::Jpeg | ImageFormat::Png | ImageFormat::Gif | ImageFormat::WebP) => {}
+        _ => return Err(anyhow!("Потрібне зображення (JPEG, PNG, WebP, GIF).")),
+    }
+    let mut reader = reader;
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(MAX_SRC_SIDE);
+    limits.max_image_height = Some(MAX_SRC_SIDE);
+    limits.max_alloc = Some(128 * 1024 * 1024);
+    reader.limits(limits);
+    let decoder = reader
+        .into_decoder()
+        .context("Потрібне зображення (JPEG, PNG, WebP, GIF).")?;
+    let (w, h) = decoder.dimensions();
+    if w == 0 || h == 0 {
+        return Err(anyhow!("Порожнє зображення."));
+    }
+    if (w as u64).saturating_mul(h as u64) > MAX_PIXELS {
+        return Err(anyhow!("Зображення занадто велике."));
+    }
+    let img = DynamicImage::from_decoder(decoder).context("Не вдалося прочитати зображення.")?;
+    Ok(DynamicImage::ImageRgb8(img.into_rgb8()))
+}
 
 impl StorageService {
     pub async fn init(config: &Config) -> Self {
@@ -81,11 +134,17 @@ impl StorageService {
                 .expect("Failed to create media directory");
         }
 
+        let cache_control = format!(
+            "public, max-age={}",
+            config.media_ttl_days.max(1) as u64 * 86_400
+        );
+
         Self {
             s3_client,
             s3_bucket,
             local_path: PathBuf::from(&config.media_path),
             storage_type: config.storage_type.clone(),
+            cache_control,
         }
     }
 
@@ -105,7 +164,7 @@ impl StorageService {
                     .key(key)
                     .body(data.into())
                     .content_type(content_type)
-                    .cache_control("max-age=31536000")
+                    .cache_control(&self.cache_control)
                     .send()
                     .await
                     .context("Failed to upload to S3")?;
@@ -151,6 +210,8 @@ impl StorageService {
         original_filename: String,
         db: &DatabaseConnection,
     ) -> Result<ProcessedImage> {
+        let original_filename = crate::service::sanitize_filename(&original_filename);
+
         let (full_img_bytes, thumb_img_bytes, width, height, exif_json, phash_str) =
             tokio::task::spawn_blocking(move || {
                 let mut exif_map = serde_json::Map::new();
@@ -176,7 +237,10 @@ impl StorageService {
                     for field in exif.fields() {
                         if tags_of_interest.contains(&field.tag) {
                             let val_str = field.display_value().with_unit(&exif).to_string();
-                            let clean_val = val_str.trim_matches(char::from(0)).to_string();
+                            let clean_val = sanitize_exif_value(&val_str);
+                            if clean_val.is_empty() {
+                                continue;
+                            }
                             exif_map.insert(
                                 field.tag.description().unwrap_or(field.tag.to_string().as_str()).to_string(),
                                 serde_json::Value::String(clean_val)
@@ -191,8 +255,7 @@ impl StorageService {
                     Some(serde_json::Value::Object(exif_map))
                 };
 
-                let img = image::load_from_memory(&file_bytes)
-                    .context("Failed to load image from memory")?;
+                let img = decode_allowed_raster(&file_bytes)?;
 
                 let hasher = HasherConfig::new().hash_alg(HashAlg::Mean).to_hasher();
                 let phash = hasher.hash_image(&img);
@@ -203,7 +266,7 @@ impl StorageService {
                 let processed_img = if w > MAX_WIDTH || h > MAX_HEIGHT {
                     img.resize(MAX_WIDTH, MAX_HEIGHT, FilterType::Lanczos3)
                 } else {
-                    img.clone()
+                    img
                 };
 
                 let (final_w, final_h) = processed_img.dimensions();
@@ -213,7 +276,7 @@ impl StorageService {
                 let webp_data = encoder.encode(IMAGE_QUALITY);
                 let main_bytes = webp_data.to_vec();
 
-                let thumb_img = img.thumbnail(384, 384);
+                let thumb_img = processed_img.thumbnail(THUMB_SIZE, THUMB_SIZE);
                 let thumb_encoder = Encoder::from_image(&thumb_img)
                     .map_err(|e| anyhow!("Thumbnail WebP encoding failed: {:?}", e))?;
                 let thumb_data = thumb_encoder.encode(THUMB_QUALITY);

@@ -20,7 +20,10 @@ use crate::{
     model::{boards, threads, posts, images},
     AppState,
     handler::middleware::CurrentSession,
-    service::{ProcessedImage, StorageService, resolve_country_code},
+    service::{
+        ProcessedImage, StorageService, is_declared_raster_content_type, resolve_country_code,
+        sanitize_filename, sanitize_post_body, sanitize_subject, MAX_TEXT_BYTES,
+    },
     security::get_client_ip,
     config::BUMP_LIMIT,
 };
@@ -44,7 +47,7 @@ impl From<images::Model> for SafeImage {
             id: m.id,
             url: m.url,
             thumbnail_url: m.thumbnail_url,
-            filename: m.filename,
+            filename: sanitize_filename(&m.filename),
             width: m.width,
             height: m.height,
             size: m.size,
@@ -183,7 +186,7 @@ fn to_safe_post(m: posts::Model, view_ip: bool) -> SafePost {
     SafePost {
         id: m.id,
         thread_id: m.thread_id,
-        content: m.content,
+        content: sanitize_post_body(&m.content),
         country_code: m.country_code,
         created_at: m.created_at,
         ip_address: if view_ip { Some(m.ip_address) } else { None },
@@ -196,8 +199,8 @@ fn to_safe_thread(m: threads::Model, view_ip: bool) -> SafeThread {
     SafeThread {
         id: m.id,
         board_slug: m.board_slug,
-        subject: m.subject,
-        content: m.content,
+        subject: m.subject.as_deref().and_then(sanitize_subject),
+        content: sanitize_post_body(&m.content),
         country_code: m.country_code,
         created_at: m.created_at,
         updated_at: m.updated_at,
@@ -230,11 +233,17 @@ async fn parse_multipart_form(
 
         if name == "subject" {
             if let Ok(txt) = field.text().await {
-                if !txt.is_empty() { subject = Some(txt); }
+                if txt.len() > MAX_TEXT_BYTES {
+                    return Err("Тема задовга.".to_string());
+                }
+                subject = sanitize_subject(&txt);
             }
         } else if name == "content" {
             if let Ok(txt) = field.text().await {
-                content = txt;
+                if txt.len() > MAX_TEXT_BYTES {
+                    return Err("Текст задовгий (макс. 15000 символів).".to_string());
+                }
+                content = sanitize_post_body(&txt);
             }
         } else if name == "file" {
             if processed_images.len() >= max_files {
@@ -249,17 +258,17 @@ async fn parse_multipart_form(
                 continue;
             }
 
-            if !content_type.starts_with("image/") {
+            if !is_declared_raster_content_type(&content_type) {
                 return Err("Потрібне зображення (JPEG, PNG, WebP, GIF).".to_string());
             }
 
             if data.len() > max_file_size {
-                return Err(format!("Файл {} завеликий (макс. 5 МБ)", filename));
+                return Err(format!("Файл {} завеликий (макс. 5 МБ)", sanitize_filename(&filename)));
             }
 
             match storage.upload_image(data, filename, db).await {
                 Ok(img) => processed_images.push(img),
-                Err(e) => return Err(format!("Помилка завантаження: {}", e)),
+                Err(e) => return Err(e.to_string()),
             }
         }
     }

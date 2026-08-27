@@ -81,6 +81,38 @@ test('non-image upload is rejected', async ({ request }) => {
   expect(res.status()).toBe(400)
 })
 
+test('SVG upload is rejected', async ({ request }) => {
+  const sessionId = await clientKey(request)
+  const res = await request.post('/api/m/submit', {
+    headers: powHeaders(sessionId),
+    multipart: {
+      content: 'svg',
+      file: {
+        name: 'x.svg',
+        mimeType: 'image/svg+xml',
+        buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>'),
+      },
+    },
+  })
+  expect(res.status()).toBe(400)
+})
+
+test('HTML tags are stripped from post text', async ({ request }) => {
+  const ip = `198.51.102.${Math.floor(Math.random() * 200) + 1}`
+  const marker = `xss-${Date.now()}`
+  const first = await powPost(request, '/api/m/submit', {
+    headers: { 'CF-Connecting-IP': ip },
+    multipart: { content: `<script>alert(1)</script>[b]${marker}[/b]` },
+  })
+  expect(first.ok()).toBeTruthy()
+  const { thread_id } = await first.json()
+  const view = await request.get(`/api/m/thread/${thread_id}`)
+  expect(view.ok()).toBeTruthy()
+  const json = await view.json()
+  expect(json.thread.content).toContain(`[b]${marker}[/b]`)
+  expect(String(json.thread.content).toLowerCase()).not.toContain('<script')
+})
+
 test('rate limit rejects a second post from the same IP', async ({ request }) => {
   const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`
   const first = await powPost(request, '/api/m/submit', {

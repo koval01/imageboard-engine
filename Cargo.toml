@@ -49,6 +49,8 @@ chrono-tz = "0.10"
 zxcvbn = "3"
 crypto_box = "0.9"
 blake2 = "0.10"
+ammonia = "4"
+html-escape = "0.2"
 
 [dev-dependencies]
 urlencoding = "2"

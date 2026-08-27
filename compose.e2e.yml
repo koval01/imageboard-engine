@@ -61,6 +61,7 @@ services:
       JANITOR_BOOTSTRAP_USER: janitor
       JANITOR_BOOTSTRAP_KEY: "E2e-Mod-Key#42x!"
       THREAD_AGE_LIMIT_DAYS: 30
+      MEDIA_TTL_DAYS: 30
       PURGE_INTERVAL_SECS: 600
       RATE_LIMIT_SECS: "3"
       RUST_LOG: info

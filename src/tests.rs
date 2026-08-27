@@ -1006,3 +1006,206 @@ async fn test_cidr_ban_blocks_range() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
+fn tiny_png_bytes() -> Vec<u8> {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD
+        .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+        .unwrap()
+}
+
+async fn post_thread_multipart(
+    app: &axum::Router,
+    session_id: &str,
+    content: &str,
+    file: Option<(&str, &str, &[u8])>,
+    ip: Option<&str>,
+) -> axum::http::Response<Body> {
+    let boundary = "BoundaryContentSec";
+    let mut body = Vec::new();
+    body.extend_from_slice(
+        format!("--{boundary}\r\nContent-Disposition: form-data; name=\"content\"\r\n\r\n{content}\r\n")
+            .as_bytes(),
+    );
+    if let Some((name, ct, data)) = file {
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\nContent-Type: {ct}\r\n\r\n"
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(data);
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{boundary}--").as_bytes());
+
+    let (nonce, salt) = generate_pow_headers(session_id);
+    let mut req = build_req("/api/m/submit", "POST", Body::from(body), ip, None);
+    req.headers_mut().insert(
+        header::CONTENT_TYPE,
+        format!("multipart/form-data; boundary={boundary}").parse().unwrap(),
+    );
+    req.headers_mut()
+        .insert(header::COOKIE, format!("client_key={session_id}").parse().unwrap());
+    req.headers_mut()
+        .insert("X-PoW-Nonce", nonce.parse().unwrap());
+    req.headers_mut()
+        .insert("X-PoW-Salt", salt.parse().unwrap());
+    app.clone().oneshot(req).await.unwrap()
+}
+
+#[tokio::test]
+async fn test_html_is_stripped_from_post_body() {
+    let (app, _, _, _) = setup_app().await;
+    let marker = "ok-bbcode";
+    let response = post_thread_multipart(
+        &app,
+        "sanitizer_user",
+        &format!("<script>alert(1)</script>[b]{marker}[/b]<img src=x onerror=alert(1)>"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let created: Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap();
+    let tid = created["thread_id"].as_i64().unwrap();
+
+    let req = build_req(&format!("/api/m/thread/{tid}"), "GET", Body::empty(), None, None);
+    let view = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(view.status(), StatusCode::OK);
+    let json: Value = serde_json::from_slice(
+        &axum::body::to_bytes(view.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap();
+    let content = json["thread"]["content"].as_str().unwrap();
+    assert!(content.contains(&format!("[b]{marker}[/b]")), "bbcode kept: {content}");
+    assert!(!content.to_lowercase().contains("<script"), "{content}");
+    assert!(!content.to_lowercase().contains("onerror"), "{content}");
+    assert!(!content.contains('<'));
+}
+
+#[tokio::test]
+async fn test_svg_and_html_uploads_rejected() {
+    let (app, _, _, _) = setup_app().await;
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>"#;
+    let res = post_thread_multipart(
+        &app,
+        "svg_uploader",
+        "svg",
+        Some(("x.svg", "image/svg+xml", svg)),
+        Some("10.66.0.1"),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    let res = post_thread_multipart(
+        &app,
+        "html_uploader",
+        "html",
+        Some(("x.jpg", "image/jpeg", b"<script>alert(1)</script>")),
+        Some("10.66.0.2"),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_image_upload_strips_path_and_reencodes() {
+    let (app, _, _, _) = setup_app().await;
+    let png = tiny_png_bytes();
+    let response = post_thread_multipart(
+        &app,
+        "png_uploader",
+        "pic",
+        Some(("../../etc/passwd.png", "image/png", &png)),
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let created: Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap();
+    let tid = created["thread_id"].as_i64().unwrap();
+    let req = build_req(&format!("/api/m/thread/{tid}"), "GET", Body::empty(), None, None);
+    let view = app.oneshot(req).await.unwrap();
+    let json: Value = serde_json::from_slice(
+        &axum::body::to_bytes(view.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap();
+    let filename = json["op_images"][0]["filename"].as_str().unwrap();
+    assert!(!filename.contains(".."));
+    assert!(!filename.contains('/'));
+    assert!(filename.ends_with(".png") || filename.ends_with(".webp"));
+}
+
+#[tokio::test]
+async fn test_purge_expired_media_keeps_fresh_and_thread() {
+    let (_app, db, config, _) = setup_app().await;
+    let storage = StorageService::init(&config).await;
+
+    let thread = threads::ActiveModel {
+        board_slug: Set("m".to_string()),
+        content: Set("keep me".to_string()),
+        session_id: Set("s".to_string()),
+        ip_address: Set("10.0.0.9".to_string()),
+        created_at: Set(Utc::now().naive_utc()),
+        updated_at: Set(Utc::now().naive_utc()),
+        ..Default::default()
+    };
+    let t = thread.insert(&db).await.unwrap();
+
+    let old_key = format!("old_{}.webp", t.id);
+    let old_thumb = format!("old_{}_thumb.webp", t.id);
+    tokio::fs::write(format!("./test_media/{old_key}"), b"old").await.unwrap();
+    tokio::fs::write(format!("./test_media/{old_thumb}"), b"old").await.unwrap();
+    images::ActiveModel {
+        thread_id: Set(Some(t.id)),
+        url: Set(old_key.clone()),
+        thumbnail_url: Set(old_thumb.clone()),
+        filename: Set("old.webp".into()),
+        storage_key: Set(old_key.clone()),
+        hash: Set("oldhash".into()),
+        phash: Set("ph".into()),
+        width: Set(1),
+        height: Set(1),
+        size: Set(3),
+        created_at: Set(Utc::now().naive_utc() - chrono::Duration::days(40)),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let fresh_key = format!("fresh_{}.webp", t.id);
+    let fresh_thumb = format!("fresh_{}_thumb.webp", t.id);
+    tokio::fs::write(format!("./test_media/{fresh_key}"), b"new").await.unwrap();
+    tokio::fs::write(format!("./test_media/{fresh_thumb}"), b"new").await.unwrap();
+    let fresh = images::ActiveModel {
+        thread_id: Set(Some(t.id)),
+        url: Set(fresh_key.clone()),
+        thumbnail_url: Set(fresh_thumb.clone()),
+        filename: Set("fresh.webp".into()),
+        storage_key: Set(fresh_key.clone()),
+        hash: Set("freshhash".into()),
+        phash: Set("ph".into()),
+        width: Set(1),
+        height: Set(1),
+        size: Set(3),
+        created_at: Set(Utc::now().naive_utc()),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let n = crate::service::purge_expired_media(&db, &storage, 30).await.unwrap();
+    assert_eq!(n, 1);
+    assert!(threads::Entity::find_by_id(t.id).one(&db).await.unwrap().is_some());
+    assert!(images::Entity::find_by_id(fresh.id).one(&db).await.unwrap().is_some());
+    assert!(!std::path::Path::new(&format!("./test_media/{old_key}")).exists());
+    assert!(std::path::Path::new(&format!("./test_media/{fresh_key}")).exists());
+}
+

@@ -206,6 +206,17 @@ async fn main() -> Result<()> {
                     Ok(n) => tracing::info!("purged {n} inactive threads"),
                     Err(e) => tracing::error!("inactive thread purge failed: {e:#}"),
                 }
+                match service::purge_expired_media(
+                    &guard.pool,
+                    &guard.storage,
+                    guard.config.media_ttl_days,
+                )
+                .await
+                {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!("purged {n} expired media files"),
+                    Err(e) => tracing::error!("expired media purge failed: {e:#}"),
+                }
             }
         });
     }

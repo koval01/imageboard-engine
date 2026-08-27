@@ -21,7 +21,7 @@ use crate::{
     model::{bans, admin_logs, posts, images, reports, threads},
     AppState,
     security::get_client_ip,
-    service::{self, audit},
+    service::{self, audit, decode_allowed_raster, sanitize_reason},
 };
 
 // --- Data Structs for JSON API ---
@@ -406,61 +406,87 @@ pub async fn api_visual_search(
     let db = &state_read.pool;
     let cdn_url = &state_read.config.cdn_url;
 
-    while let Some(field) = multipart.next_field().await.unwrap() {
-        if field.name() == Some("file") {
-            let data = field.bytes().await.unwrap();
+    while let Ok(Some(field)) = multipart.next_field().await {
+        if field.name() != Some("file") {
+            continue;
+        }
+        let content_type = field.content_type().unwrap_or("").to_string();
+        if !content_type.is_empty() && !crate::service::is_declared_raster_content_type(&content_type) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Потрібне зображення (JPEG, PNG, WebP, GIF)."})),
+            )
+                .into_response();
+        }
+        let data = match field.bytes().await {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        if data.is_empty() {
+            continue;
+        }
+        if data.len() > 5 * 1024 * 1024 {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Файл завеликий (макс. 5 МБ)"})),
+            )
+                .into_response();
+        }
 
-            let hasher = HasherConfig::new().hash_alg(image_hasher::HashAlg::Mean).to_hasher();
-            if let Ok(img) = image::load_from_memory(&data) {
-                let hash = hasher.hash_image(&img);
+        let img = match decode_allowed_raster(&data) {
+            Ok(img) => img,
+            Err(e) => {
+                return (StatusCode::BAD_REQUEST, Json(json!({"error": e.to_string()}))).into_response();
+            }
+        };
 
-                let all_images = images::Entity::find()
-                    .filter(images::Column::Phash.ne(""))
-                    .all(db)
-                    .await
-                    .unwrap_or_default();
+        let hasher = HasherConfig::new().hash_alg(image_hasher::HashAlg::Mean).to_hasher();
+        let hash = hasher.hash_image(&img);
 
-                let mut matches = Vec::new();
+        let all_images = images::Entity::find()
+            .filter(images::Column::Phash.ne(""))
+            .all(db)
+            .await
+            .unwrap_or_default();
 
-                for mut db_img in all_images {
-                    if let Ok(db_hash_bytes) = BASE64.decode(&db_img.phash) {
-                        if let Ok(db_hash) = ImageHash::<Box<[u8]>>::from_bytes(&db_hash_bytes) {
-                            let dist = hash.dist(&db_hash);
-                            if dist < 15 {
-                                // Fix URLs here
-                                db_img.url = format!("{}/{}", cdn_url, db_img.url);
-                                db_img.thumbnail_url = format!("{}/{}", cdn_url, db_img.thumbnail_url);
-                                matches.push((db_img, dist));
-                            }
-                        }
+        let mut matches = Vec::new();
+
+        for mut db_img in all_images {
+            if let Ok(db_hash_bytes) = BASE64.decode(&db_img.phash) {
+                if let Ok(db_hash) = ImageHash::<Box<[u8]>>::from_bytes(&db_hash_bytes) {
+                    let dist = hash.dist(&db_hash);
+                    if dist < 15 {
+                        db_img.url = format!("{}/{}", cdn_url, db_img.url);
+                        db_img.thumbnail_url = format!("{}/{}", cdn_url, db_img.thumbnail_url);
+                        matches.push((db_img, dist));
                     }
                 }
-
-                matches.sort_by(|a, b| a.1.cmp(&b.1));
-
-                let mut results = Vec::new();
-                for (img, dist) in matches.into_iter().take(50) {
-                    let post = if let Some(pid) = img.post_id {
-                        posts::Entity::find_by_id(pid).one(db).await.unwrap_or(None)
-                    } else { None };
-
-                    let board_slug = if let Some(p) = &post {
-                        if let Ok(Some(t)) = threads::Entity::find_by_id(p.thread_id).one(db).await {
-                            Some(t.board_slug)
-                        } else { None }
-                    } else { None };
-
-                    results.push(json!({
-                        "image": img,
-                        "distance": dist,
-                        "post": post,
-                        "board_slug": board_slug
-                    }));
-                }
-
-                return Json(results).into_response();
             }
         }
+
+        matches.sort_by(|a, b| a.1.cmp(&b.1));
+
+        let mut results = Vec::new();
+        for (img, dist) in matches.into_iter().take(50) {
+            let post = if let Some(pid) = img.post_id {
+                posts::Entity::find_by_id(pid).one(db).await.unwrap_or(None)
+            } else { None };
+
+            let board_slug = if let Some(p) = &post {
+                if let Ok(Some(t)) = threads::Entity::find_by_id(p.thread_id).one(db).await {
+                    Some(t.board_slug)
+                } else { None }
+            } else { None };
+
+            results.push(json!({
+                "image": img,
+                "distance": dist,
+                "post": post,
+                "board_slug": board_slug
+            }));
+        }
+
+        return Json(results).into_response();
     }
 
     Json(json!({"error": "Не завантажено дійсне зображення"})).into_response()
@@ -514,10 +540,14 @@ pub async fn api_ban_user(
 
     let hours = payload.duration.max(1);
     let expires = Utc::now().naive_utc() + chrono::Duration::hours(hours);
+    let reason = sanitize_reason(&payload.reason);
+    if reason.is_empty() {
+        return service::bad_request("Вкажіть причину");
+    }
     let ban = bans::ActiveModel {
         ip_address: Set(Some(store_ip.clone())),
         session_id: Set(payload.session.clone()),
-        reason: Set(Some(payload.reason.clone())),
+        reason: Set(Some(reason.clone())),
         expires_at: Set(expires),
         created_at: Set(Utc::now().naive_utc()),
         cidr: Set(store_cidr.clone()),
@@ -564,7 +594,7 @@ pub async fn api_ban_user(
         Some(store_cidr.clone().unwrap_or(store_ip)),
         Some(format!(
             "Причина: {}, вид: {kind}, scope: {scope}, Видалення: {}",
-            payload.reason, payload.delete_content
+            reason, payload.delete_content
         )),
         Some(get_client_ip(&headers, &addr)),
     )
@@ -672,9 +702,14 @@ pub async fn create_report(
         return (StatusCode::CONFLICT, Json(json!({"error": "Вже поскаржилися"}))).into_response();
     }
 
+    let reason = sanitize_reason(&payload.reason);
+    if reason.is_empty() {
+        return service::bad_request("Вкажіть причину");
+    }
+
     let report = reports::ActiveModel {
         post_id: Set(payload.post_id),
-        reason: Set(payload.reason),
+        reason: Set(reason),
         ip_address: Set(ip),
         created_at: Set(Utc::now().naive_utc()),
         ..Default::default()

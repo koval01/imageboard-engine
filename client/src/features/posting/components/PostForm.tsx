@@ -5,6 +5,10 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import IbSpinner from '@/components/common/IbSpinner'
 
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif'
+
 interface PostFormProps {
     boardSlug: string
     threadId?: number
@@ -63,7 +67,18 @@ export default function PostForm({
 
     const addFiles = (list: FileList | File[] | null) => {
         if (!list) return
-        const next = Array.from(list)
+        const next = Array.from(list).filter((file) => {
+            if (file.type && !ALLOWED_IMAGE_TYPES.has(file.type)) {
+                toast.error('Лише JPEG, PNG, WebP або GIF.')
+                return false
+            }
+            if (file.size > MAX_IMAGE_BYTES) {
+                toast.error('Файл завеликий (макс. 5 МБ).')
+                return false
+            }
+            return true
+        })
+        if (!next.length) return
         setFiles((prev) => [...prev, ...next].slice(0, 4))
     }
 
@@ -116,7 +131,7 @@ export default function PostForm({
             id={threadId ? 'reply-form' : 'post-form'}
             className={cn('postform', isLoading && 'pointer-events-none')}
             onPaste={(e) => {
-                const pasted = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'))
+                const pasted = Array.from(e.clipboardData.files).filter((f) => ALLOWED_IMAGE_TYPES.has(f.type))
                 if (pasted.length) addFiles(pasted)
             }}
         >
@@ -203,7 +218,7 @@ export default function PostForm({
                         type="file"
                         ref={fileInputRef}
                         multiple
-                        accept="image/*"
+                        accept={IMAGE_ACCEPT}
                         disabled={isLoading}
                         onChange={(e) => addFiles(e.target.files)}
                         className="hidden"

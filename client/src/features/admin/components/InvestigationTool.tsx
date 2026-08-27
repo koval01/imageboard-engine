@@ -37,7 +37,7 @@ export default function InvestigationTool({ initialTarget }: { initialTarget: st
                 </div>
                 <div className="border rounded p-4 bg-background">
                     <h3 className="font-bold mb-2 flex items-center gap-2"><ImageIcon size={18} /> Візуальний пошук</h3>
-                    <input type="file" accept="image/*" onChange={handleImageUpload} className="block w-full text-sm" />
+                    <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleImageUpload} className="block w-full text-sm" />
                     {isUploading && <p className="text-sm mt-2">Сканування...</p>}
                 </div>
             </div>

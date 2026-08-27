@@ -186,3 +186,26 @@ pub async fn purge_inactive_threads(
     }
     Ok(n)
 }
+
+pub async fn purge_expired_media(
+    db: &DatabaseConnection,
+    storage: &StorageService,
+    ttl_days: i64,
+) -> Result<u64> {
+    let cutoff = Utc::now().naive_utc() - chrono::Duration::days(ttl_days.max(1));
+    let expired = images::Entity::find()
+        .filter(images::Column::CreatedAt.lt(cutoff))
+        .all(db)
+        .await?;
+    let n = expired.len() as u64;
+    if n == 0 {
+        return Ok(0);
+    }
+    delete_unreferenced(db, storage, &expired).await?;
+    images::Entity::delete_many()
+        .filter(images::Column::CreatedAt.lt(cutoff))
+        .exec(db)
+        .await
+        .context("failed to delete expired image rows")?;
+    Ok(n)
+}
