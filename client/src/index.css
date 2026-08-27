@@ -139,21 +139,20 @@
   }
 
   .header__logo {
-    display: block;
+    display: inline-block;
   }
 
   .header__banner {
     display: inline-flex;
-    width: 300px;
-    height: 100px;
     align-items: center;
     justify-content: center;
-    overflow: hidden;
   }
 
-  .header__banner svg {
-    height: 72px;
+  .logo svg {
+    display: inline-block;
     width: auto;
+    max-width: 100%;
+    flex-shrink: 0;
   }
 
   .header__title {
