@@ -29,6 +29,8 @@ pub struct Config {
     pub media_ttl_days: i64,
     pub purge_interval_secs: u64,
     pub rate_limit_secs: u64,
+    pub turnstile_site_key: Option<String>,
+    pub turnstile_secret_key: Option<String>,
 }
 
 pub const BUMP_LIMIT: u64 = 500;
@@ -104,6 +106,12 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(60),
+            turnstile_site_key: std::env::var("TURNSTILE_SITE_KEY")
+                .ok()
+                .filter(|s| !s.is_empty()),
+            turnstile_secret_key: std::env::var("TURNSTILE_SECRET_KEY")
+                .ok()
+                .filter(|s| !s.is_empty()),
         }
     }
 
@@ -132,6 +140,8 @@ impl Config {
             media_ttl_days: MEDIA_TTL_DAYS,
             purge_interval_secs: 600,
             rate_limit_secs: 60,
+            turnstile_site_key: None,
+            turnstile_secret_key: None,
         }
     }
 }

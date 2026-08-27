@@ -5,6 +5,8 @@ pub(crate) mod purge;
 pub(crate) mod staff;
 pub(crate) mod password_crypto;
 pub(crate) mod sanitize;
+pub(crate) mod content_filter;
+pub(crate) mod turnstile;
 
 pub use storage::*;
 pub use password_crypto::*;
@@ -13,3 +15,5 @@ pub use kv::*;
 pub use purge::*;
 pub use staff::*;
 pub use sanitize::*;
+pub use content_filter::*;
+pub use turnstile::*;

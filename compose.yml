@@ -61,6 +61,8 @@ services:
       SERVE_FRONTEND: "false"
       RATE_LIMIT_SECS: ${RATE_LIMIT_SECS:-60}
       MEDIA_TTL_DAYS: ${MEDIA_TTL_DAYS:-30}
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
       AWS_EC2_METADATA_DISABLED: "true"
     depends_on:
       postgres:

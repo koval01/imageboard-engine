@@ -51,6 +51,9 @@ crypto_box = "0.9"
 blake2 = "0.10"
 ammonia = "4"
 html-escape = "0.2"
+regex = "1"
+rustrict = "0.7"
+idna = "1"
 
 [dev-dependencies]
 urlencoding = "2"

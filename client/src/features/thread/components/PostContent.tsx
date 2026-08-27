@@ -53,19 +53,75 @@ export const PostContent: React.FC<PostContentProps> = ({
 };
 
 const Markup = ({ text }: { text: string }) => {
-    const match = /\[(b|i|s|u|spoiler)\]([\s\S]*?)\[\/\1\]/i.exec(text)
-    if (!match) return <>{text}</>
-    const before = text.slice(0, match.index)
-    const inner = match[2]
-    const after = text.slice(match.index + match[0].length)
-    const tag = match[1].toLowerCase()
-    const wrapped =
-        tag === 'b' ? <b><Markup text={inner} /></b>
-        : tag === 'i' ? <i><Markup text={inner} /></i>
-        : tag === 's' ? <s><Markup text={inner} /></s>
-        : tag === 'u' ? <u><Markup text={inner} /></u>
-        : <span className="ib-spoiler"><Markup text={inner} /></span>
-    return <>{before}{wrapped}<Markup text={after} /></>
+    const tags: Array<{ name: string; wrap: (inner: string) => React.ReactNode }> = [
+        { name: 'mask', wrap: (inner) => <MaskedText text={inner} /> },
+        { name: 'urlw', wrap: (inner) => <ClassifiedLink href={inner} warn /> },
+        { name: 'url', wrap: (inner) => <ClassifiedLink href={inner} warn={false} /> },
+        { name: 'spoiler', wrap: (inner) => <span className="ib-spoiler"><Markup text={inner} /></span> },
+        { name: 'b', wrap: (inner) => <b><Markup text={inner} /></b> },
+        { name: 'i', wrap: (inner) => <i><Markup text={inner} /></i> },
+        { name: 's', wrap: (inner) => <s><Markup text={inner} /></s> },
+        { name: 'u', wrap: (inner) => <u><Markup text={inner} /></u> },
+    ]
+
+    let best: { index: number; length: number; inner: string; wrap: (inner: string) => React.ReactNode } | null = null
+    for (const tag of tags) {
+        const re = new RegExp(`\\[${tag.name}\\]([\\s\\S]*?)\\[\\/${tag.name}\\]`, 'i')
+        const match = re.exec(text)
+        if (!match) continue
+        if (!best || match.index < best.index) {
+            best = { index: match.index, length: match[0].length, inner: match[1], wrap: tag.wrap }
+        }
+    }
+    if (!best) return <>{text}</>
+    const before = text.slice(0, best.index)
+    const after = text.slice(best.index + best.length)
+    return <>{before}{best.wrap(best.inner)}<Markup text={after} /></>
+}
+
+function httpHref(raw: string): string | null {
+    const href = raw.trim()
+    if (href.startsWith('https://') || href.startsWith('http://')) return href
+    return null
+}
+
+const ClassifiedLink = ({ href, warn }: { href: string; warn: boolean }) => {
+    const url = httpHref(href)
+    if (!url) return <span className="ib-link-removed">[посилання видалено]</span>
+    const open = (e: React.MouseEvent) => {
+        if (!warn) return
+        e.preventDefault()
+        const ok = window.confirm(`Ви впевнені, що хочете перейти за цією адресою?\n\n${url}`)
+        if (ok) window.open(url, '_blank', 'noopener,noreferrer')
+    }
+    return (
+        <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            className={warn ? 'ib-link-warn' : 'ib-link-ok'}
+            onClick={open}
+        >
+            {url}
+        </a>
+    )
+}
+
+const MaskedText = ({ text }: { text: string }) => {
+    const [open, setOpen] = React.useState(false)
+    if (open) return <span className="ib-mask ib-mask_open"><Markup text={text} /></span>
+    return (
+        <button
+            type="button"
+            className="ib-mask"
+            title="Прихований текст"
+            onClick={() => {
+                if (window.confirm('Показати прихований текст?')) setOpen(true)
+            }}
+        >
+            [****]
+        </button>
+    )
 }
 
 const LineParser = ({ line, boardSlug, currentThreadId, threadPosts, onQuoteClick }: {

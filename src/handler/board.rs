@@ -131,6 +131,8 @@ pub struct HomeResponse {
     pub recent_threads: Vec<SafeThread>,
     pub cdn_url: String,
     pub admin_role: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turnstile_site_key: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -214,6 +216,7 @@ struct ParsedForm {
     subject: Option<String>,
     content: String,
     images: Vec<ProcessedImage>,
+    turnstile_token: Option<String>,
 }
 
 async fn parse_multipart_form(
@@ -224,6 +227,7 @@ async fn parse_multipart_form(
     let mut subject = None;
     let mut content = String::new();
     let mut processed_images = Vec::new();
+    let mut turnstile_token = None;
 
     let max_file_size = 5 * 1024 * 1024;
     let max_files = 5;
@@ -244,6 +248,13 @@ async fn parse_multipart_form(
                     return Err("Текст задовгий (макс. 15000 символів).".to_string());
                 }
                 content = sanitize_post_body(&txt);
+            }
+        } else if name == "cf-turnstile-response" || name == "turnstile" || name == "turnstile_token" {
+            if let Ok(txt) = field.text().await {
+                let t = txt.trim().to_string();
+                if !t.is_empty() {
+                    turnstile_token = Some(t);
+                }
             }
         } else if name == "file" {
             if processed_images.len() >= max_files {
@@ -273,7 +284,7 @@ async fn parse_multipart_form(
         }
     }
 
-    Ok(ParsedForm { subject, content, images: processed_images })
+    Ok(ParsedForm { subject, content, images: processed_images, turnstile_token })
 }
 
 async fn check_rate_limit(
@@ -317,6 +328,7 @@ pub async fn home_handler(
                 recent_threads: c_threads,
                 cdn_url: state_read.config.cdn_url.clone(),
                 admin_role: session.role,
+                turnstile_site_key: state_read.config.turnstile_site_key.clone(),
             }).into_response();
         }
     }
@@ -407,6 +419,7 @@ pub async fn home_handler(
         recent_threads: recent_threads_safe,
         cdn_url,
         admin_role: session.role,
+        turnstile_site_key: state_read.config.turnstile_site_key.clone(),
     }).into_response()
 }
 
@@ -744,6 +757,16 @@ pub async fn create_thread_handler(
         Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
     };
 
+    if let Err(msg) = crate::service::verify_turnstile(
+        &state_read.config,
+        parsed.turnstile_token.as_deref(),
+        &ip,
+    )
+    .await
+    {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
+    }
+
     if parsed.content.trim().is_empty() && parsed.images.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": "Тред не може бути порожнім"}))).into_response();
     }
@@ -818,6 +841,16 @@ pub async fn reply_handler(
         Ok(p) => p,
         Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
     };
+
+    if let Err(msg) = crate::service::verify_turnstile(
+        &state_read.config,
+        parsed.turnstile_token.as_deref(),
+        &ip,
+    )
+    .await
+    {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))).into_response();
+    }
 
     if parsed.content.trim().is_empty() && parsed.images.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": "Пост не може бути порожнім"}))).into_response();

@@ -37,6 +37,7 @@ export interface HomeResponse {
     recent_threads: Thread[];
     cdn_url: string;
     admin_role: number;
+    turnstile_site_key?: string | null;
 }
 
 export interface BoardResponse {

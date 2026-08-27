@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { useCreateThreadMutation, usePostReplyMutation } from '@/store/api/boardApi'
+import { useCreateThreadMutation, usePostReplyMutation, useGetHomeQuery } from '@/store/api/boardApi'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import IbSpinner from '@/components/common/IbSpinner'
+import TurnstileWidget from './TurnstileWidget'
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -47,6 +48,9 @@ export default function PostForm({
     const fileInputRef = useRef<HTMLInputElement>(null)
     const textRef = useRef<HTMLTextAreaElement>(null)
     const [dragOver, setDragOver] = useState(false)
+    const [turnstileToken, setTurnstileToken] = useState('')
+    const { data: home } = useGetHomeQuery()
+    const siteKey = home?.turnstile_site_key || ''
 
     const [createThread, { isLoading: isCreating }] = useCreateThreadMutation()
     const [postReply, { isLoading: isReplying }] = usePostReplyMutation()
@@ -102,10 +106,15 @@ export default function PostForm({
             toast.error('Введіть текст або прикріпіть зображення.')
             return
         }
+        if (siteKey && !turnstileToken) {
+            toast.error('Підтвердіть, що ви не робот.')
+            return
+        }
 
         const formData = new FormData()
         formData.append('content', content)
         if (!threadId && subject) formData.append('subject', subject)
+        if (turnstileToken) formData.append('cf-turnstile-response', turnstileToken)
         for (const file of files) formData.append('file', file)
 
         const promise = threadId
@@ -238,6 +247,11 @@ export default function PostForm({
                         {files.length > 0 ? `${files.length} долучено` : 'ДОДАТИ ФАЙЛ / CTRL-V'}
                     </label>
                 </div>
+                {siteKey && (
+                    <div className="postform__raw">
+                        <TurnstileWidget siteKey={siteKey} onToken={setTurnstileToken} />
+                    </div>
+                )}
             </form>
         </div>
     )

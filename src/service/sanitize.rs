@@ -42,12 +42,14 @@ pub fn sanitize_post_body(raw: &str) -> String {
     let s = strip_controls(raw, true);
     let s = strip_html(&s);
     let s = s.replace("\r\n", "\n").replace('\r', "\n");
+    let s = crate::service::filter_user_text(&s);
     truncate_chars(&s, MAX_POST_CHARS)
 }
 
 pub fn sanitize_subject(raw: &str) -> Option<String> {
     let s = strip_controls(raw, false);
     let s = strip_html(&s);
+    let s = crate::service::filter_user_text(&s);
     let s = truncate_chars(s.trim(), MAX_SUBJECT_CHARS);
     if s.is_empty() { None } else { Some(s) }
 }
@@ -55,6 +57,7 @@ pub fn sanitize_subject(raw: &str) -> Option<String> {
 pub fn sanitize_reason(raw: &str) -> String {
     let s = strip_controls(raw, false);
     let s = strip_html(&s);
+    let s = crate::service::filter_user_text(&s);
     truncate_chars(s.trim(), MAX_REASON_CHARS)
 }
 

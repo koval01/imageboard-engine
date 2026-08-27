@@ -113,6 +113,26 @@ test('HTML tags are stripped from post text', async ({ request }) => {
   expect(String(json.thread.content).toLowerCase()).not.toContain('<script')
 })
 
+test('untrusted and disguised links are filtered', async ({ request }) => {
+  const ip = `198.51.103.${Math.floor(Math.random() * 200) + 1}`
+  const first = await powPost(request, '/api/m/submit', {
+    headers: { 'CF-Connecting-IP': ip },
+    multipart: {
+      content: 'go google.com then evil.xyz and mail a@b.xyz plus +380671234567',
+    },
+  })
+  expect(first.ok()).toBeTruthy()
+  const { thread_id } = await first.json()
+  const view = await request.get(`/api/m/thread/${thread_id}`)
+  const json = await view.json()
+  const content = String(json.thread.content)
+  expect(content).toContain('[url]https://google.com[/url]')
+  expect(content).toContain('[посилання видалено]')
+  expect(content).not.toContain('evil.xyz')
+  expect(content).toContain('[пошта видалено]')
+  expect(content).toContain('[телефон видалено]')
+})
+
 test('rate limit rejects a second post from the same IP', async ({ request }) => {
   const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`
   const first = await powPost(request, '/api/m/submit', {

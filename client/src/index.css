@@ -724,6 +724,42 @@
     background: transparent;
   }
 
+  a.ib-link-ok {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  a.ib-link-warn {
+    color: hsl(var(--primary));
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+  }
+
+  .ib-link-removed,
+  .ib-mask {
+    font-size: inherit;
+    font-family: inherit;
+    color: hsl(var(--muted-foreground));
+  }
+
+  button.ib-mask {
+    background: hsl(var(--muted));
+    border: 0;
+    border-radius: 2px;
+    cursor: pointer;
+    padding: 0 0.35em;
+    letter-spacing: 0.08em;
+  }
+
+  button.ib-mask:hover {
+    color: hsl(var(--foreground));
+  }
+
+  .postform__turnstile {
+    min-height: 65px;
+  }
+
   .ib-widget,
   .bb {
     position: fixed;
