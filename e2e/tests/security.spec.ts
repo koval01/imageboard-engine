@@ -130,7 +130,12 @@ test('responses do not advertise a server version', async ({ request }) => {
     expect(server.toLowerCase()).not.toContain('nginx')
   }
   expect(res.headers()['x-powered-by']).toBeUndefined()
-  expect(res.headers()['x-processing-time']).toBeUndefined()
+})
+
+test('API processing time is a coarse bucket', async ({ request }) => {
+  const res = await request.get('/api/health')
+  expect(res.ok()).toBeTruthy()
+  expect(res.headers()['x-processing-time']).toMatch(/^(<\d+ms|>\d+ms)$/)
 })
 
 test('tampered JWT is not accepted as admin', async ({ request }) => {

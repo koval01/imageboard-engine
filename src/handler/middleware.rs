@@ -44,17 +44,34 @@ impl CurrentSession {
     }
 }
 
+/// Coarse latency bucket so the header is useful without leaking exact timing.
+pub(crate) fn approximate_processing_time(ms: f64) -> &'static str {
+    if ms < 10.0 {
+        "<10ms"
+    } else if ms < 50.0 {
+        "<50ms"
+    } else if ms < 100.0 {
+        "<100ms"
+    } else if ms < 250.0 {
+        "<250ms"
+    } else if ms < 500.0 {
+        "<500ms"
+    } else {
+        ">500ms"
+    }
+}
+
 pub async fn response_time_middleware(request: Request, next: Next) -> Response {
     let start = std::time::Instant::now();
     let response = next.run(request).await;
-    let elapsed = start.elapsed();
-    let time_ms = elapsed.as_secs_f64() * 1000.0;
-    let time_str = format!("{:.3}ms", time_ms);
+    let time_str = approximate_processing_time(start.elapsed().as_secs_f64() * 1000.0);
 
     let (mut parts, body) = response.into_parts();
-    parts.headers.remove("x-processing-time");
     parts.headers.remove("server");
     parts.headers.remove("x-powered-by");
+    if let Ok(val) = HeaderValue::from_str(time_str) {
+        parts.headers.insert("x-processing-time", val);
+    }
 
     let is_html = parts.headers.get(axum::http::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
@@ -346,5 +363,26 @@ pub async fn require_staff_session(
             .into_response());
     }
     Ok(next.run(req).await)
+}
+
+#[cfg(test)]
+mod processing_time_tests {
+    use super::approximate_processing_time;
+
+    #[test]
+    fn buckets_are_coarse() {
+        assert_eq!(approximate_processing_time(0.0), "<10ms");
+        assert_eq!(approximate_processing_time(9.99), "<10ms");
+        assert_eq!(approximate_processing_time(10.0), "<50ms");
+        assert_eq!(approximate_processing_time(49.9), "<50ms");
+        assert_eq!(approximate_processing_time(50.0), "<100ms");
+        assert_eq!(approximate_processing_time(99.0), "<100ms");
+        assert_eq!(approximate_processing_time(100.0), "<250ms");
+        assert_eq!(approximate_processing_time(249.0), "<250ms");
+        assert_eq!(approximate_processing_time(250.0), "<500ms");
+        assert_eq!(approximate_processing_time(499.0), "<500ms");
+        assert_eq!(approximate_processing_time(500.0), ">500ms");
+        assert_eq!(approximate_processing_time(2500.0), ">500ms");
+    }
 }
 

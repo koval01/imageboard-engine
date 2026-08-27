@@ -522,6 +522,15 @@ async fn test_public_access() {
     let req = build_req("/api/home", "GET", Body::empty(), None, None);
     let response = app.clone().oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+    let timing = response
+        .headers()
+        .get("x-processing-time")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        ["<10ms", "<50ms", "<100ms", "<250ms", "<500ms", ">500ms"].contains(&timing),
+        "expected coarse processing-time bucket, got {timing:?}"
+    );
 }
 
 #[tokio::test]

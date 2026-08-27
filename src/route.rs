@@ -168,7 +168,10 @@ pub async fn serve(app_state: Arc<RwLock<AppState>>) -> Result<()> {
             .allow_credentials(true)
             .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
             .allow_headers(Any)
-            .expose_headers([HeaderName::from_static("x-client-key")]);
+            .expose_headers([
+                HeaderName::from_static("x-client-key"),
+                HeaderName::from_static("x-processing-time"),
+            ]);
         app = app.layer(cors);
     }
 
