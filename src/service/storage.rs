@@ -32,7 +32,7 @@ pub struct ProcessedImage {
     pub filename: String,
     pub width: i32,
     pub height: i32,
-    pub size: i64,
+    pub size: i32,
     pub hash: String,
     pub phash: String,
     pub exif: Option<serde_json::Value>,
@@ -50,7 +50,7 @@ impl StorageService {
         let mut s3_bucket = String::new();
 
         if config.storage_type == StorageType::S3 {
-            let region_provider = RegionProviderChain::default_provider().or_else(Region::new("auto"));
+            let region_provider = RegionProviderChain::default_provider().or_else(Region::new("us-east-1"));
             let credentials = Credentials::new(
                 std::env::var("S3_ACCESS_KEY").expect("S3_ACCESS_KEY must be set for S3 storage"),
                 std::env::var("S3_SECRET_KEY").expect("S3_SECRET_KEY must be set for S3 storage"),
@@ -66,8 +66,15 @@ impl StorageService {
                 .load()
                 .await;
 
-            s3_client = Some(Client::new(&aws_config));
+            let s3_conf = aws_sdk_s3::config::Builder::from(&aws_config)
+                .force_path_style(true)
+                .build();
+            let client = Client::from_conf(s3_conf);
             s3_bucket = std::env::var("S3_BUCKET_NAME").expect("S3_BUCKET_NAME not set");
+            ensure_bucket(&client, &s3_bucket)
+                .await
+                .unwrap_or_else(|e| panic!("Silo/S3 bucket setup failed: {e:#}"));
+            s3_client = Some(client);
         } else {
             fs::create_dir_all(&config.media_path)
                 .await
@@ -114,19 +121,20 @@ impl StorageService {
     }
 
     pub async fn delete_file(&self, key: &str) -> Result<()> {
+        let key = normalize_object_key(key);
         match self.storage_type {
             StorageType::S3 => {
                 let client = self.s3_client.as_ref().unwrap();
                 client
                     .delete_object()
                     .bucket(&self.s3_bucket)
-                    .key(key)
+                    .key(&key)
                     .send()
                     .await
                     .context("Failed to delete from S3")?;
             }
             StorageType::Local => {
-                let file_path = self.local_path.join(key);
+                let file_path = self.local_path.join(&key);
                 if file_path.exists() {
                     fs::remove_file(file_path)
                         .await
@@ -258,10 +266,45 @@ impl StorageService {
             filename: original_filename,
             width: width as i32,
             height: height as i32,
-            size: full_img_bytes.len() as i64,
+            size: full_img_bytes.len() as i32,
             hash,
             phash: phash_str,
             exif: exif_json,
         })
     }
+}
+
+fn normalize_object_key(raw: &str) -> String {
+    let trimmed = raw.split('?').next().unwrap_or(raw).trim();
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return trimmed.rsplit('/').next().unwrap_or(trimmed).to_string();
+    }
+    trimmed.to_string()
+}
+
+async fn ensure_bucket(client: &Client, bucket: &str) -> Result<()> {
+    match client.create_bucket().bucket(bucket).send().await {
+        Ok(_) => tracing::info!("Created object bucket {bucket}"),
+        Err(e) => {
+            let msg = format!("{e:?}");
+            if !msg.contains("BucketAlready")
+                && !msg.to_lowercase().contains("already owned")
+                && !msg.to_lowercase().contains("already exists")
+            {
+                return Err(e).context("CreateBucket failed");
+            }
+        }
+    }
+
+    let policy = format!(
+        r#"{{"Version":"2012-10-17","Statement":[{{"Effect":"Allow","Principal":{{"AWS":["*"]}},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::{bucket}/*"]}}]}}"#
+    );
+    client
+        .put_bucket_policy()
+        .bucket(bucket)
+        .policy(policy)
+        .send()
+        .await
+        .context("PutBucketPolicy failed")?;
+    Ok(())
 }

@@ -22,10 +22,11 @@ export interface Post {
     id: number;
     thread_id: number;
     content: string;
-    session_id: string;
-    ip_address: string;
+    session_id?: string;
+    ip_address?: string;
     country_code: string | null;
     created_at: string;
+    is_hidden?: boolean;
 }
 
 export interface Thread {
@@ -33,9 +34,10 @@ export interface Thread {
     board_slug: string;
     subject: string | null;
     content: string;
-    session_id: string;
+    session_id?: string;
     country_code: string | null;
-    ip_address: string;
+    ip_address?: string;
     created_at: string;
     updated_at: string;
+    is_hidden?: boolean;
 }

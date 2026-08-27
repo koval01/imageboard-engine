@@ -3,13 +3,15 @@ export default {
 	darkMode: ["class"],
 	content: [
 		"./index.html",
+		"./admin.html",
 		"./src/**/*.{ts,tsx,js,jsx}"
 	],
 	theme: {
 		extend: {
 			fontFamily: {
-				sans: ['Inter', 'system-ui', 'sans-serif'],
-				mono: ['JetBrains Mono', 'monospace'], // Tech feel for IDs/Hashes
+				sans: ['Trebuchet MS', 'PT Sans', 'sans-serif'],
+				display: ['Open Sans', 'PT Sans', 'sans-serif'],
+				mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
 			},
 			borderRadius: {
 				lg: 'var(--radius)',

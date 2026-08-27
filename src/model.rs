@@ -7,8 +7,12 @@ pub struct SessionClaims {
     pub sess: String, // Session ID (UUID)
     pub ip: String,   // Bind to IP
     pub ua: String,   // Bind to User Agent
-    pub role: i32,    // 0=User, 1=Janitor, 2=Mod, 3=Admin
+    pub role: i32,    // 0=User, 1=Moderator, 2=Admin, 3=Super-admin
     pub v: i32,       // Token Version (for Admin revocation)
+    #[serde(default)]
+    pub aid: i32,     // Staff account id (0 on legacy tokens)
+    #[serde(default)]
+    pub uname: String,
     pub exp: usize,   // Expiration timestamp
     pub iat: usize,   // Issued At timestamp
 }
@@ -49,6 +53,7 @@ pub mod threads {
         pub ip_address: String,
         pub created_at: NaiveDateTime,
         pub updated_at: NaiveDateTime,
+        pub is_hidden: bool,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {
@@ -78,6 +83,7 @@ pub mod posts {
         pub ip_address: String,
         pub country_code: Option<String>,
         pub created_at: NaiveDateTime,
+        pub is_hidden: bool,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {
@@ -111,7 +117,7 @@ pub mod images {
         pub phash: String,
         pub width: i32,
         pub height: i32,
-        pub size: i64,
+        pub size: i32,
         pub exif: Option<serde_json::Value>,
         pub created_at: NaiveDateTime,
     }
@@ -139,6 +145,14 @@ pub mod admins {
         pub role: i32,
         pub token_version: i32, // Versioning for revocation
         pub created_at: NaiveDateTime,
+        pub privileges: String,
+        pub work_start: Option<String>,
+        pub work_end: Option<String>,
+        pub timezone: String,
+        pub rate_limit_per_hour: Option<i32>,
+        pub disabled: bool,
+        pub last_login_at: Option<NaiveDateTime>,
+        pub last_login_ip: Option<String>,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {}
@@ -157,6 +171,11 @@ pub mod bans {
         pub reason: Option<String>,
         pub expires_at: NaiveDateTime,
         pub created_at: NaiveDateTime,
+        pub cidr: Option<String>,
+        pub scope: String,
+        pub board_slug: Option<String>,
+        pub kind: String,
+        pub created_by: Option<String>,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {}
@@ -175,6 +194,7 @@ pub mod admin_logs {
         pub target_id: Option<String>,
         pub details: Option<String>,
         pub created_at: NaiveDateTime,
+        pub ip_address: Option<String>,
     }
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
     pub enum Relation {}

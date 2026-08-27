@@ -14,7 +14,7 @@ export default function ReportsTable() {
 
     const handleResolve = async (id: number, stat: string) => {
         await resolveReport({ report_id: id, status: stat })
-        toast.success(`Скаргу позначено як ${stat}`)
+        toast.success(`Скаргу позначено як ${stat === 'RESOLVED' ? 'розвʼязану' : 'відхилену'}`)
         refetch()
     }
 
@@ -36,8 +36,8 @@ export default function ReportsTable() {
         <div>
             <div className="flex justify-between mb-4">
                 <div className="space-x-2">
-                    {['OPEN', 'RESOLVED', 'REJECTED', 'ALL'].map(s => (
-                        <button key={s} onClick={() => { setStatus(s); setPage(0) }} className={`text-xs px-2 py-1 rounded border cursor-pointer ${status === s ? 'bg-secondary' : ''}`}>{s}</button>
+                    {([['OPEN', 'Відкриті'], ['RESOLVED', 'Розвʼязані'], ['REJECTED', 'Відхилені'], ['ALL', 'Усі']] as const).map(([value, label]) => (
+                        <button key={value} onClick={() => { setStatus(value); setPage(0) }} className={`text-xs px-2 py-1 rounded border cursor-pointer ${status === value ? 'bg-secondary' : ''}`}>{label}</button>
                     ))}
                 </div>
                 <div className="space-x-2">
@@ -52,7 +52,7 @@ export default function ReportsTable() {
                     <div key={r.id} className="border p-4 rounded flex flex-col gap-2 relative bg-background">
                         <div className="flex justify-between items-start">
                             <div>
-                                <span className={`text-xs font-bold px-2 py-0.5 rounded ${r.status === 'OPEN' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>{r.status}</span>
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded ${r.status === 'OPEN' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>{r.status === 'OPEN' ? 'Відкрита' : r.status === 'RESOLVED' ? 'Розвʼязана' : r.status === 'REJECTED' ? 'Відхилена' : r.status}</span>
                                 <span className="ml-2 text-sm text-muted-foreground">{format(new Date(r.created_at), 'dd.MM, HH:mm')}</span>
                                 <div className="mt-1 font-medium">Причина: {r.reason}</div>
                             </div>
@@ -65,11 +65,11 @@ export default function ReportsTable() {
                             <div className="bg-muted p-3 rounded text-sm mt-2">
                                 <div className="flex justify-between text-xs text-muted-foreground mb-1">
                                     <span>{r.board_slug ? `/${r.board_slug}/` : ''} &bull; № {r.post.id}</span>
-                                    <span>IP: {r.post.ip_address}</span>
+                                    <span>{r.post.ip_address ? `IP: ${r.post.ip_address}` : ''}</span>
                                 </div>
                                 <div className="whitespace-pre-wrap">{r.post.content}</div>
                                 <div className="mt-2">
-                                    <button onClick={() => handleBan(r.post!.ip_address, r.post!.id)} className="text-xs bg-destructive text-destructive-foreground px-2 py-1 rounded flex items-center gap-1 cursor-pointer"><Ban size={12} /> Бан та Видалення</button>
+                                    <button onClick={() => handleBan(r.post!.ip_address || '', r.post!.id)} className="text-xs bg-destructive text-destructive-foreground px-2 py-1 rounded flex items-center gap-1 cursor-pointer"><Ban size={12} /> Бан та Видалення</button>
                                 </div>
                             </div>
                         ) : <div className="text-sm italic">Пост видалено</div>}

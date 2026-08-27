@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Криївка — адмін</title>
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('kryivka-theme');
+        var dark = stored !== 'light';
+        if (dark) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.setAttribute('data-theme', 'nightmode');
+        }
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="/src/admin-main.tsx"></script>
+</body>
+</html>

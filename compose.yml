@@ -1,0 +1,102 @@
+name: kryivka
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kryivka}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kryivka}
+      POSTGRES_DB: ${POSTGRES_DB:-kryivka}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kryivka} -d ${POSTGRES_DB:-kryivka}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  silo:
+    image: docker.io/pgsty/silo:RELEASE.2026-08-06T00-00-00Z
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-kryivka}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-kryivka-silo-change-me}
+    volumes:
+      - ./data/silo:/data
+    healthcheck:
+      test: ["CMD", "silo", "healthcheck", "ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-kryivka}:${POSTGRES_PASSWORD:-kryivka}@postgres:5432/${POSTGRES_DB:-kryivka}
+      REDIS_URL: redis://redis:6379
+      STORAGE_TYPE: s3
+      S3_ENDPOINT: http://silo:9000
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-kryivka}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-kryivka}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-kryivka-silo-change-me}
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://localhost:8080/media}
+      SERVE_FRONTEND: "false"
+      RATE_LIMIT_SECS: ${RATE_LIMIT_SECS:-60}
+      AWS_EC2_METADATA_DISABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      silo:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+      args:
+        VITE_API_ORIGIN: ${VITE_API_ORIGIN:-}
+        FRONTEND_MODE: ${FRONTEND_MODE:-standalone}
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+      silo:
+        condition: service_healthy
+
+  # Ingress lives in the Cloudflare dashboard (remotely managed):
+  #   /api*  → http://api:8082
+  #   *      → http://frontend:80  (SPA, /assets, /media; /admin is proxied to the API)
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy

@@ -9,6 +9,8 @@ mod m20260205_000006_create_reports;
 mod m20260205_000007_add_exif_data;
 mod m20260205_000008_add_admin_version;
 mod m20260205_000009_add_phash;
+mod m20260826_000010_remove_default_admin;
+mod m20260827_000011_staff_rbac;
 
 pub struct Migrator;
 
@@ -25,6 +27,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260205_000007_add_exif_data::Migration),
             Box::new(m20260205_000008_add_admin_version::Migration),
             Box::new(m20260205_000009_add_phash::Migration),
+            Box::new(m20260826_000010_remove_default_admin::Migration),
+            Box::new(m20260827_000011_staff_rbac::Migration),
         ]
     }
 }

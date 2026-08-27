@@ -14,10 +14,31 @@ pub struct Config {
     pub storage_type: StorageType,
     pub media_path: String,
     pub media_port: u16,
+    pub redis_url: Option<String>,
+    pub serve_frontend: bool,
+    pub frontend_dist: String,
+    pub cors_origin: Option<String>,
+    pub cookie_secure: bool,
+    pub admin_dist: String,
+    pub admin_gate_js: String,
+    pub admin_bootstrap_user: Option<String>,
+    pub admin_bootstrap_key: Option<String>,
+    pub janitor_bootstrap_user: Option<String>,
+    pub janitor_bootstrap_key: Option<String>,
+    pub thread_age_limit_days: i64,
+    pub purge_interval_secs: u64,
+    pub rate_limit_secs: u64,
 }
 
 pub const BUMP_LIMIT: u64 = 500;
 pub const THREAD_AGE_LIMIT_DAYS: i64 = 30;
+
+fn env_bool(key: &str, default: bool) -> bool {
+    std::env::var(key)
+        .ok()
+        .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(default)
+}
 
 impl Config {
     pub fn init() -> Self {
@@ -42,6 +63,67 @@ impl Config {
                 .unwrap_or_else(|_| "8083".to_string())
                 .parse::<u16>()
                 .expect("MEDIA_PORT must be a number"),
+            redis_url: std::env::var("REDIS_URL").ok().filter(|s| !s.is_empty()),
+            serve_frontend: env_bool("SERVE_FRONTEND", true),
+            frontend_dist: std::env::var("FRONTEND_DIST")
+                .unwrap_or_else(|_| "client/dist".to_string()),
+            cors_origin: std::env::var("CORS_ORIGIN").ok().filter(|s| !s.is_empty()),
+            cookie_secure: env_bool("COOKIE_SECURE", false),
+            admin_dist: std::env::var("ADMIN_DIST")
+                .unwrap_or_else(|_| "client/dist-admin".to_string()),
+            admin_gate_js: std::env::var("ADMIN_GATE_JS")
+                .unwrap_or_else(|_| "client/dist-gate/admin-gate.js".to_string()),
+            admin_bootstrap_user: std::env::var("ADMIN_BOOTSTRAP_USER")
+                .ok()
+                .filter(|s| !s.is_empty()),
+            admin_bootstrap_key: std::env::var("ADMIN_BOOTSTRAP_KEY")
+                .ok()
+                .filter(|s| !s.is_empty()),
+            janitor_bootstrap_user: std::env::var("JANITOR_BOOTSTRAP_USER")
+                .ok()
+                .filter(|s| !s.is_empty()),
+            janitor_bootstrap_key: std::env::var("JANITOR_BOOTSTRAP_KEY")
+                .ok()
+                .filter(|s| !s.is_empty()),
+            thread_age_limit_days: std::env::var("THREAD_AGE_LIMIT_DAYS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(THREAD_AGE_LIMIT_DAYS),
+            purge_interval_secs: std::env::var("PURGE_INTERVAL_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(600),
+            rate_limit_secs: std::env::var("RATE_LIMIT_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(60),
+        }
+    }
+
+    pub fn for_test() -> Self {
+        Self {
+            database_url: "sqlite::memory:".to_string(),
+            jwt_secret: "test_secret".to_string(),
+            jwt_expires_in: "1d".to_string(),
+            jwt_maxage: 3600,
+            cdn_url: "http://localhost:8083".to_string(),
+            storage_type: StorageType::Local,
+            media_path: "./test_media".to_string(),
+            media_port: 8083,
+            redis_url: None,
+            serve_frontend: false,
+            frontend_dist: "client/dist".to_string(),
+            cors_origin: None,
+            cookie_secure: false,
+            admin_dist: "client/dist-admin".to_string(),
+            admin_gate_js: "client/dist-gate/admin-gate.js".to_string(),
+            admin_bootstrap_user: None,
+            admin_bootstrap_key: None,
+            janitor_bootstrap_user: None,
+            janitor_bootstrap_key: None,
+            thread_age_limit_days: THREAD_AGE_LIMIT_DAYS,
+            purge_interval_secs: 600,
+            rate_limit_secs: 60,
         }
     }
 }

@@ -18,10 +18,7 @@ env:
   STORAGE_TYPE: "local"
   MEDIA_ROOT: "./media"
   MEDIA_PORT: "8083"
-  S3_ACCESS_KEY: "dummy"
-  S3_SECRET_KEY: "dummy"
-  S3_BUCKET_NAME: "dummy"
-  S3_ENDPOINT: "http://localhost:9000"
+  SERVE_FRONTEND: "true"
   RUSTFLAGS: "-C target-cpu=x86-64-v3"
 
 jobs:
@@ -31,7 +28,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:15-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: password
@@ -48,26 +45,29 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install System Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libssl-dev pkg-config libpq-dev
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
-          cache-dependency-path: js-tools/package.json
+          cache-dependency-path: client/package-lock.json
 
       - name: Build Frontend
-        working-directory: ./js-tools
+        working-directory: ./client
         run: |
           npm ci
-          npm run build-all
+          npm run build
+          npm run build:admin
+          npm run build:gate
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Setup Rust Cache
         uses: swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --locked
 
       - name: Build Binary (Release)
         run: cargo build --release --locked --verbose
@@ -83,11 +83,11 @@ jobs:
           echo "Waiting for server to start on port 8082..."
           
           for i in {1..30}; do
-            if curl -s http://127.0.0.1:8082 > /dev/null; then
-              echo "✅ Server is responding!"
-              HTTP_CODE=$(curl -o /dev/null -s -w "%{http_code}\n" http://127.0.0.1:8082/about)
+            if curl -sf http://127.0.0.1:8082/api/health >/dev/null; then
+              echo "health ok"
+              HTTP_CODE=$(curl -o /dev/null -s -w "%{http_code}\n" http://127.0.0.1:8082/api/home)
               if [ "$HTTP_CODE" -eq "200" ]; then
-                echo "✅ /about returned 200 OK"
+                echo "/api/home returned 200 OK"
                 kill $SERVER_PID
                 exit 0
               fi
@@ -95,22 +95,15 @@ jobs:
             sleep 1
           done
           
-          echo "❌ Server failed to start."
+          echo "Server failed to start."
           kill $SERVER_PID || true
           exit 1
 
       - name: Prepare Release Assets
         run: |
-          # Create a directory to organize assets
           mkdir -p release-assets
-          
-          # 1. Copy the raw binary (easy download)
           cp target/release/kryivka_org release-assets/kryivka_org
-          
-          # 2. Create a compressed tarball (preserves permissions)
           tar -czvf release-assets/kryivka_org-linux-x86_64.tar.gz -C target/release kryivka_org
-          
-          # 3. Calculate SHA256 checksum
           sha256sum release-assets/kryivka_org-linux-x86_64.tar.gz > release-assets/checksum.sha256
 
       - name: Upload to "Continuous" Release
@@ -122,16 +115,7 @@ jobs:
           body: |
             **Automated Build**
             - Commit: `${{ github.sha }}`
-            - Date: $(date -u)
-            - Built on: Ubuntu 24.04 (Compatible with 25.04)
-            
-            ### How to update on server:
-            ```bash
-            wget -O kryivka_org.tar.gz https://github.com/${{ github.repository }}/releases/download/continuous/kryivka_org-linux-x86_64.tar.gz
-            tar -xzvf kryivka_org.tar.gz
-            chmod +x kryivka_org
-            systemctl restart kryivka_org
-            ```
+            Docker: `docker compose up --build`
           prerelease: true
           files: |
             release-assets/kryivka_org

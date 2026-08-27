@@ -1,17 +1,18 @@
+import { useState } from 'react'
+import type { ComponentType } from "react";
 import type { PostItem } from "@/types/api";
-import { format } from "date-fns";
 import * as Flags from "country-flag-icons/react/3x2";
 import { ImageGallery } from "@/components/common/ImageGallery";
-import { Button } from "@/components/ui/button";
-import { MessageSquare, ShieldAlert, Trash2, Ban, MoreHorizontal, Copy } from "lucide-react";
+import { ShieldAlert, Trash2, Ban, MoreHorizontal, EyeOff, Eye } from "lucide-react";
 import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem,
     DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { uk } from "date-fns/locale";
 import { PostContent } from "./PostContent";
-import { toast } from "sonner";
+import { formatPostTime } from "@/lib/format";
+import { isFaved, toggleFav } from "@/components/common/BoardWidget";
+import { useCheckAdminQuery } from "@/store/api/adminApi";
 
 interface PostProps {
     post: PostItem;
@@ -22,137 +23,209 @@ interface PostProps {
     onReport: (id: number) => void;
     onBan?: (ip: string, session: string) => void;
     onDelete?: (id: number) => void;
+    onHide?: (id: number, hidden: boolean) => void;
     onInvestigate?: (target: string) => void;
 }
 
 export function Post({
-                         post,
-                         isOp,
-                         isPreview,
-                         threadPosts,
-                         onReply,
-                         onReport,
-                         onBan,
-                         onDelete,
-                         onInvestigate
-                     }: PostProps) {
+    post,
+    isOp,
+    isPreview,
+    threadPosts,
+    onReply,
+    onReport,
+    onBan,
+    onDelete,
+    onHide,
+    onInvestigate
+}: PostProps) {
     const { model, images, cdn_url, admin_role, board_slug } = post;
-    const FlagComponent = model.country_code ? (Flags as any)[model.country_code] : null;
-
-    const copyLink = () => {
-        const url = `${window.location.origin}/${board_slug}/thread/${model.thread_id}#p${model.id}`;
-        navigator.clipboard.writeText(url);
-        toast.success("Посилання скопійовано");
-    };
+    const { data: staff } = useCheckAdminQuery(undefined, { skip: admin_role < 1 });
+    const canViewIp = staff?.privileges?.view_ip ?? admin_role >= 2;
+    const canDelete = staff?.privileges?.delete ?? admin_role >= 2;
+    const canBan = staff?.privileges?.ban ?? admin_role >= 2;
+    const canHide = Boolean(staff?.privileges?.hide);
+    const FlagComponent = model.country_code ? (Flags as Record<string, ComponentType<{ className?: string; title?: string }>>)[model.country_code] : null;
+    const subject = "subject" in model ? (model as { subject?: string | null }).subject : undefined;
+    const [faved, setFaved] = useState(() => isFaved(board_slug, model.thread_id));
 
     return (
-        <div
+        <article
             id={`p${model.id}`}
             className={cn(
-                "relative group transition-all duration-300 scroll-mt-20",
-                isOp
-                    ? "mb-6"
-                    : "mb-3",
-                isPreview
-                    ? "border-0 bg-transparent p-3"
-                    : isOp
-                        ? "rounded-xl border bg-card p-4 md:p-6 shadow-sm"
-                        : "rounded-lg border bg-card/50 p-3 md:p-4 hover:border-primary/30 hover:shadow-sm ml-0 md:ml-2"
+                "ib-post scroll-mt-16",
+                isPreview ? "bg-transparent p-2" : isOp ? "ib-op post post_type_oppost" : "ib-reply post post_type_reply",
+                model.is_hidden && "opacity-60",
             )}
         >
-            <div className="flex justify-between items-start mb-3 pb-2 border-b border-border/40">
-                <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-sm text-muted-foreground/80">
-                    <div className="flex items-center gap-2">
-                        {FlagComponent && (
-                            <FlagComponent className="w-5 h-3.5 shadow-sm rounded-[2px]" title={model.country_code || "Unknown"} />
-                        )}
-                        <span className="font-bold text-foreground/90">Анонім</span>
-                    </div>
-
-                    <span className="text-xs opacity-70">
-                        {format(new Date(model.created_at), "dd.MM.yy HH:mm", { locale: uk })}
+            <div className="post__details">
+                {isOp && subject && (
+                    <span className="post__detailpart">
+                        <span className="ib-title post__title">{subject}</span>
                     </span>
-
+                )}
+                {FlagComponent && (
+                    <FlagComponent className="h-3 w-4 rounded-[1px]" title={model.country_code || "Невідомо"} />
+                )}
+                <span className="post__detailpart">
+                    <span className="post__anon">Анонім</span>
+                </span>
+                <span className="post__detailpart">
+                    <span className="post__time">{formatPostTime(model.created_at)}</span>
+                </span>
+                <span className="post__detailpart">
                     <button
+                        type="button"
                         onClick={() => onReply(model.id)}
-                        className="font-mono text-xs hover:text-primary transition-colors cursor-pointer select-text"
+                        className="post__reflink"
                     >
                         №{model.id}
                     </button>
+                </span>
 
-                    {admin_role >= 2 && !isPreview && (
-                        <div className="flex items-center gap-1.5 ml-2">
-                            <button
-                                onClick={() => onInvestigate?.(model.ip_address)}
-                                className="px-1.5 py-0.5 rounded-md bg-red-500/10 text-red-600 dark:text-red-400 text-[10px] font-mono hover:bg-red-500/20 transition-colors border border-red-500/20"
-                                title="Check IP"
-                            >
-                                {model.ip_address}
-                            </button>
-                            <button
-                                onClick={() => onInvestigate?.(model.session_id)}
-                                className="px-1.5 py-0.5 rounded-md bg-orange-500/10 text-orange-600 dark:text-orange-400 text-[10px] font-mono hover:bg-orange-500/20 transition-colors border border-orange-500/20 truncate max-w-[60px]"
-                                title="Check Session"
-                            >
-                                {model.session_id}
-                            </button>
-                        </div>
-                    )}
-                </div>
+                {canViewIp && !isPreview && model.ip_address && (
+                    <span className="post__detailpart font-mono text-[10px]">
+                        <button
+                            type="button"
+                            onClick={() => onInvestigate?.(model.ip_address || '')}
+                            className="text-destructive hover:underline"
+                            title="Перевірити IP"
+                        >
+                            {model.ip_address}
+                        </button>
+                        {' '}
+                        <button
+                            type="button"
+                            onClick={() => onInvestigate?.(model.session_id || '')}
+                            className="max-w-[72px] truncate text-primary hover:underline"
+                            title="Перевірити сесію"
+                        >
+                            {model.session_id}
+                        </button>
+                    </span>
+                )}
 
                 {!isPreview && (
-                    <div className="flex gap-1 items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={copyLink} title="Копіювати посилання">
-                            <Copy className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onReply(model.id)} title="Відповісти">
-                            <MessageSquare className="w-3.5 h-3.5" />
-                        </Button>
+                    <>
+                        {isOp && (
+                            <button
+                                type="button"
+                                className={cn(faved && "text-primary")}
+                                title="Обране"
+                                onClick={() => {
+                                    toggleFav({
+                                        slug: board_slug,
+                                        id: model.thread_id,
+                                        title: subject || model.content.slice(0, 60),
+                                    });
+                                    setFaved(isFaved(board_slug, model.thread_id));
+                                }}
+                            >
+                                {faved ? "★" : "☆"}
+                            </button>
+                        )}
+                        <button type="button" className="post__reflink" onClick={() => onReply(model.id)}>
+                            Відповідь
+                        </button>
+                        <button
+                            type="button"
+                            data-testid="report-post"
+                            aria-label="Поскаржитись"
+                            title="Поскаржитись"
+                            onClick={() => onReport(model.id)}
+                        >
+                            <ShieldAlert className="inline h-3.5 w-3.5 align-text-top" />
+                        </button>
+                        {canHide && (
+                            <button
+                                type="button"
+                                className="text-destructive"
+                                data-testid="hide-content"
+                                aria-label={model.is_hidden ? 'Показати' : 'Приховати'}
+                                title={model.is_hidden ? 'Показати' : 'Приховати'}
+                                onClick={() => onHide?.(model.id, !model.is_hidden)}
+                            >
+                                {model.is_hidden ? <Eye className="inline h-3.5 w-3.5 align-text-top" /> : <EyeOff className="inline h-3.5 w-3.5 align-text-top" />}
+                            </button>
+                        )}
+                        {canDelete && (
+                            <button
+                                type="button"
+                                className="text-destructive"
+                                data-testid="delete-content"
+                                aria-label="Видалити"
+                                title="Видалити"
+                                onClick={() => onDelete?.(model.id)}
+                            >
+                                <Trash2 className="inline h-3.5 w-3.5 align-text-top" />
+                            </button>
+                        )}
+                        {canBan && (
+                            <button
+                                type="button"
+                                className="text-destructive"
+                                data-testid="ban-user"
+                                aria-label="Забанити"
+                                title="Забанити"
+                                onClick={() => onBan?.(model.ip_address || '', model.session_id || '')}
+                            >
+                                <Ban className="inline h-3.5 w-3.5 align-text-top" />
+                            </button>
+                        )}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-6 w-6"><MoreHorizontal className="w-3.5 h-3.5" /></Button>
+                                <button type="button" data-testid="post-menu" aria-label="Меню">
+                                    <MoreHorizontal className="inline h-3.5 w-3.5 align-text-top" />
+                                </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => onReport(model.id)}>
-                                    <ShieldAlert className="w-4 h-4 mr-2" /> Поскаржитись
+                                    <ShieldAlert className="mr-2 h-4 w-4" /> Поскаржитись
                                 </DropdownMenuItem>
-                                {admin_role >= 2 && (
+                                {(canHide || canDelete || canBan) && (
                                     <>
                                         <DropdownMenuSeparator />
-                                        <DropdownMenuLabel className="text-red-500 text-xs uppercase tracking-wider">Адмін меню</DropdownMenuLabel>
-                                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete?.(model.id)}>
-                                            <Trash2 className="w-4 h-4 mr-2" /> Видалити
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onBan?.(model.ip_address, model.session_id)}>
-                                            <Ban className="w-4 h-4 mr-2" /> Забанити
-                                        </DropdownMenuItem>
+                                        <DropdownMenuLabel className="text-xs uppercase tracking-wider text-destructive">Адмін меню</DropdownMenuLabel>
+                                        {canHide && (
+                                            <DropdownMenuItem onClick={() => onHide?.(model.id, !model.is_hidden)}>
+                                                {model.is_hidden ? <Eye className="mr-2 h-4 w-4" /> : <EyeOff className="mr-2 h-4 w-4" />}
+                                                {model.is_hidden ? 'Показати' : 'Приховати'}
+                                            </DropdownMenuItem>
+                                        )}
+                                        {canDelete && (
+                                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete?.(model.id)}>
+                                                <Trash2 className="mr-2 h-4 w-4" /> Видалити
+                                            </DropdownMenuItem>
+                                        )}
+                                        {canBan && (
+                                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onBan?.(model.ip_address || '', model.session_id || '')}>
+                                                <Ban className="mr-2 h-4 w-4" /> Забанити
+                                            </DropdownMenuItem>
+                                        )}
                                     </>
                                 )}
                             </DropdownMenuContent>
                         </DropdownMenu>
-                    </div>
+                    </>
                 )}
             </div>
 
-            <div className={cn("grid gap-4", images.length > 0 && "sm:grid-cols-[auto_1fr]")}>
+            <div className="post__message clearfix">
                 {images.length > 0 && (
-                    <div className="shrink-0 max-w-full sm:max-w-[200px]">
-                        <ImageGallery images={images} cdnUrl={cdn_url} />
-                    </div>
+                    <ImageGallery images={images} cdnUrl={cdn_url} />
                 )}
-
-                <div className="min-w-0">
+                <blockquote className="post__comment">
                     <PostContent
                         content={model.content}
                         boardSlug={board_slug}
                         currentThreadId={model.thread_id}
                         threadPosts={threadPosts}
-                        onQuoteClick={(id) => {
-                            window.location.hash = `p${id}`;
+                        onQuoteClick={(postId) => {
+                            window.location.hash = `p${postId}`;
                         }}
                     />
-                </div>
+                </blockquote>
             </div>
-        </div>
+        </article>
     );
 }

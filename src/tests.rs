@@ -1,4 +1,4 @@
-use crate::{AppState, config::Config, db, migrator::Migrator, route::create_router, service::StorageService, config::StorageType, model::{admins, bans, threads, admin_logs, SessionClaims}};
+use crate::{AppState, config::Config, db, migrator::Migrator, route::create_router, service::StorageService, model::{admins, bans, threads, admin_logs, images, SessionClaims}};
 use axum::{
     body::Body,
     http::{Request, StatusCode, header},
@@ -20,48 +20,33 @@ use chrono::Utc;
 
 // --- Test Utilities ---
 
-async fn setup_app() -> (Router, DatabaseConnection, Config) {
-    // 1. Setup Config
-    let config = Config {
-        database_url: "sqlite::memory:".to_string(), // In-memory DB
-        jwt_secret: "test_secret".to_string(),
-        jwt_expires_in: "1d".to_string(),
-        jwt_maxage: 3600,
-        cdn_url: "http://localhost:8083".to_string(),
-        storage_type: StorageType::Local,
-        media_path: "./test_media".to_string(),
-        media_port: 8083,
-    };
+async fn setup_app() -> (Router, DatabaseConnection, Config, Arc<crate::service::PasswordCrypto>) {
+    let config = Config::for_test();
 
-    // 2. Setup DB & Migrations
     let pool = db::connect(&config.database_url).await.expect("Failed to connect to in-memory DB");
     Migrator::up(&pool, None).await.expect("Failed to run migrations");
 
-    // 3. Initialize State
     let storage = StorageService::init(&config).await;
     let ip_cache = Cache::builder().build();
-    let rate_limit_cache = Cache::builder().build();
     let db_cache = Cache::builder().build();
-    let login_attempts = Cache::builder().build();
+    let kv = crate::service::KvStore::connect(None).await.expect("kv");
+    let password_crypto = Arc::new(crate::service::PasswordCrypto::generate());
 
-    // 4. Create App State
     let app_state = Arc::new(RwLock::new(AppState {
         pool: pool.clone(),
         config: config.clone(),
         storage,
         ip_cache,
-        rate_limit_cache,
         db_cache,
-        login_attempts,
+        kv,
+        password_crypto: password_crypto.clone(),
     }));
 
-    // 5. Create Router
     let app = create_router(app_state);
 
-    // Create test media dir if not exists
     let _ = tokio::fs::create_dir_all("./test_media").await;
 
-    (app, pool, config)
+    (app, pool, config, password_crypto)
 }
 
 fn build_req(uri: &str, method: &str, body: Body, ip: Option<&str>, ua: Option<&str>) -> Request<Body> {
@@ -137,6 +122,8 @@ fn forge_session_cookie(
         ua: ua.to_string(),
         role,
         v: token_version,
+        aid: 0,
+        uname: String::new(),
         iat,
         exp,
     };
@@ -156,7 +143,7 @@ fn forge_session_cookie(
 
 #[tokio::test]
 async fn test_data_leakage_guest_view() {
-    let (app, db, _) = setup_app().await;
+    let (app, db, _, _) = setup_app().await;
 
     // Seed a thread with sensitive data
     let thread = threads::ActiveModel {
@@ -187,7 +174,7 @@ async fn test_data_leakage_guest_view() {
 
 #[tokio::test]
 async fn test_data_visibility_admin_view() {
-    let (app, db, config) = setup_app().await;
+    let (app, db, config, _) = setup_app().await;
 
     // Seed Admin (Role 3)
     let admin_user = admins::ActiveModel {
@@ -236,7 +223,7 @@ async fn test_data_visibility_admin_view() {
 async fn test_cache_poisoning_prevention() {
     // Scenario: Admin views a thread first (populating cache with admin data).
     // Guest views next. Guest MUST NOT receive admin cache.
-    let (app, db, config) = setup_app().await;
+    let (app, db, config, _) = setup_app().await;
 
     let secret_ip = "192.168.6.66";
     let thread = threads::ActiveModel {
@@ -274,7 +261,7 @@ async fn test_cache_poisoning_prevention() {
 
 #[tokio::test]
 async fn test_admin_token_revocation() {
-    let (app, db, config) = setup_app().await;
+    let (app, db, config, _) = setup_app().await;
 
     // Clear default admin from migration to ensure we query the correct one
     let _ = admins::Entity::delete_many().exec(&db).await;
@@ -315,7 +302,7 @@ async fn test_admin_token_revocation() {
 
 #[tokio::test]
 async fn test_jwt_algo_confusion_attack() {
-    let (app, _, config) = setup_app().await;
+    let (app, _, config, _) = setup_app().await;
     let session_id = "hacker";
 
     // Create a token with 'HS256' instead of the server's 'HS384'
@@ -332,7 +319,7 @@ async fn test_jwt_algo_confusion_attack() {
 
 #[tokio::test]
 async fn test_ua_binding_enforcement() {
-    let (app, db, config) = setup_app().await;
+    let (app, db, config, _) = setup_app().await;
 
     let admin = admins::ActiveModel {
         username: Set("ua_test".to_string()),
@@ -361,7 +348,7 @@ async fn test_ua_binding_enforcement() {
 
 #[tokio::test]
 async fn test_search_sql_injection_attempt() {
-    let (app, db, config) = setup_app().await;
+    let (app, db, config, _) = setup_app().await;
 
     let admin = admins::ActiveModel {
         username: Set("search_admin".to_string()),
@@ -389,7 +376,7 @@ async fn test_search_sql_injection_attempt() {
 #[tokio::test]
 async fn test_sql_injection_in_headers() {
     // Attack vector: Inject SQL via User-Agent or X-Forwarded-For which are often logged to DB
-    let (app, _, _) = setup_app().await;
+    let (app, _, _, _) = setup_app().await;
 
     let malicious_ua = "Mozilla/5.0' OR '1'='1'); DROP TABLE admin_logs; --";
 
@@ -403,7 +390,7 @@ async fn test_sql_injection_in_headers() {
 
 #[tokio::test]
 async fn test_null_byte_injection() {
-    let (app, _, config) = setup_app().await;
+    let (app, _, config, _) = setup_app().await;
     let session_id = Uuid::new_v4().to_string();
     let token = forge_session_cookie(&config, 3, &session_id, "127.0.0.1", "TestRunner/1.0", 1, false, None);
 
@@ -422,7 +409,7 @@ async fn test_null_byte_injection() {
 
 #[tokio::test]
 async fn test_path_traversal_filename() {
-    let (app, _, _) = setup_app().await;
+    let (app, _, _, _) = setup_app().await;
     let session_id = "path_hacker";
     let (nonce, salt) = generate_pow_headers(session_id);
 
@@ -458,7 +445,7 @@ async fn test_path_traversal_filename() {
 
 #[tokio::test]
 async fn test_huge_payload_dos() {
-    let (app, _, _) = setup_app().await;
+    let (app, _, _, _) = setup_app().await;
     let session_id = "dos_attacker";
     let (nonce, salt) = generate_pow_headers(session_id);
 
@@ -486,7 +473,7 @@ async fn test_huge_payload_dos() {
 
 #[tokio::test]
 async fn test_pagination_dos_attempt() {
-    let (app, db, config) = setup_app().await;
+    let (app, db, config, _) = setup_app().await;
 
     // Seed admin
     let admin = admins::ActiveModel {
@@ -531,7 +518,7 @@ async fn test_pagination_dos_attempt() {
 
 #[tokio::test]
 async fn test_public_access() {
-    let (app, _, _) = setup_app().await;
+    let (app, _, _, _) = setup_app().await;
     let req = build_req("/api/home", "GET", Body::empty(), None, None);
     let response = app.clone().oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
@@ -539,7 +526,7 @@ async fn test_public_access() {
 
 #[tokio::test]
 async fn test_admin_auth_flow() {
-    let (app, db, _) = setup_app().await;
+    let (app, db, _, crypto) = setup_app().await;
     // ... (Existing code from previous step, ensuring get_cookie_value is used) ...
     let admin_key_raw = "secret_key_123";
     let mut hasher = Sha256::new();
@@ -564,7 +551,7 @@ async fn test_admin_auth_flow() {
     let session_id_val = get_cookie_value(&client_key_cookie);
 
     let (nonce, salt) = generate_pow_headers(&session_id_val);
-    let payload = json!({ "key": admin_key_raw });
+    let payload = json!({ "username": "test_admin", "password_enc": crypto.seal_b64(admin_key_raw.as_bytes()) });
 
     let mut req = build_req("/api/admin/login", "POST", Body::from(serde_json::to_string(&payload).unwrap()), None, None);
     req.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
@@ -578,7 +565,7 @@ async fn test_admin_auth_flow() {
 
 #[tokio::test]
 async fn test_security_holes() {
-    let (app, _, _) = setup_app().await;
+    let (app, _, _, _) = setup_app().await;
     let req = build_req("/api/home", "GET", Body::empty(), None, None);
     let response = app.clone().oneshot(req).await.unwrap();
     let client_key = get_cookie(&response, "client_key").expect("Cookie missing");
@@ -603,7 +590,7 @@ async fn test_security_holes() {
 
 #[tokio::test]
 async fn test_bot_guard_missing_headers() {
-    let (app, _, _) = setup_app().await;
+    let (app, _, _, _) = setup_app().await;
     let req = build_req("/api/home", "GET", Body::empty(), None, None);
     let response = app.clone().oneshot(req).await.unwrap();
     let client_key = get_cookie(&response, "client_key").expect("Cookie missing");
@@ -620,7 +607,7 @@ async fn test_bot_guard_missing_headers() {
 
 #[tokio::test]
 async fn test_role_hierarchy_enforcement() {
-    let (app, db, config) = setup_app().await;
+    let (app, db, config, _) = setup_app().await;
     let janitor = admins::ActiveModel {
         username: Set("janitor_test".to_string()),
         service_key: Set("irrelevant_hash".to_string()),
@@ -655,7 +642,7 @@ async fn test_role_hierarchy_enforcement() {
 
 #[tokio::test]
 async fn test_banned_user_cannot_post() {
-    let (app, db, _) = setup_app().await;
+    let (app, db, _, _) = setup_app().await;
     let ban = bans::ActiveModel {
         ip_address: Set(Some("127.0.0.1".to_string())),
         reason: Set(Some("Spamming tests".to_string())),
@@ -681,7 +668,7 @@ async fn test_banned_user_cannot_post() {
 
 #[tokio::test]
 async fn test_pow_replay_attack() {
-    let (app, _, _) = setup_app().await;
+    let (app, _, _, _) = setup_app().await;
     let session_id = "replay_attacker";
     let (nonce, salt) = generate_pow_headers(session_id);
     let payload = json!({ "post_id": 999, "reason": "spam" });
@@ -705,7 +692,7 @@ async fn test_pow_replay_attack() {
 
 #[tokio::test]
 async fn test_rate_limiting() {
-    let (app, _, _) = setup_app().await;
+    let (app, _, _, _) = setup_app().await;
     let session_id = "spammer";
     let spammer_ip = "10.10.10.10";
     let boundary = "boundarySpam";
@@ -730,10 +717,10 @@ async fn test_rate_limiting() {
 
 #[tokio::test]
 async fn test_admin_login_brute_force() {
-    let (app, _, _) = setup_app().await;
+    let (app, _, _, crypto) = setup_app().await;
     let session_id = "brute_forcer";
     let ip = "192.168.100.100";
-    let payload = json!({ "key": "wrong_password" });
+    let payload = json!({ "username": "admin", "password_enc": crypto.seal_b64(b"wrong_password") });
     let body_json = serde_json::to_string(&payload).unwrap();
 
     let make_login_attempt = || {
@@ -757,7 +744,7 @@ async fn test_admin_login_brute_force() {
 
 #[tokio::test]
 async fn test_malicious_file_upload() {
-    let (app, _, _) = setup_app().await;
+    let (app, _, _, _) = setup_app().await;
     let session_id = "hacker";
     let (nonce, salt) = generate_pow_headers(session_id);
     let boundary = "BoundaryHax";
@@ -782,7 +769,7 @@ async fn test_malicious_file_upload() {
 
 #[tokio::test]
 async fn test_expired_jwt_handling() {
-    let (app, _db, config) = setup_app().await;
+    let (app, _db, config, _) = setup_app().await;
     let session_id = "expired_user";
     let expired_cookie = forge_session_cookie(&config, 3, session_id, "127.0.0.1", "TestRunner/1.0", 1, true, None);
     let client_cookie = format!("client_key={}", session_id);
@@ -794,3 +781,219 @@ async fn test_expired_jwt_handling() {
     let response = app.clone().oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
+
+#[tokio::test]
+async fn test_purge_thread_removes_storage_files() {
+    let (_app, db, config, _) = setup_app().await;
+    let storage = StorageService::init(&config).await;
+
+    let thread = threads::ActiveModel {
+        board_slug: Set("m".to_string()),
+        content: Set("purge me".to_string()),
+        session_id: Set("s".to_string()),
+        ip_address: Set("10.0.0.1".to_string()),
+        created_at: Set(Utc::now().naive_utc()),
+        updated_at: Set(Utc::now().naive_utc()),
+        ..Default::default()
+    };
+    let t = thread.insert(&db).await.unwrap();
+    let key = format!("purge_{}.webp", t.id);
+    let thumb = format!("purge_{}_thumb.webp", t.id);
+    tokio::fs::write(format!("./test_media/{key}"), b"data").await.unwrap();
+    tokio::fs::write(format!("./test_media/{thumb}"), b"thumb").await.unwrap();
+
+    let img = images::ActiveModel {
+        thread_id: Set(Some(t.id)),
+        url: Set(key.clone()),
+        thumbnail_url: Set(thumb.clone()),
+        filename: Set("x.webp".into()),
+        storage_key: Set(key.clone()),
+        hash: Set("abc".into()),
+        phash: Set("ph".into()),
+        width: Set(1),
+        height: Set(1),
+        size: Set(4),
+        created_at: Set(Utc::now().naive_utc()),
+        ..Default::default()
+    };
+    img.insert(&db).await.unwrap();
+
+    crate::service::purge_thread(&db, &storage, t.id).await.unwrap();
+
+    assert!(threads::Entity::find_by_id(t.id).one(&db).await.unwrap().is_none());
+    assert!(!std::path::Path::new(&format!("./test_media/{key}")).exists());
+    assert!(!std::path::Path::new(&format!("./test_media/{thumb}")).exists());
+}
+
+#[tokio::test]
+async fn test_purge_keeps_deduped_file() {
+    let (_app, db, config, _) = setup_app().await;
+    let storage = StorageService::init(&config).await;
+    let key = "shared.webp".to_string();
+    let thumb = "shared_thumb.webp".to_string();
+    tokio::fs::write("./test_media/shared.webp", b"data").await.unwrap();
+    tokio::fs::write("./test_media/shared_thumb.webp", b"thumb").await.unwrap();
+
+    let mk_thread = |content: &str| threads::ActiveModel {
+        board_slug: Set("m".to_string()),
+        content: Set(content.to_string()),
+        session_id: Set("s".to_string()),
+        ip_address: Set("10.0.0.2".to_string()),
+        created_at: Set(Utc::now().naive_utc()),
+        updated_at: Set(Utc::now().naive_utc()),
+        ..Default::default()
+    };
+    let t1 = mk_thread("one").insert(&db).await.unwrap();
+    let t2 = mk_thread("two").insert(&db).await.unwrap();
+
+    for tid in [t1.id, t2.id] {
+        images::ActiveModel {
+            thread_id: Set(Some(tid)),
+            url: Set(key.clone()),
+            thumbnail_url: Set(thumb.clone()),
+            filename: Set("x.webp".into()),
+            storage_key: Set(key.clone()),
+            hash: Set("same".into()),
+            phash: Set("ph".into()),
+            width: Set(1),
+            height: Set(1),
+            size: Set(4),
+            created_at: Set(Utc::now().naive_utc()),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+    }
+
+    crate::service::purge_thread(&db, &storage, t1.id).await.unwrap();
+    assert!(std::path::Path::new("./test_media/shared.webp").exists(), "shared object must remain");
+
+    crate::service::purge_thread(&db, &storage, t2.id).await.unwrap();
+    assert!(!std::path::Path::new("./test_media/shared.webp").exists(), "object removed after last ref");
+}
+
+#[tokio::test]
+async fn test_purge_inactive_threads_job() {
+    let (_app, db, config, _) = setup_app().await;
+    let storage = StorageService::init(&config).await;
+
+    let old = threads::ActiveModel {
+        board_slug: Set("m".to_string()),
+        content: Set("old".to_string()),
+        session_id: Set("s".to_string()),
+        ip_address: Set("10.0.0.3".to_string()),
+        created_at: Set(Utc::now().naive_utc() - chrono::Duration::days(40)),
+        updated_at: Set(Utc::now().naive_utc() - chrono::Duration::days(40)),
+        ..Default::default()
+    };
+    let old = old.insert(&db).await.unwrap();
+
+    let fresh = threads::ActiveModel {
+        board_slug: Set("m".to_string()),
+        content: Set("fresh".to_string()),
+        session_id: Set("s".to_string()),
+        ip_address: Set("10.0.0.3".to_string()),
+        created_at: Set(Utc::now().naive_utc()),
+        updated_at: Set(Utc::now().naive_utc()),
+        ..Default::default()
+    };
+    let fresh = fresh.insert(&db).await.unwrap();
+
+    let n = crate::service::purge_inactive_threads(&db, &storage, 30).await.unwrap();
+    assert_eq!(n, 1);
+    assert!(threads::Entity::find_by_id(old.id).one(&db).await.unwrap().is_none());
+    assert!(threads::Entity::find_by_id(fresh.id).one(&db).await.unwrap().is_some());
+}
+
+#[tokio::test]
+async fn test_admin_setup_and_login() {
+    let (app, _, _, crypto) = setup_app().await;
+
+    let req = build_req("/admin", "GET", Body::empty(), None, None);
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let html = String::from_utf8(body_bytes.to_vec()).unwrap();
+    assert!(html.contains("data-mode=\"setup\""), "first-run gate should be setup");
+    assert!(!html.contains("/api/admin/setup-status"));
+
+    let session_id = "setup_user";
+    let (nonce, salt) = generate_pow_headers(session_id);
+    let payload = json!({ "password_enc": crypto.seal_b64(b"123456") });
+    let mut req = build_req("/api/admin/setup", "POST", Body::from(serde_json::to_string(&payload).unwrap()), None, None);
+    req.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    req.headers_mut().insert(header::COOKIE, format!("client_key={}", session_id).parse().unwrap());
+    req.headers_mut().insert("X-PoW-Nonce", nonce.parse().unwrap());
+    req.headers_mut().insert("X-PoW-Salt", salt.parse().unwrap());
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let (nonce, salt) = generate_pow_headers(session_id);
+    let payload = json!({ "password_enc": crypto.seal_b64(b"Tr0pical-Storm7!") });
+    let mut req = build_req("/api/admin/setup", "POST", Body::from(serde_json::to_string(&payload).unwrap()), None, None);
+    req.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    req.headers_mut().insert(header::COOKIE, format!("client_key={}", session_id).parse().unwrap());
+    req.headers_mut().insert("X-PoW-Nonce", nonce.parse().unwrap());
+    req.headers_mut().insert("X-PoW-Salt", salt.parse().unwrap());
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let req = build_req("/admin", "GET", Body::empty(), None, None);
+    let response = app.clone().oneshot(req).await.unwrap();
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let html = String::from_utf8(body_bytes.to_vec()).unwrap();
+    assert!(html.contains("data-mode=\"login\""), "setup page must disappear after super-admin exists");
+
+    let (nonce, salt) = generate_pow_headers(session_id);
+    let payload = json!({ "username": "admin", "password_enc": crypto.seal_b64(b"Tr0pical-Storm7!") });
+    let mut req = build_req("/api/admin/login", "POST", Body::from(serde_json::to_string(&payload).unwrap()), None, None);
+    req.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    req.headers_mut().insert(header::COOKIE, format!("client_key={}", session_id).parse().unwrap());
+    req.headers_mut().insert("X-PoW-Nonce", nonce.parse().unwrap());
+    req.headers_mut().insert("X-PoW-Salt", salt.parse().unwrap());
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_setup_status_is_not_a_public_api() {
+    let (app, _, _, _) = setup_app().await;
+    let req = build_req("/api/admin/setup-status", "GET", Body::empty(), None, None);
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    let req = build_req("/admin/assets/app.js", "GET", Body::empty(), None, None);
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_cidr_ban_blocks_range() {
+    let (app, db, _, _) = setup_app().await;
+    let ban = bans::ActiveModel {
+        ip_address: Set(Some("203.0.113.0".to_string())),
+        cidr: Set(Some("203.0.113.0/24".to_string())),
+        scope: Set("site".to_string()),
+        kind: Set("post".to_string()),
+        reason: Set(Some("cidr".to_string())),
+        expires_at: Set(Utc::now().naive_utc() + chrono::Duration::hours(1)),
+        ..Default::default()
+    };
+    ban.insert(&db).await.expect("ban");
+
+    let session_id = "cidr_banned";
+    let (nonce, salt) = generate_pow_headers(session_id);
+    let boundary = "------------------------BoundaryCidr";
+    let body_data = format!("--{boundary}\r\nContent-Disposition: form-data; name=\"content\"\r\n\r\nBanned\r\n--{boundary}--", boundary=boundary);
+
+    let mut req = build_req("/api/m/submit", "POST", Body::from(body_data), Some("203.0.113.77"), None);
+    req.headers_mut().insert(header::CONTENT_TYPE, format!("multipart/form-data; boundary={}", boundary).parse().unwrap());
+    req.headers_mut().insert(header::COOKIE, format!("client_key={}", session_id).parse().unwrap());
+    req.headers_mut().insert("X-PoW-Nonce", nonce.parse().unwrap());
+    req.headers_mut().insert("X-PoW-Salt", salt.parse().unwrap());
+
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+

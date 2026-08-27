@@ -11,16 +11,17 @@ use sea_orm::*;
 use serde::{Deserialize, Serialize};
 use chrono::{Utc, NaiveDateTime};
 use tokio::sync::RwLock;
-use sha2::{Sha256, Digest};
 use image_hasher::{ImageHash, HasherConfig};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use sea_orm::sea_query::Expr;
 use serde_json::json;
 use crate::{
-    model::{admins, bans, admin_logs, posts, images, reports, threads},
-    AppState,
     handler::middleware::CurrentSession,
+    handler::staff::{actor_name, guard_action, prepare_ban_fields},
+    model::{bans, admin_logs, posts, images, reports, threads},
+    AppState,
     security::get_client_ip,
+    service::{self, audit},
 };
 
 // --- Data Structs for JSON API ---
@@ -77,12 +78,14 @@ pub struct ContentSearchQuery {
     limit: Option<u64>,
 }
 
-#[derive(Deserialize)]
-pub struct LoginPayload { key: String }
+fn reporter_ip(session: &CurrentSession, ip: String) -> String {
+    if session.privileges.view_ip {
+        ip
+    } else {
+        String::new()
+    }
+}
 
-const MAX_LOGIN_ATTEMPTS: u32 = 5;
-
-// --- Helper ---
 fn fix_image_urls(imgs: &mut Vec<images::Model>, cdn_url: &str) {
     for img in imgs {
         if !img.url.starts_with("http") {
@@ -92,76 +95,6 @@ fn fix_image_urls(imgs: &mut Vec<images::Model>, cdn_url: &str) {
             img.thumbnail_url = format!("{}/{}", cdn_url, img.thumbnail_url);
         }
     }
-}
-
-// --- Handlers ---
-
-pub async fn admin_login_action(
-    State(state): State<Arc<RwLock<AppState>>>,
-    Extension(mut session): Extension<CurrentSession>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    Json(payload): Json<LoginPayload>,
-) -> Response {
-    let state_read = state.read().await;
-    let db = &state_read.pool;
-
-    let ip = get_client_ip(&headers, &addr);
-    let attempts = state_read.login_attempts.get(&ip).await.unwrap_or(0);
-
-    if attempts >= MAX_LOGIN_ATTEMPTS {
-        return (
-            StatusCode::TOO_MANY_REQUESTS,
-            Json(json!({"error": "Too many failed attempts. Locked for 1 hour."}))
-        ).into_response();
-    }
-
-    let mut hasher = Sha256::new();
-    hasher.update(payload.key.as_bytes());
-    let hashed_key = hex::encode(hasher.finalize());
-
-    let admin = admins::Entity::find()
-        .filter(admins::Column::ServiceKey.eq(&hashed_key))
-        .one(db)
-        .await
-        .unwrap_or(None);
-
-    if let Some(admin) = admin {
-        state_read.login_attempts.invalidate(&ip).await;
-        session.role = admin.role;
-        session.version = admin.token_version;
-
-        let mut response = Json(json!({"status": "ok", "role": admin.role})).into_response();
-        response.extensions_mut().insert(session);
-        return response;
-    }
-
-    state_read.login_attempts.insert(ip, attempts + 1).await;
-    let remaining = MAX_LOGIN_ATTEMPTS - (attempts + 1);
-
-    (
-        StatusCode::UNAUTHORIZED,
-        Json(json!({"error": "Invalid Key", "remaining_attempts": remaining}))
-    ).into_response()
-}
-
-pub async fn admin_logout_action(
-    Extension(mut session): Extension<CurrentSession>,
-) -> Response {
-    session.role = 0;
-    session.version = 1;
-    let mut response = Json(json!({"status": "logged_out"})).into_response();
-    response.extensions_mut().insert(session);
-    response
-}
-
-pub async fn api_check_admin(
-    Extension(session): Extension<CurrentSession>,
-) -> Response {
-    Json(json!({
-        "status": if session.role > 0 { "ok" } else { "guest" },
-        "role": session.role
-    })).into_response()
 }
 
 // --- JSON APIs ---
@@ -251,25 +184,51 @@ pub async fn api_get_reports(
 
     let mut result = Vec::new();
     for r in reports_raw {
-        let post = posts::Entity::find_by_id(r.post_id).one(db).await.unwrap_or(None);
+        let mut post = posts::Entity::find_by_id(r.post_id).one(db).await.unwrap_or(None);
         let mut board_slug = None;
         let mut imgs = vec![];
 
-        if let Some(ref p) = post {
-            imgs = images::Entity::find().filter(images::Column::PostId.eq(p.id)).all(db).await.unwrap_or_default();
-            // Prepend CDN URL for admin view
-            fix_image_urls(&mut imgs, cdn_url);
-
-            if let Ok(Some(t)) = threads::Entity::find_by_id(p.thread_id).one(db).await {
-                board_slug = Some(t.board_slug);
+        // OP reports use the thread id (there is no posts row for the opening post).
+        if post.is_none() {
+            if let Ok(Some(t)) = threads::Entity::find_by_id(r.post_id).one(db).await {
+                board_slug = Some(t.board_slug.clone());
+                imgs = images::Entity::find()
+                    .filter(images::Column::ThreadId.eq(t.id))
+                    .all(db)
+                    .await
+                    .unwrap_or_default();
+                post = Some(posts::Model {
+                    id: t.id,
+                    thread_id: t.id,
+                    content: t.content,
+                    session_id: t.session_id,
+                    ip_address: t.ip_address,
+                    country_code: t.country_code,
+                    created_at: t.created_at,
+                    is_hidden: t.is_hidden,
+                });
             }
+        }
+
+        if let Some(ref mut p) = post {
+            if !session.privileges.view_ip {
+                p.ip_address = String::new();
+                p.session_id = String::new();
+            }
+            if imgs.is_empty() {
+                imgs = images::Entity::find().filter(images::Column::PostId.eq(p.id)).all(db).await.unwrap_or_default();
+                if let Ok(Some(t)) = threads::Entity::find_by_id(p.thread_id).one(db).await {
+                    board_slug = Some(t.board_slug);
+                }
+            }
+            fix_image_urls(&mut imgs, cdn_url);
         }
 
         result.push(ApiReport {
             id: r.id,
             reason: r.reason,
             status: r.status,
-            reporter_ip: r.ip_address,
+            reporter_ip: reporter_ip(&session, r.ip_address),
             created_at: r.created_at,
             post,
             images: imgs,
@@ -289,7 +248,7 @@ pub async fn api_search_content(
     Extension(session): Extension<CurrentSession>,
     Query(query): Query<ContentSearchQuery>,
 ) -> Response {
-    if session.role < 2 { return StatusCode::FORBIDDEN.into_response(); }
+    if !session.privileges.view_ip { return StatusCode::FORBIDDEN.into_response(); }
     let db = &state.read().await.pool;
     let limit = query.limit.unwrap_or(50).min(100);
 
@@ -323,7 +282,7 @@ pub async fn api_investigate(
     Extension(session): Extension<CurrentSession>,
     Query(query): Query<InvestigateQuery>,
 ) -> Response {
-    if session.role < 2 { return StatusCode::FORBIDDEN.into_response(); }
+    if !session.privileges.view_ip { return StatusCode::FORBIDDEN.into_response(); }
     let state_read = state.read().await;
     let db = &state_read.pool;
     let cdn_url = &state_read.config.cdn_url;
@@ -416,15 +375,14 @@ pub async fn api_investigate(
     }
 
     // 6. Log Investigation
-    let log = admin_logs::ActiveModel {
-        admin_username: Set(format!("Role-{}", session.role)),
-        action: Set("INVESTIGATE".to_string()),
-        target_id: Set(Some(query.target.clone())),
-        details: Set(Some(format!("Found {} linked IPs, {} sessions", ips.len(), sessions.len()))),
-        created_at: Set(Utc::now().naive_utc()),
-        ..Default::default()
-    };
-    let _ = log.insert(db).await;
+    audit(
+        db,
+        &actor_name(&session),
+        "INVESTIGATE",
+        Some(query.target.clone()),
+        Some(format!("Знайдено {} пов'язаних IP, {} сесій", ips.len(), sessions.len())),
+        None,
+    ).await;
 
     Json(InvestigationResult {
         initial_target: query.target,
@@ -443,7 +401,7 @@ pub async fn api_visual_search(
     Extension(session): Extension<CurrentSession>,
     mut multipart: Multipart,
 ) -> Response {
-    if session.role < 2 { return StatusCode::FORBIDDEN.into_response(); }
+    if !session.privileges.view_ip { return StatusCode::FORBIDDEN.into_response(); }
     let state_read = state.read().await;
     let db = &state_read.pool;
     let cdn_url = &state_read.config.cdn_url;
@@ -505,7 +463,7 @@ pub async fn api_visual_search(
         }
     }
 
-    Json(json!({"error": "No valid image uploaded"})).into_response()
+    Json(json!({"error": "Не завантажено дійсне зображення"})).into_response()
 }
 
 // --- STANDARD ACTIONS (Ban, Delete, Resolve) ---
@@ -517,58 +475,100 @@ pub struct BanPayload {
     reason: String,
     duration: i64,
     delete_content: bool,
+    cidr: Option<String>,
+    scope: Option<String>,
+    board_slug: Option<String>,
+    kind: Option<String>,
 }
 
 pub async fn api_ban_user(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(payload): Json<BanPayload>,
 ) -> Response {
-    if session.role < 2 { return StatusCode::FORBIDDEN.into_response(); }
     let state = state.read().await;
+    let actor = match guard_action(&state, &session, session.privileges.ban, "Немає права банити").await {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
     let db = &state.pool;
     let storage = &state.storage;
+    let ip_raw = payload.cidr.as_deref().unwrap_or(&payload.ip);
+    let (store_ip, store_cidr) = match prepare_ban_fields(ip_raw).await {
+        Ok(v) => v,
+        Err(msg) => return service::bad_request(&msg),
+    };
+    let scope = payload.scope.as_deref().unwrap_or("site");
+    if scope != "site" && scope != "board" {
+        return service::bad_request("Невірний scope");
+    }
+    if scope == "board" && payload.board_slug.as_deref().unwrap_or("").is_empty() {
+        return service::bad_request("Для бану дошки вкажіть board_slug");
+    }
+    let kind = payload.kind.as_deref().unwrap_or("post");
+    if kind != "post" && kind != "view" {
+        return service::bad_request("Невірний тип бану");
+    }
 
-    let expires = Utc::now().naive_utc() + chrono::Duration::hours(payload.duration);
+    let hours = payload.duration.max(1);
+    let expires = Utc::now().naive_utc() + chrono::Duration::hours(hours);
     let ban = bans::ActiveModel {
-        ip_address: Set(Some(payload.ip.clone())),
+        ip_address: Set(Some(store_ip.clone())),
         session_id: Set(payload.session.clone()),
         reason: Set(Some(payload.reason.clone())),
         expires_at: Set(expires),
         created_at: Set(Utc::now().naive_utc()),
+        cidr: Set(store_cidr.clone()),
+        scope: Set(scope.to_string()),
+        board_slug: Set(payload.board_slug.clone()),
+        kind: Set(kind.to_string()),
+        created_by: Set(Some(actor.username.clone())),
         ..Default::default()
     };
     let _ = ban.insert(db).await;
 
     if payload.delete_content {
-        let posts_to_del = posts::Entity::find()
-            .filter(posts::Column::IpAddress.eq(&payload.ip))
-            .all(db).await.unwrap_or_default();
-
-        for p in posts_to_del {
-            let imgs = images::Entity::find().filter(images::Column::PostId.eq(p.id)).all(db).await.unwrap_or_default();
-            for img in imgs {
-                let _ = storage.delete_file(&img.url).await;
-                let _ = storage.delete_file(&img.thumbnail_url).await;
+        let wipe_ip = if store_cidr.as_deref().is_some_and(|c| c.ends_with("/32") || c.ends_with("/128")) {
+            store_ip.clone()
+        } else if !payload.ip.contains('/') {
+            payload.ip.clone()
+        } else {
+            String::new()
+        };
+        if !wipe_ip.is_empty() {
+            if let Err(e) = crate::service::purge_author_content(
+                db,
+                storage,
+                &wipe_ip,
+                payload.session.as_deref(),
+            )
+            .await
+            {
+                tracing::error!("ban wipe failed: {e:#}");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("Не вдалося фізично видалити файли: {e}")})),
+                )
+                    .into_response();
             }
-            let _ = posts::Entity::delete_by_id(p.id).exec(db).await;
+            state.db_cache.invalidate_all();
         }
-
-        let _ = reports::Entity::update_many()
-            .col_expr(reports::Column::Status, Expr::value("RESOLVED"))
-            .filter(reports::Column::IpAddress.eq(&payload.ip))
-            .exec(db).await;
     }
 
-    let log = admin_logs::ActiveModel {
-        admin_username: Set(format!("Role-{}", session.role)),
-        action: Set("BAN".to_string()),
-        target_id: Set(Some(payload.ip)),
-        details: Set(Some(format!("Reason: {}, Del: {}", payload.reason, payload.delete_content))),
-        created_at: Set(Utc::now().naive_utc()),
-        ..Default::default()
-    };
-    let _ = log.insert(db).await;
+    audit(
+        db,
+        &actor.username,
+        "BAN",
+        Some(store_cidr.clone().unwrap_or(store_ip)),
+        Some(format!(
+            "Причина: {}, вид: {kind}, scope: {scope}, Видалення: {}",
+            payload.reason, payload.delete_content
+        )),
+        Some(get_client_ip(&headers, &addr)),
+    )
+    .await;
 
     Json(json!({"status": "ok"})).into_response()
 }
@@ -582,37 +582,66 @@ pub struct AdminDeletePayload {
 pub async fn api_delete_content(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(payload): Json<AdminDeletePayload>,
 ) -> Response {
-    if session.role < 2 { return StatusCode::FORBIDDEN.into_response(); }
     let state = state.read().await;
+    let actor = match guard_action(&state, &session, session.privileges.delete, "Немає права видаляти").await {
+        Ok(a) => a,
+        Err(r) => return r,
+    };
     let db = &state.pool;
     let storage = &state.storage;
 
+    let mut board_slug: Option<String> = None;
+    let mut cached_thread_id: Option<i32> = None;
+
     if payload.type_ == "post" {
-        if let Ok(Some(_)) = posts::Entity::find_by_id(payload.id).one(db).await {
-            let imgs = images::Entity::find().filter(images::Column::PostId.eq(payload.id)).all(db).await.unwrap_or_default();
-            for img in imgs {
-                let _ = storage.delete_file(&img.url).await;
-                let _ = storage.delete_file(&img.thumbnail_url).await;
+        if let Ok(Some(post)) = posts::Entity::find_by_id(payload.id).one(db).await {
+            cached_thread_id = Some(post.thread_id);
+            if let Ok(Some(t)) = threads::Entity::find_by_id(post.thread_id).one(db).await {
+                board_slug = Some(t.board_slug);
             }
-            let _ = posts::Entity::delete_by_id(payload.id).exec(db).await;
+            if let Err(e) = crate::service::purge_post(db, storage, payload.id).await {
+                tracing::error!("post purge failed: {e:#}");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("Не вдалося видалити пост: {e}")})),
+                )
+                    .into_response();
+            }
         }
-    } else {
-        if let Ok(Some(_)) = threads::Entity::find_by_id(payload.id).one(db).await {
-            let _ = threads::Entity::delete_by_id(payload.id).exec(db).await;
+    } else if let Ok(Some(t)) = threads::Entity::find_by_id(payload.id).one(db).await {
+        board_slug = Some(t.board_slug);
+        cached_thread_id = Some(t.id);
+        if let Err(e) = crate::service::purge_thread(db, storage, payload.id).await {
+            tracing::error!("thread purge failed: {e:#}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Не вдалося видалити тред: {e}")})),
+            )
+                .into_response();
         }
     }
 
-    let log = admin_logs::ActiveModel {
-        admin_username: Set(format!("Role-{}", session.role)),
-        action: Set("DELETE".to_string()),
-        target_id: Set(Some(format!("{}:{}", payload.type_, payload.id))),
-        details: Set(None),
-        created_at: Set(Utc::now().naive_utc()),
-        ..Default::default()
-    };
-    let _ = log.insert(db).await;
+    state.db_cache.invalidate("home_view").await;
+    if let Some(slug) = &board_slug {
+        state.db_cache.invalidate(&format!("board_{slug}")).await;
+    }
+    if let Some(tid) = cached_thread_id {
+        state.db_cache.invalidate(&format!("thread_{tid}")).await;
+    }
+
+    audit(
+        db,
+        &actor.username,
+        "DELETE",
+        Some(format!("{}:{}", payload.type_, payload.id)),
+        None,
+        Some(get_client_ip(&headers, &addr)),
+    )
+    .await;
 
     Json(json!({"status": "ok"})).into_response()
 }
@@ -640,7 +669,7 @@ pub async fn create_report(
         .count(db).await.unwrap_or(0);
 
     if exists > 0 {
-        return (StatusCode::CONFLICT, Json(json!({"error": "Already reported"}))).into_response();
+        return (StatusCode::CONFLICT, Json(json!({"error": "Вже поскаржилися"}))).into_response();
     }
 
     let report = reports::ActiveModel {
@@ -667,6 +696,9 @@ pub async fn resolve_report(
     Json(payload): Json<ResolveReportPayload>,
 ) -> Response {
     if session.role < 1 { return StatusCode::FORBIDDEN.into_response(); }
+    if !session.hours_active && session.role < 3 {
+        return service::forbidden("Поза робочими годинами — дії вимкнено");
+    }
     let state = state.read().await;
     let db = &state.pool;
 

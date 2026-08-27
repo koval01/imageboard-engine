@@ -2,6 +2,27 @@ import { useState } from 'react'
 import { useGetAdminLogsQuery } from '@/store/api/adminApi'
 import { format } from 'date-fns'
 
+function actionLabel(action: string) {
+    const map: Record<string, string> = {
+        BAN: 'Бан',
+        DELETE: 'Видалення',
+        INVESTIGATE: 'Розслідування',
+        RESOLVE: 'Розвʼязання скарги',
+        LOGIN: 'Вхід',
+        LOGIN_FAIL: 'Невдалий вхід',
+        LOGOUT: 'Вихід',
+        HIDE: 'Приховування',
+        UNHIDE: 'Показ',
+        UNBAN: 'Зняття бану',
+        SETUP: 'Налаштування',
+        STAFF_CREATE: 'Призначення',
+        STAFF_UPDATE: 'Оновлення персоналу',
+        STAFF_DELETE: 'Видалення персоналу',
+        PASSWORD: 'Пароль',
+    }
+    return map[action] || action
+}
+
 export default function LogsTable() {
     const [page, setPage] = useState(0)
     const [search, setSearch] = useState('')
@@ -24,6 +45,7 @@ export default function LogsTable() {
                     <tr>
                         <th className="p-2 text-left">Час</th>
                         <th className="p-2 text-left">Адмін</th>
+                        <th className="p-2 text-left">IP</th>
                         <th className="p-2 text-left">Дія</th>
                         <th className="p-2 text-left">Деталі</th>
                     </tr>
@@ -33,7 +55,8 @@ export default function LogsTable() {
                         <tr key={log.id} className="border-t hover:bg-muted/50">
                             <td className="p-2 font-mono text-xs">{format(new Date(log.created_at), 'dd.MM HH:mm')}</td>
                             <td className="p-2">{log.admin_username}</td>
-                            <td className="p-2 font-bold text-xs">{log.action}</td>
+                            <td className="p-2 font-mono text-xs">{log.ip_address || '—'}</td>
+                            <td className="p-2 font-bold text-xs">{actionLabel(log.action)}</td>
                             <td className="p-2 text-muted-foreground truncate max-w-[200px]">{log.details}</td>
                         </tr>
                     ))}

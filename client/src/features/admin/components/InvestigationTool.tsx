@@ -31,8 +31,8 @@ export default function InvestigationTool({ initialTarget }: { initialTarget: st
                 <div className="border rounded p-4 bg-background">
                     <h3 className="font-bold mb-2 flex items-center gap-2"><Search size={18} /> Пошук та Аналіз</h3>
                     <form onSubmit={onFormSubmit} className="flex gap-2">
-                        <input className="border px-3 py-2 rounded w-full max-w-sm bg-background" placeholder="IP, Session ID або текст..." value={target} onChange={e => setTarget(e.target.value)} />
-                        <button type="submit" className="bg-primary text-primary-foreground px-4 rounded cursor-pointer">Go</button>
+                        <input className="border px-3 py-2 rounded w-full max-w-sm bg-background" placeholder="IP, ID сесії або текст..." value={target} onChange={e => setTarget(e.target.value)} />
+                        <button type="submit" className="bg-primary text-primary-foreground px-4 rounded cursor-pointer">Шукати</button>
                     </form>
                 </div>
                 <div className="border rounded p-4 bg-background">
@@ -63,7 +63,7 @@ export default function InvestigationTool({ initialTarget }: { initialTarget: st
                                 {invResults.related_ips.map(ip => <div key={ip}>{ip}</div>)}
                             </div>
                             <div className="bg-muted p-2 rounded">
-                                <div className="font-bold">Sessions ({invResults.related_sessions.length})</div>
+                                <div className="font-bold">Сесії ({invResults.related_sessions.length})</div>
                                 {invResults.related_sessions.map(s => <div key={s}>{s.substring(0, 12)}...</div>)}
                             </div>
                         </div>

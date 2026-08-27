@@ -1,5 +1,6 @@
 import { baseApi } from './base'
 import type { HomeResponse, BoardResponse, ThreadResponse, PostItem, SinglePostResponse } from '@/types/api'
+import type { Restriction } from '@/types/admin'
 
 export const boardApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
@@ -16,6 +17,12 @@ export const boardApi = baseApi.injectEndpoints({
         }),
         getPost: builder.query<SinglePostResponse, number>({
             query: (id) => `/post/${id}`,
+        }),
+        getRestriction: builder.query<Restriction, { board?: string } | void>({
+            query: (arg) => {
+                const board = arg && 'board' in arg ? arg.board : undefined
+                return board ? `/me/restriction?board=${encodeURIComponent(board)}` : '/me/restriction'
+            },
         }),
         postReply: builder.mutation<PostItem, { slug: string; id: number; formData: FormData }>({
             query: ({ slug, id, formData }) => ({
@@ -48,4 +55,6 @@ export const {
     useReportPostMutation,
     useGetPostQuery,
     useLazyGetPostQuery,
+    useLazyGetThreadQuery,
+    useGetRestrictionQuery,
 } = boardApi

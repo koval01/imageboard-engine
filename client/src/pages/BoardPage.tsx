@@ -1,98 +1,235 @@
+import { useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useGetBoardQuery } from '@/store/api/boardApi'
-import PostForm from '@/features/posting/components/PostForm'
-import ImageViewer from '@/components/common/ImageViewer'
-import { Loader2, MessageCircle, ImageIcon, Info, ArrowUpRight } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
-import { uk } from 'date-fns/locale'
-import { motion } from 'framer-motion'
+import { useGetBoardQuery, useLazyGetThreadQuery } from '@/store/api/boardApi'
+import { ImageGallery } from '@/components/common/ImageGallery'
+import { formatPostTime } from '@/lib/format'
+import { PostContent } from '@/features/thread/components/PostContent'
+import ThreadNav from '@/components/common/ThreadNav'
+import IbSpinner from '@/components/common/IbSpinner'
+import { isFaved, toggleFav } from '@/components/common/BoardWidget'
+import type { PostItem } from '@/types/api'
 
-const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } }
-const item = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }
+const HIDDEN_KEY = 'kryivka-hidden'
+
+function readHidden(): number[] {
+    try {
+        return JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]')
+    } catch {
+        return []
+    }
+}
 
 export default function BoardPage() {
     const { slug } = useParams<{ slug: string }>()
-    const { data, isLoading, error } = useGetBoardQuery(slug || '', { skip: !slug })
+    const { data, isLoading, isFetching, error, refetch } = useGetBoardQuery(slug || '', { skip: !slug, refetchOnMountOrArgChange: true })
+    const [loadThread] = useLazyGetThreadQuery()
+    const [expanded, setExpanded] = useState<Record<number, PostItem[] | 'loading' | 'error'>>({})
+    const [hidden, setHidden] = useState<number[]>(readHidden)
+    const [favTick, setFavTick] = useState(0)
+    const [search, setSearch] = useState('')
 
-    if (isLoading) return <div className="flex h-[50vh] flex-col items-center justify-center gap-2"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>
-    if (error || !data) return <div className="p-12 text-center text-destructive">Не вдалося завантажити вміст.</div>
+    const hideThread = (id: number) => {
+        const next = hidden.includes(id) ? hidden.filter((x) => x !== id) : [...hidden, id]
+        setHidden(next)
+        localStorage.setItem(HIDDEN_KEY, JSON.stringify(next))
+    }
+
+    const expandThread = async (id: number) => {
+        if (expanded[id] === 'loading' || Array.isArray(expanded[id])) return
+        setExpanded((prev) => ({ ...prev, [id]: 'loading' }))
+        try {
+            const res = await loadThread({ slug: slug!, id }).unwrap()
+            setExpanded((prev) => ({ ...prev, [id]: res.replies }))
+        } catch {
+            setExpanded((prev) => ({ ...prev, [id]: 'error' }))
+        }
+    }
+
+    const threads = useMemo(() => {
+        const list = data?.threads ?? []
+        const needle = search.trim().toLowerCase()
+        if (!needle) return list
+        return list.filter((t) =>
+            (t.model.subject || '').toLowerCase().includes(needle)
+            || t.model.content.toLowerCase().includes(needle),
+        )
+    }, [data, search])
+
+    if (error && !data) return <div className="p-8 text-center text-destructive">Не вдалося завантажити вміст.</div>
+
+    const nav = (
+        <ThreadNav
+            boardSlug={slug!}
+            mode="board"
+            onRefresh={() => refetch()}
+            refreshing={isFetching && !isLoading}
+            search={search}
+            onSearch={setSearch}
+        />
+    )
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8">
-            <div className="space-y-8">
-                <div className="rounded-xl border bg-card/50 backdrop-blur-sm p-1"><PostForm boardSlug={slug!} /></div>
+        <div>
+            {nav}
 
-                <div className="flex items-center justify-between pb-2 border-b border-border/50">
-                    <h2 className="text-lg font-semibold">Активні треди</h2>
-                    <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">{data.threads.length} тредів</span>
-                </div>
+            <h2 className="mb-1 mt-1 text-[0.9em] text-muted-foreground">
+                Активні треди{data ? `: ${threads.length}` : ''}
+                {isLoading && !data && <IbSpinner className="ml-2" label="Завантаження…" />}
+                {isFetching && !isLoading && <IbSpinner className="ml-2" label="завантаження постів…" />}
+            </h2>
 
-                <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
-                    {data.threads.map((thread) => (
-                        <motion.div key={thread.model.id} variants={item} className="group overflow-hidden rounded-xl border bg-card shadow-sm transition-all hover:shadow-md hover:border-primary/20">
-                            <div className="bg-muted/30 px-4 py-3 border-b border-border/50 flex flex-wrap items-center justify-between gap-2">
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <span className="font-bold text-foreground">Анонім</span>
-                                    <span>•</span>
-                                    <span>{formatDistanceToNow(new Date(thread.model.created_at), { addSuffix: true, locale: uk })}</span>
-                                    <span>•</span>
-                                    <span className="font-mono opacity-70">№ {thread.model.id}</span>
-                                </div>
-                                <Link to={`/${slug}/thread/${thread.model.id}`} className="text-xs font-medium text-primary flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    Відкрити тред <ArrowUpRight className="h-3 w-3" />
-                                </Link>
-                            </div>
-
-                            <div className="p-4 md:p-5 grid gap-6 md:grid-cols-[180px_1fr]">
-                                <div className="shrink-0">
-                                    {thread.images.length > 0 ? (
-                                        <div className="relative">
-                                            <ImageViewer images={[thread.images[0]]} cdnUrl={data.cdn_url} />
-                                            {thread.image_count > 1 && <div className="absolute top-2 right-2 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded-sm">+{thread.image_count - 1}</div>}
-                                        </div>
-                                    ) : <div className="h-32 w-full rounded-md bg-muted/50 flex items-center justify-center"><MessageCircle className="h-10 w-10 opacity-30" /></div>}
-                                </div>
-
-                                <div className="flex flex-col justify-between gap-4">
-                                    <div>
-                                        {thread.model.subject && <h3 className="text-lg font-bold text-primary mb-2">{thread.model.subject}</h3>}
-                                        <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{thread.model.content}</div>
-                                    </div>
-                                    <div>
-                                        <div className="flex gap-4 text-xs font-medium text-muted-foreground mb-3">
-                                            <div className="flex items-center gap-1.5 bg-muted/50 px-2 py-1 rounded-md"><MessageCircle className="h-3.5 w-3.5" /> {thread.reply_count} відп.</div>
-                                            {thread.image_count > 0 && <div className="flex items-center gap-1.5 bg-muted/50 px-2 py-1 rounded-md"><ImageIcon className="h-3.5 w-3.5" /> {thread.image_count} фото</div>}
-                                        </div>
-                                        {thread.replies_preview.length > 0 && (
-                                            <div className="space-y-2 border-l-2 border-primary/10 pl-3">
-                                                {thread.replies_preview.map((reply) => (
-                                                    <div key={reply.model.id} className="bg-muted/10 rounded p-2 text-sm">
-                                                        <p className="line-clamp-2 text-muted-foreground">{reply.model.content}</p>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </motion.div>
+            {isLoading && !data && (
+                <div className="space-y-2 py-1">
+                    {[1, 2, 3].map((i) => (
+                        <div key={i} className="ib-reply min-h-[72px] animate-pulse opacity-80">
+                            <IbSpinner className="p-3" label="Завантаження тредів…" />
+                        </div>
                     ))}
-                </motion.div>
-            </div>
-            <div className="hidden lg:block space-y-6">
-                <div className="sticky top-24 space-y-6">
-                    <div className="rounded-xl border bg-card p-6 shadow-sm">
-                        <h1 className="text-2xl font-bold">/{data.board.slug}/</h1>
-                        <p className="text-sm text-muted-foreground mt-2">{data.board.description}</p>
-                    </div>
-                    <div className="rounded-xl border bg-card p-4 shadow-sm">
-                        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-2"><Info className="h-4 w-4" /> Правила</div>
-                        <ul className="text-xs text-muted-foreground space-y-2 list-disc list-inside opacity-80">
-                            <li>Без спаму.</li><li>Без CP/Illegal.</li>
-                        </ul>
-                    </div>
                 </div>
-            </div>
+            )}
+
+            {threads.map((thread) => {
+                if (hidden.includes(thread.model.id)) {
+                    return (
+                        <p key={thread.model.id} className="ib-missed py-1">
+                            Приховано №{thread.model.id}.{' '}
+                            <button type="button" className="text-primary" onClick={() => hideThread(thread.model.id)}>Показати</button>
+                        </p>
+                    )
+                }
+
+                const extra = expanded[thread.model.id]
+                const omitted = thread.omitted_posts || Math.max(0, thread.reply_count - thread.replies_preview.length)
+                const replies = Array.isArray(extra) ? extra : thread.replies_preview
+                const faved = favTick >= 0 && isFaved(slug!, thread.model.id)
+
+                return (
+                    <article key={thread.model.id} className="thread">
+                        <div className="ib-op post post_type_oppost">
+                            <div className="post__details">
+                                {thread.model.subject && (
+                                    <span className="post__detailpart">
+                                        <span className="ib-title post__title">{thread.model.subject}</span>
+                                    </span>
+                                )}
+                                <span className="post__detailpart">
+                                    <span className="post__anon">Анонім</span>
+                                </span>
+                                <span className="post__detailpart">
+                                    <span className="post__time">{formatPostTime(thread.model.created_at)}</span>
+                                </span>
+                                <span className="post__detailpart">
+                                    <Link
+                                        to={`/${slug}/thread/${thread.model.id}`}
+                                        data-testid="thread-link"
+                                        className="post__reflink"
+                                    >
+                                        №{thread.model.id}
+                                        <span className="sr-only">{thread.model.content}</span>
+                                    </Link>
+                                </span>
+                                <span className="post__detailpart">
+                                    <Link to={`/${slug}/thread/${thread.model.id}`}>Відповідь</Link>
+                                </span>
+                                <button
+                                    type="button"
+                                    className={faved ? 'text-primary' : undefined}
+                                    title="Обране"
+                                    onClick={() => {
+                                        toggleFav({
+                                            slug: slug!,
+                                            id: thread.model.id,
+                                            title: thread.model.subject || thread.model.content.slice(0, 60),
+                                        })
+                                        setFavTick((n) => n + 1)
+                                    }}
+                                >
+                                    {faved ? '★' : '☆'}
+                                </button>
+                                <button type="button" title="Приховати" onClick={() => hideThread(thread.model.id)}>[-]</button>
+                            </div>
+
+                            <div className="post__message clearfix">
+                                {thread.images.length > 0 && (
+                                    <ImageGallery
+                                        images={thread.images}
+                                        cdnUrl={data!.cdn_url}
+                                        interactive={false}
+                                        to={`/${slug}/thread/${thread.model.id}`}
+                                    />
+                                )}
+                                <blockquote className="post__comment">
+                                    <PostContent
+                                        content={thread.model.content}
+                                        boardSlug={slug!}
+                                        currentThreadId={thread.model.id}
+                                    />
+                                </blockquote>
+                            </div>
+                        </div>
+
+                        {omitted > 0 && !Array.isArray(extra) && (
+                            <p className="ib-missed">
+                                <button type="button" onClick={() => expandThread(thread.model.id)} title="Розгорнути">
+                                    {extra === 'loading' ? <IbSpinner label="завантаження постів…" /> : '[+]'}
+                                </button>
+                                {' '}
+                                Пропущено {omitted} постів
+                                {thread.omitted_images > 0 ? `, ${thread.omitted_images} з картинками.` : '.'}
+                                {' '}
+                                <Link to={`/${slug}/thread/${thread.model.id}`}>У тред</Link>
+                                {extra === 'error' && <span className="text-destructive"> Не вдалося розгорнути.</span>}
+                            </p>
+                        )}
+
+                        {extra === 'loading' && (
+                            <div className="ib-reply min-h-[56px] animate-pulse">
+                                <IbSpinner className="p-2" label="завантаження постів…" />
+                            </div>
+                        )}
+
+                        {replies.map((reply) => (
+                            <div key={reply.model.id} className="ib-reply post post_type_reply">
+                                <div className="post__details">
+                                    <span className="post__detailpart">
+                                        <span className="post__anon">Анонім</span>
+                                    </span>
+                                    <span className="post__detailpart">
+                                        <span className="post__time">{formatPostTime(reply.model.created_at)}</span>
+                                    </span>
+                                    <span className="post__detailpart">
+                                        <Link
+                                            to={`/${slug}/thread/${thread.model.id}#p${reply.model.id}`}
+                                            className="post__reflink"
+                                        >
+                                            №{reply.model.id}
+                                        </Link>
+                                    </span>
+                                    <span className="post__detailpart">
+                                        <Link to={`/${slug}/thread/${thread.model.id}#p${reply.model.id}`}>Відповідь</Link>
+                                    </span>
+                                </div>
+                                <div className="post__message clearfix">
+                                    {reply.images?.length > 0 && (
+                                        <ImageGallery images={reply.images} cdnUrl={reply.cdn_url || data!.cdn_url} interactive={false} />
+                                    )}
+                                    <blockquote className="post__comment">
+                                        <PostContent
+                                            content={reply.model.content}
+                                            boardSlug={slug!}
+                                            currentThreadId={thread.model.id}
+                                        />
+                                    </blockquote>
+                                </div>
+                            </div>
+                        ))}
+
+                        <hr />
+                    </article>
+                )
+            })}
+
+            {data && nav}
         </div>
     )
 }

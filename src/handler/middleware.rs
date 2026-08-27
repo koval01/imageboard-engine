@@ -1,8 +1,7 @@
-use sea_orm::PaginatorTrait;
 use std::sync::Arc;
 use axum::{
-    extract::{ConnectInfo, Request, State},
-    http::{HeaderMap, StatusCode},
+    extract::{ConnectInfo, Extension, Request, State},
+    http::{HeaderMap, HeaderValue, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     body::{Body, to_bytes},
@@ -16,16 +15,33 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 use time::Duration;
 use sha2::{Sha256, Digest};
-use sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
 use chrono::Utc;
 
-use crate::{model::{SessionClaims, admins, bans}, security::{get_client_ip, get_user_agent}, AppState};
+use crate::{model::SessionClaims, security::{get_client_ip, get_user_agent}, service::{self, Privileges}, AppState};
 
 #[derive(Clone, Debug)]
 pub struct CurrentSession {
     pub id: String,
     pub role: i32,
     pub version: i32,
+    pub admin_id: i32,
+    pub username: String,
+    pub privileges: Privileges,
+    pub hours_active: bool,
+}
+
+impl CurrentSession {
+    pub fn guest(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            role: 0,
+            version: 0,
+            admin_id: 0,
+            username: String::new(),
+            privileges: Privileges::none(),
+            hours_active: true,
+        }
+    }
 }
 
 pub async fn response_time_middleware(request: Request, next: Next) -> Response {
@@ -36,10 +52,9 @@ pub async fn response_time_middleware(request: Request, next: Next) -> Response 
     let time_str = format!("{:.3}ms", time_ms);
 
     let (mut parts, body) = response.into_parts();
-
-    if let Ok(val) = time_str.parse() {
-        parts.headers.insert("X-Processing-Time", val);
-    }
+    parts.headers.remove("x-processing-time");
+    parts.headers.remove("server");
+    parts.headers.remove("x-powered-by");
 
     let is_html = parts.headers.get(axum::http::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
@@ -70,6 +85,20 @@ pub async fn response_time_middleware(request: Request, next: Next) -> Response 
     Response::from_parts(parts, body)
 }
 
+fn forwarded_https(headers: &HeaderMap) -> bool {
+    headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| {
+            v.split(',')
+                .next()
+                .unwrap_or(v)
+                .trim()
+                .eq_ignore_ascii_case("https")
+        })
+        .unwrap_or(false)
+}
+
 pub async fn session_middleware(
     cookie_jar: CookieJar,
     State(state): State<Arc<RwLock<AppState>>>,
@@ -81,11 +110,7 @@ pub async fn session_middleware(
     // 0. Performance Optimization & Safety
     // Ensure we ALWAYS insert the extension, even for static files.
     if req.uri().path().starts_with("/assets") || req.uri().path().ends_with(".webp") || req.uri().path().ends_with(".ico") {
-        req.extensions_mut().insert(CurrentSession {
-            id: "static_guest".to_string(),
-            role: 0,
-            version: 0,
-        });
+        req.extensions_mut().insert(CurrentSession::guest("static_guest"));
         return Ok(next.run(req).await);
     }
 
@@ -99,6 +124,10 @@ pub async fn session_middleware(
     let mut session_id = String::new();
     let mut role = 0;
     let mut version = 1;
+    let mut admin_id = 0;
+    let mut username = String::new();
+    let mut privileges = Privileges::none();
+    let mut hours_active = true;
 
     let mut is_valid_token = false;
     let mut needs_refresh = false;
@@ -120,47 +149,32 @@ pub async fn session_middleware(
 
             // IP & UA binding check
             if claims.ip == current_ip && claims.ua == current_ua {
-                // SECURITY: Global Ban/Revocation Check
-                let is_banned = bans::Entity::find()
-                    .filter(
-                        sea_orm::Condition::any()
-                            .add(bans::Column::SessionId.eq(&claims.sess))
-                            .add(bans::Column::IpAddress.eq(&claims.ip))
-                    )
-                    .filter(bans::Column::ExpiresAt.gt(Utc::now().naive_utc()))
-                    .count(db)
-                    .await
-                    .unwrap_or(0);
-
-                if is_banned > 0 {
-                    is_valid_token = false;
-                } else {
-                    // Admin Specific Security Check
-                    let mut version_check_pass = true;
-                    if claims.role > 0 {
-                        let admin_opt = admins::Entity::find()
-                            .filter(admins::Column::Role.eq(claims.role))
-                            .one(db).await.unwrap_or(None);
-
-                        if let Some(admin) = admin_opt {
-                            if admin.token_version != claims.v {
-                                version_check_pass = false;
-                            } else {
-                                version = admin.token_version;
-                            }
-                        } else {
-                            version_check_pass = false;
-                        }
+                let mut version_check_pass = true;
+                if claims.role > 0 {
+                    let admin_opt = service::find_staff_for_token(db, claims.aid, claims.role, claims.v).await;
+                    if let Some(admin) = admin_opt {
+                        version = admin.token_version;
+                        admin_id = admin.id;
+                        username = admin.username.clone();
+                        let settings = service::load_settings(&state_read.kv).await;
+                        hours_active = service::hours_active_for(&admin, &settings);
+                        privileges = service::apply_hours_gate(
+                            service::effective_privileges(&admin),
+                            hours_active,
+                            service::is_super_admin(&admin),
+                        );
                     } else {
-                        version = claims.v;
+                        version_check_pass = false;
                     }
+                } else {
+                    version = claims.v;
+                }
 
-                    if version_check_pass {
-                        session_id = claims.sess.clone();
-                        role = claims.role;
-                        is_valid_token = true;
-                        claims_opt = Some(claims);
-                    }
+                if version_check_pass {
+                    session_id = claims.sess.clone();
+                    role = claims.role;
+                    is_valid_token = true;
+                    claims_opt = Some(claims);
                 }
             }
         }
@@ -171,6 +185,10 @@ pub async fn session_middleware(
         session_id = Uuid::new_v4().to_string();
         role = 0;
         version = 1;
+        admin_id = 0;
+        username.clear();
+        privileges = Privileges::none();
+        hours_active = true;
         needs_refresh = true;
     } else if let Some(c) = claims_opt {
         // Sliding Window: refresh if older than 24h
@@ -181,7 +199,15 @@ pub async fn session_middleware(
     }
 
     // 3. Inject Session into Request
-    let current_session = CurrentSession { id: session_id.clone(), role, version };
+    let current_session = CurrentSession {
+        id: session_id.clone(),
+        role,
+        version,
+        admin_id,
+        username: username.clone(),
+        privileges: privileges.clone(),
+        hours_active,
+    };
     req.extensions_mut().insert(current_session.clone());
 
     // 4. Process Request
@@ -207,6 +233,8 @@ pub async fn session_middleware(
             ua: current_ua,
             role: final_session.role,
             v: final_session.version,
+            aid: final_session.admin_id,
+            uname: final_session.username.clone(),
             iat,
             exp,
         };
@@ -222,25 +250,32 @@ pub async fn session_middleware(
             .path("/")
             .max_age(Duration::days(365))
             .http_only(true)
-            .same_site(SameSite::Lax);
+            .same_site(if config.cors_origin.is_some() { SameSite::None } else { SameSite::Lax });
 
         #[allow(unused_mut)]
-        let mut key_cookie = Cookie::build(("client_key", final_session.id))
+        let mut key_cookie = Cookie::build(("client_key", final_session.id.clone()))
             .path("/")
             .max_age(Duration::days(365))
-            .http_only(false);
+            .http_only(false)
+            .same_site(if config.cors_origin.is_some() { SameSite::None } else { SameSite::Lax });
 
-        #[cfg(not(debug_assertions))]
-        {
+        if config.cors_origin.is_some() || config.cookie_secure || forwarded_https(&headers) {
             jwt_cookie = jwt_cookie.secure(true);
             key_cookie = key_cookie.secure(true);
+        } else {
+            jwt_cookie = jwt_cookie.secure(false);
+            key_cookie = key_cookie.secure(false);
         }
 
         response_jar = response_jar.add(jwt_cookie.build());
         response_jar = response_jar.add(key_cookie.build());
     }
 
-    Ok((response_jar, response).into_response())
+    let mut response = (response_jar, response).into_response();
+    if let Ok(val) = HeaderValue::from_str(&final_session.id) {
+        response.headers_mut().insert("x-client-key", val);
+    }
+    Ok(response)
 }
 
 pub async fn bot_guard_middleware(
@@ -263,22 +298,22 @@ pub async fn bot_guard_middleware(
         let session_id = if let Some(cookie) = jar.get("client_key") {
             cookie.value().to_string()
         } else {
-            return Err((StatusCode::FORBIDDEN, "No Client Key Cookie").into_response());
+            return Err((StatusCode::FORBIDDEN, "Немає cookie клієнтського ключа").into_response());
         };
 
         if nonce.is_empty() || salt.is_empty() {
             return Err((
                 StatusCode::FORBIDDEN,
-                Json(json!({ "error": "Missing Proof of Work headers. Enable JS." }))
+                Json(json!({ "error": "Відсутні заголовки Proof of Work. Увімкніть JavaScript." }))
             ).into_response());
         }
 
         let state_read = state.read().await;
         let cache_key = format!("pow:{}", salt);
-        if state_read.rate_limit_cache.get(&cache_key).await.is_some() {
+        if !state_read.kv.set_nx(&cache_key, "1", 300).await {
             return Err((
                 StatusCode::FORBIDDEN,
-                Json(json!({ "error": "Replay attack detected. Do not resubmit forms." }))
+                Json(json!({ "error": "Повторне надсилання форми заборонено." }))
             ).into_response());
         }
 
@@ -290,13 +325,26 @@ pub async fn bot_guard_middleware(
         if result[0] != 0 || result[1] != 0 {
             return Err((
                 StatusCode::FORBIDDEN,
-                Json(json!({ "error": "Invalid Proof of Work computation." }))
+                Json(json!({ "error": "Невірне обчислення Proof of Work." }))
             ).into_response());
         }
-
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-        state_read.rate_limit_cache.insert(cache_key, now).await;
     }
 
     Ok(next.run(req).await)
 }
+
+pub async fn require_staff_session(
+    Extension(session): Extension<CurrentSession>,
+    req: Request,
+    next: Next,
+) -> Result<Response, Response> {
+    if session.role < 1 {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "Немає доступу" })),
+        )
+            .into_response());
+    }
+    Ok(next.run(req).await)
+}
+

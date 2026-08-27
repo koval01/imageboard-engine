@@ -2,6 +2,19 @@ use serde::Deserialize;
 use std::time::Duration;
 use moka::future::Cache;
 
+#[derive(Deserialize, Debug, Clone, Default)]
+#[allow(dead_code)]
+pub struct IpMeta {
+    pub status: String,
+    #[serde(rename = "countryCode")]
+    pub country_code: Option<String>,
+    pub country: Option<String>,
+    pub isp: Option<String>,
+    pub org: Option<String>,
+    #[serde(rename = "as")]
+    pub asn: Option<String>,
+}
+
 #[derive(Deserialize, Debug)]
 struct IpApiResponse {
     status: String,
@@ -90,4 +103,47 @@ pub async fn resolve_country_code(mut ip: String, cache: &Cache<String, String>)
     cache.insert("::1".to_string(), country_code.clone()).await;
 
     country_code
+}
+
+fn is_private_or_local(ip: &str) -> bool {
+    ip == "127.0.0.1"
+        || ip == "::1"
+        || ip.starts_with("192.168.")
+        || ip.starts_with("10.")
+        || ip.starts_with("172.16.")
+        || ip.starts_with("172.17.")
+        || ip.starts_with("172.18.")
+        || ip.starts_with("172.19.")
+        || ip.starts_with("172.2")
+        || ip.starts_with("172.30.")
+        || ip.starts_with("172.31.")
+}
+
+pub async fn lookup_ip_meta(ip: &str) -> IpMeta {
+    if is_private_or_local(ip) {
+        return IpMeta {
+            status: "private".into(),
+            country_code: Some("XX".into()),
+            country: Some("Приватна мережа".into()),
+            isp: Some("Локальна / приватна мережа".into()),
+            org: None,
+            asn: None,
+        };
+    }
+
+    let url = format!(
+        "http://ip-api.com/json/{ip}?fields=status,country,countryCode,isp,org,as,query"
+    );
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(3))
+        .build()
+        .unwrap_or_default();
+
+    match client.get(&url).send().await {
+        Ok(response) => response.json::<IpMeta>().await.unwrap_or_default(),
+        Err(_) => IpMeta {
+            status: "fail".into(),
+            ..Default::default()
+        },
+    }
 }

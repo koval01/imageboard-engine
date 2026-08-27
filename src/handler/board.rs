@@ -22,7 +22,7 @@ use crate::{
     handler::middleware::CurrentSession,
     service::{ProcessedImage, StorageService, resolve_country_code},
     security::get_client_ip,
-    config::{BUMP_LIMIT, THREAD_AGE_LIMIT_DAYS},
+    config::BUMP_LIMIT,
 };
 
 // --- SAFE DTOs (Data Transfer Objects) ---
@@ -35,7 +35,7 @@ pub struct SafeImage {
     pub filename: String,
     pub width: i32,
     pub height: i32,
-    pub size: i64,
+    pub size: i32,
 }
 
 impl From<images::Model> for SafeImage {
@@ -63,6 +63,8 @@ pub struct SafePost {
     pub ip_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
+    #[serde(default)]
+    pub is_hidden: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -78,6 +80,8 @@ pub struct SafeThread {
     pub ip_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
+    #[serde(default)]
+    pub is_hidden: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -175,19 +179,20 @@ pub struct PollQuery {
 
 // --- Helper Functions ---
 
-fn to_safe_post(m: posts::Model, role: i32) -> SafePost {
+fn to_safe_post(m: posts::Model, view_ip: bool) -> SafePost {
     SafePost {
         id: m.id,
         thread_id: m.thread_id,
         content: m.content,
         country_code: m.country_code,
         created_at: m.created_at,
-        ip_address: if role >= 2 { Some(m.ip_address) } else { None },
-        session_id: if role >= 2 { Some(m.session_id) } else { None },
+        ip_address: if view_ip { Some(m.ip_address) } else { None },
+        session_id: if view_ip { Some(m.session_id) } else { None },
+        is_hidden: m.is_hidden,
     }
 }
 
-fn to_safe_thread(m: threads::Model, role: i32) -> SafeThread {
+fn to_safe_thread(m: threads::Model, view_ip: bool) -> SafeThread {
     SafeThread {
         id: m.id,
         board_slug: m.board_slug,
@@ -196,8 +201,9 @@ fn to_safe_thread(m: threads::Model, role: i32) -> SafeThread {
         country_code: m.country_code,
         created_at: m.created_at,
         updated_at: m.updated_at,
-        ip_address: if role >= 2 { Some(m.ip_address) } else { None },
-        session_id: if role >= 2 { Some(m.session_id) } else { None },
+        ip_address: if view_ip { Some(m.ip_address) } else { None },
+        session_id: if view_ip { Some(m.session_id) } else { None },
+        is_hidden: m.is_hidden,
     }
 }
 
@@ -235,24 +241,25 @@ async fn parse_multipart_form(
                 continue;
             }
 
-            let filename = field.file_name().unwrap_or("unknown.jpg").to_string();
+            let filename = field.file_name().unwrap_or("файл").to_string();
             let content_type = field.content_type().unwrap_or("").to_string();
+            let data = field.bytes().await.map_err(|e| e.body_text())?;
 
-            if !content_type.starts_with("image/") {
+            if data.is_empty() {
                 continue;
             }
 
-            let data = field.bytes().await.map_err(|e| e.body_text())?;
-
-            if data.len() > max_file_size {
-                return Err(format!("File {} too large (max 5MB)", filename));
+            if !content_type.starts_with("image/") {
+                return Err("Потрібне зображення (JPEG, PNG, WebP, GIF).".to_string());
             }
 
-            if !data.is_empty() {
-                match storage.upload_image(data, filename, db).await {
-                    Ok(img) => processed_images.push(img),
-                    Err(e) => return Err(format!("Upload error: {}", e)),
-                }
+            if data.len() > max_file_size {
+                return Err(format!("Файл {} завеликий (макс. 5 МБ)", filename));
+            }
+
+            match storage.upload_image(data, filename, db).await {
+                Ok(img) => processed_images.push(img),
+                Err(e) => return Err(format!("Помилка завантаження: {}", e)),
             }
         }
     }
@@ -260,18 +267,27 @@ async fn parse_multipart_form(
     Ok(ParsedForm { subject, content, images: processed_images })
 }
 
-async fn check_rate_limit(ip: &str, cache: &moka::future::Cache<String, u64>) -> Result<(), String> {
+async fn check_rate_limit(
+    ip: &str,
+    kv: &crate::service::KvStore,
+    window_secs: u64,
+) -> Result<(), String> {
+    if window_secs == 0 {
+        return Ok(());
+    }
     let key = format!("rate_limit:{}", ip);
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 
-    if let Some(last_post) = cache.get(&key).await {
-        if now < last_post + 60 {
-            let wait = (last_post + 60) - now;
-            return Err(format!("Wait {} seconds.", wait));
+    if let Some(last_raw) = kv.get(&key).await {
+        if let Ok(last_post) = last_raw.parse::<u64>() {
+            if now < last_post + window_secs {
+                let wait = (last_post + window_secs) - now;
+                return Err(format!("Зачекайте {} с.", wait));
+            }
         }
     }
 
-    cache.insert(key, now).await;
+    kv.set(&key, &now.to_string(), window_secs.max(1)).await;
     Ok(())
 }
 
@@ -284,14 +300,16 @@ pub async fn home_handler(
     let state_read = state.read().await;
     let cache_key = "home_view".to_string();
 
-    if let Some(CacheData::Home(c_boards, c_images, c_threads)) = state_read.db_cache.get(&cache_key).await {
-        return Json(HomeResponse {
-            boards: c_boards,
-            recent_images: c_images,
-            recent_threads: c_threads,
-            cdn_url: state_read.config.cdn_url.clone(),
-            admin_role: session.role,
-        }).into_response();
+    if session.role < 1 {
+        if let Some(CacheData::Home(c_boards, c_images, c_threads)) = state_read.db_cache.get(&cache_key).await {
+            return Json(HomeResponse {
+                boards: c_boards,
+                recent_images: c_images,
+                recent_threads: c_threads,
+                cdn_url: state_read.config.cdn_url.clone(),
+                admin_role: session.role,
+            }).into_response();
+        }
     }
 
     let db = &state_read.pool;
@@ -354,15 +372,19 @@ pub async fn home_handler(
         });
     }
 
-    let recent_threads_raw = threads::Entity::find()
+    let mut recent_query = threads::Entity::find()
         .order_by_desc(threads::Column::UpdatedAt)
-        .limit(10)
+        .limit(10);
+    if session.role < 1 {
+        recent_query = recent_query.filter(threads::Column::IsHidden.eq(false));
+    }
+    let recent_threads_raw = recent_query
         .all(db)
         .await
         .unwrap_or_default();
 
     let recent_threads_safe: Vec<SafeThread> = recent_threads_raw.into_iter()
-        .map(|t| to_safe_thread(t, 0))
+        .map(|t| to_safe_thread(t, false))
         .collect();
 
     state_read.db_cache.insert(
@@ -382,6 +404,8 @@ pub async fn home_handler(
 pub async fn view_board_handler(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> Response {
     let state_read = state.read().await;
@@ -394,8 +418,27 @@ pub async fn view_board_handler(
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
 
-    let cached_threads = if let Some(CacheData::Board(items)) = state_read.db_cache.get(&cache_key).await {
-        Some(items)
+    if session.role < 1 {
+        let ip = get_client_ip(&headers, &addr);
+        let restriction = crate::service::match_restrictions(db, &ip, &session.id, Some(&slug)).await;
+        if restriction.viewing_blocked {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(json!({
+                    "error": crate::service::posting_error(&restriction),
+                    "restriction": restriction
+                })),
+            )
+                .into_response();
+        }
+    }
+
+    let cached_threads = if session.role < 1 {
+        if let Some(CacheData::Board(items)) = state_read.db_cache.get(&cache_key).await {
+            Some(items)
+        } else {
+            None
+        }
     } else {
         None
     };
@@ -403,10 +446,14 @@ pub async fn view_board_handler(
     let thread_items = if let Some(items) = cached_threads {
         items
     } else {
-        let threads_raw = threads::Entity::find()
+        let mut threads_query = threads::Entity::find()
             .filter(threads::Column::BoardSlug.eq(&slug))
             .order_by_desc(threads::Column::UpdatedAt)
-            .limit(10)
+            .limit(10);
+        if session.role < 1 {
+            threads_query = threads_query.filter(threads::Column::IsHidden.eq(false));
+        }
+        let threads_raw = threads_query
             .all(db)
             .await
             .unwrap();
@@ -415,9 +462,13 @@ pub async fn view_board_handler(
         let mut items = Vec::new();
 
         for (i, thread) in threads_raw.into_iter().enumerate() {
-            let posts_raw = posts::Entity::find()
+            let mut posts_query = posts::Entity::find()
                 .filter(posts::Column::ThreadId.eq(thread.id))
-                .order_by_asc(posts::Column::CreatedAt)
+                .order_by_asc(posts::Column::CreatedAt);
+            if session.role < 1 {
+                posts_query = posts_query.filter(posts::Column::IsHidden.eq(false));
+            }
+            let posts_raw = posts_query
                 .all(db)
                 .await
                 .unwrap();
@@ -425,7 +476,7 @@ pub async fn view_board_handler(
             let reply_count = posts_raw.len();
             let is_bump_limit = reply_count as u64 >= BUMP_LIMIT;
             let thread_age_days = (Utc::now().naive_utc() - thread.created_at).num_days();
-            let is_time_limit = thread_age_days >= THREAD_AGE_LIMIT_DAYS;
+            let is_time_limit = thread_age_days >= state_read.config.thread_age_limit_days;
 
             let post_images_raw = posts_raw.load_many(images::Entity, db).await.unwrap();
             let mut image_count = 0;
@@ -449,7 +500,7 @@ pub async fn view_board_handler(
             let mut replies_preview = Vec::new();
             for j in start_idx..reply_count {
                 replies_preview.push(PostItem {
-                    model: to_safe_post(posts_raw[j].clone(), 0),
+                    model: to_safe_post(posts_raw[j].clone(), false),
                     images: post_images_raw[j].iter().map(|i| SafeImage::from(i.clone())).collect(),
                     cdn_url: cdn_url.clone(),
                     admin_role: 0,
@@ -458,7 +509,7 @@ pub async fn view_board_handler(
             }
 
             items.push(ThreadItem {
-                model: to_safe_thread(thread, 0),
+                model: to_safe_thread(thread, false),
                 images: thread_images[i].iter().map(|i| SafeImage::from(i.clone())).collect(),
                 replies_preview,
                 reply_count,
@@ -470,7 +521,9 @@ pub async fn view_board_handler(
             });
         }
 
-        state_read.db_cache.insert(cache_key, CacheData::Board(items.clone())).await;
+        if session.role < 1 {
+            state_read.db_cache.insert(cache_key, CacheData::Board(items.clone())).await;
+        }
         items
     };
 
@@ -490,6 +543,8 @@ pub async fn view_board_handler(
 pub async fn view_thread_handler(
     State(state): State<Arc<RwLock<AppState>>>,
     Extension(session): Extension<CurrentSession>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path((slug, thread_id)): Path<(String, i32)>,
 ) -> Response {
     let state_read = state.read().await;
@@ -502,7 +557,22 @@ pub async fn view_thread_handler(
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
 
-    if session.role < 2 {
+    if session.role < 1 {
+        let ip = get_client_ip(&headers, &addr);
+        let restriction = crate::service::match_restrictions(db, &ip, &session.id, Some(&slug)).await;
+        if restriction.viewing_blocked {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(json!({
+                    "error": crate::service::posting_error(&restriction),
+                    "restriction": restriction
+                })),
+            )
+                .into_response();
+        }
+    }
+
+    if session.role < 1 {
         if let Some(CacheData::Thread(th, op, reps)) = state_read.db_cache.get(&cache_key).await {
             let final_replies: Vec<PostItem> = reps.into_iter().map(|mut p| {
                 p.admin_role = session.role;
@@ -513,7 +583,7 @@ pub async fn view_thread_handler(
             let post_count = final_replies.len();
             let is_bump_limit = post_count as u64 >= BUMP_LIMIT;
             let thread_age_days = (Utc::now().naive_utc() - th.created_at).num_days();
-            let is_time_limit = thread_age_days >= THREAD_AGE_LIMIT_DAYS;
+            let is_time_limit = thread_age_days >= state_read.config.thread_age_limit_days;
 
             return Json(ThreadResponse {
                 board,
@@ -534,12 +604,19 @@ pub async fn view_thread_handler(
         if thread.board_slug != slug {
             return StatusCode::NOT_FOUND.into_response();
         }
+        if thread.is_hidden && session.role < 1 {
+            return StatusCode::NOT_FOUND.into_response();
+        }
 
         let op_images_raw = thread.find_related(images::Entity).all(db).await.unwrap();
         let op_images: Vec<SafeImage> = op_images_raw.into_iter().map(SafeImage::from).collect();
 
-        let posts_raw = thread.find_related(posts::Entity)
-            .order_by_asc(posts::Column::CreatedAt)
+        let mut posts_rel = thread.find_related(posts::Entity)
+            .order_by_asc(posts::Column::CreatedAt);
+        if session.role < 1 {
+            posts_rel = posts_rel.filter(posts::Column::IsHidden.eq(false));
+        }
+        let posts_raw = posts_rel
             .all(db)
             .await
             .unwrap();
@@ -549,7 +626,7 @@ pub async fn view_thread_handler(
         let mut posts_dto = Vec::new();
         for (i, post) in posts_raw.into_iter().enumerate() {
             posts_dto.push(PostItem {
-                model: to_safe_post(post, session.role),
+                model: to_safe_post(post, session.privileges.view_ip),
                 images: post_images_vec[i].iter().map(|img| SafeImage::from(img.clone())).collect(),
                 cdn_url: cdn_url.clone(),
                 admin_role: session.role,
@@ -557,9 +634,9 @@ pub async fn view_thread_handler(
             });
         }
 
-        let safe_thread = to_safe_thread(thread.clone(), session.role);
+        let safe_thread = to_safe_thread(thread.clone(), session.privileges.view_ip);
 
-        if session.role < 2 {
+        if session.role < 1 {
             state_read.db_cache.insert(
                 cache_key,
                 CacheData::Thread(safe_thread.clone(), op_images.clone(), posts_dto.clone())
@@ -570,7 +647,7 @@ pub async fn view_thread_handler(
         let post_count = posts_dto.len();
         let is_bump_limit = post_count as u64 >= BUMP_LIMIT;
         let thread_age_days = (Utc::now().naive_utc() - thread.created_at).num_days();
-        let is_time_limit = thread_age_days >= THREAD_AGE_LIMIT_DAYS;
+        let is_time_limit = thread_age_days >= state_read.config.thread_age_limit_days;
 
         Json(ThreadResponse {
             board,
@@ -602,6 +679,9 @@ pub async fn get_single_post_handler(
         Ok(Some(p)) => p,
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
+    if post.is_hidden && session.role < 1 {
+        return StatusCode::NOT_FOUND.into_response();
+    }
 
     let thread = match threads::Entity::find_by_id(post.thread_id).one(db).await {
         Ok(Some(t)) => t,
@@ -617,7 +697,7 @@ pub async fn get_single_post_handler(
     let images_dto: Vec<SafeImage> = images_raw.into_iter().map(SafeImage::from).collect();
 
     let post_item = PostItem {
-        model: to_safe_post(post, session.role),
+        model: to_safe_post(post, session.privileges.view_ip),
         images: images_dto,
         cdn_url,
         admin_role: session.role,
@@ -639,21 +719,13 @@ pub async fn create_thread_handler(
     let ip = get_client_ip(&headers, &addr);
     let db = &state_read.pool;
 
-    if let Err(msg) = check_rate_limit(&ip, &state_read.rate_limit_cache).await {
+    if let Err(msg) = check_rate_limit(&ip, &state_read.kv, state_read.config.rate_limit_secs).await {
         return (StatusCode::TOO_MANY_REQUESTS, Json(json!({"error": msg}))).into_response();
     }
 
-    let is_banned = crate::model::bans::Entity::find()
-        .filter(
-            sea_orm::Condition::any()
-                .add(crate::model::bans::Column::IpAddress.eq(&ip))
-                .add(crate::model::bans::Column::SessionId.eq(&session.id))
-        )
-        .filter(crate::model::bans::Column::ExpiresAt.gt(Utc::now().naive_utc()))
-        .one(db).await.unwrap_or(None);
-
-    if let Some(ban) = is_banned {
-        return (StatusCode::FORBIDDEN, Json(json!({"error": format!("BANNED. Reason: {}", ban.reason.unwrap_or_default())}))).into_response();
+    let is_banned = crate::service::match_restrictions(db, &ip, &session.id, Some(&slug)).await;
+    if is_banned.posting_blocked {
+        return (StatusCode::FORBIDDEN, Json(json!({"error": crate::service::posting_error(&is_banned), "restriction": is_banned}))).into_response();
     }
 
     let country_code = resolve_country_code(ip.clone(), &state_read.ip_cache).await;
@@ -664,7 +736,7 @@ pub async fn create_thread_handler(
     };
 
     if parsed.content.trim().is_empty() && parsed.images.is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": "Thread cannot be empty"}))).into_response();
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "Тред не може бути порожнім"}))).into_response();
     }
 
     let new_thread = threads::ActiveModel {
@@ -707,7 +779,7 @@ pub async fn create_thread_handler(
         return Json(json!({ "status": "ok", "thread_id": thread.id })).into_response();
     }
 
-    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to create thread"}))).into_response()
+    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Не вдалося створити тред"}))).into_response()
 }
 
 pub async fn reply_handler(
@@ -722,21 +794,13 @@ pub async fn reply_handler(
     let ip = get_client_ip(&headers, &addr);
     let db = &state_read.pool;
 
-    if let Err(msg) = check_rate_limit(&ip, &state_read.rate_limit_cache).await {
+    if let Err(msg) = check_rate_limit(&ip, &state_read.kv, state_read.config.rate_limit_secs).await {
         return (StatusCode::TOO_MANY_REQUESTS, Json(json!({"error": msg}))).into_response();
     }
 
-    let is_banned = crate::model::bans::Entity::find()
-        .filter(
-            sea_orm::Condition::any()
-                .add(crate::model::bans::Column::IpAddress.eq(&ip))
-                .add(crate::model::bans::Column::SessionId.eq(&session.id))
-        )
-        .filter(crate::model::bans::Column::ExpiresAt.gt(Utc::now().naive_utc()))
-        .one(db).await.unwrap_or(None);
-
-    if let Some(ban) = is_banned {
-        return (StatusCode::FORBIDDEN, Json(json!({"error": format!("BANNED: {}", ban.reason.unwrap_or_default())}))).into_response();
+    let is_banned = crate::service::match_restrictions(db, &ip, &session.id, Some(&slug)).await;
+    if is_banned.posting_blocked {
+        return (StatusCode::FORBIDDEN, Json(json!({"error": crate::service::posting_error(&is_banned), "restriction": is_banned}))).into_response();
     }
 
     let country_code = resolve_country_code(ip.clone(), &state_read.ip_cache).await;
@@ -747,7 +811,7 @@ pub async fn reply_handler(
     };
 
     if parsed.content.trim().is_empty() && parsed.images.is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": "Post cannot be empty"}))).into_response();
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "Пост не може бути порожнім"}))).into_response();
     }
 
     let thread_model = threads::Entity::find_by_id(thread_id).one(db).await.unwrap();
@@ -760,7 +824,7 @@ pub async fn reply_handler(
 
         let age_days = (Utc::now().naive_utc() - t.created_at).num_days();
 
-        post_count < BUMP_LIMIT && age_days < THREAD_AGE_LIMIT_DAYS
+        post_count < BUMP_LIMIT && age_days < state_read.config.thread_age_limit_days
     } else {
         false
     };
@@ -814,7 +878,7 @@ pub async fn reply_handler(
             state_read.db_cache.invalidate(&format!("thread_{}", thread_id)).await;
 
             Json(PostItem {
-                model: to_safe_post(post, session.role),
+                model: to_safe_post(post, session.privileges.view_ip),
                 images: saved_images,
                 cdn_url: state_read.config.cdn_url.clone(),
                 admin_role: session.role,
@@ -822,7 +886,8 @@ pub async fn reply_handler(
             }).into_response()
         },
         Err(e) => {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response()
+            tracing::error!("reply insert failed: {e:#}");
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Не вдалося надіслати відповідь"}))).into_response()
         }
     }
 }
@@ -837,10 +902,14 @@ pub async fn poll_new_posts_handler(
     let db = &state.pool;
     let cdn_url = state.config.cdn_url.clone();
 
-    let new_posts = posts::Entity::find()
+    let mut new_query = posts::Entity::find()
         .filter(posts::Column::ThreadId.eq(thread_id))
         .filter(posts::Column::Id.gt(query.after))
-        .order_by_asc(posts::Column::CreatedAt)
+        .order_by_asc(posts::Column::CreatedAt);
+    if session.role < 1 {
+        new_query = new_query.filter(posts::Column::IsHidden.eq(false));
+    }
+    let new_posts = new_query
         .all(db)
         .await
         .unwrap_or_default();
@@ -856,7 +925,7 @@ pub async fn poll_new_posts_handler(
 
     for (i, post) in new_posts.into_iter().enumerate() {
         posts_with_images.push(PostItem {
-            model: to_safe_post(post, session.role),
+            model: to_safe_post(post, session.privileges.view_ip),
             images: post_images_vec[i].iter().map(|img| SafeImage::from(img.clone())).collect(),
             cdn_url: cdn_url.clone(),
             admin_role: session.role,

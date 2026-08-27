@@ -1,13 +1,13 @@
 import { Link } from 'react-router-dom'
+import Logo from '@/components/common/Logo'
 
 export default function NotFoundPage() {
     return (
-        <div className="flex min-h-screen flex-col items-center justify-center gap-4 text-center">
-            <h1 className="text-9xl font-black text-muted-foreground/20">404</h1>
-            <p className="text-2xl font-semibold">Сторінку не знайдено</p>
-            <Link to="/" className="text-primary hover:underline">
-                Повернутися на головну
-            </Link>
+        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-4 text-center">
+            <Logo size="catalog" />
+            <p className="text-xl">Сторінку не знайдено</p>
+            <p className="text-muted-foreground">Такої дошки чи треду немає.</p>
+            <Link to="/">Повернутися на головну</Link>
         </div>
     )
 }

@@ -1,42 +1,97 @@
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useCreateThreadMutation, usePostReplyMutation } from '@/store/api/boardApi'
-import { Loader2, ImagePlus, Send, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { motion, AnimatePresence } from 'framer-motion'
+import IbSpinner from '@/components/common/IbSpinner'
 
 interface PostFormProps {
     boardSlug: string
     threadId?: number
     onSuccess?: () => void
+    submitLabel?: string
+    fileInputId?: string
+    placeholder?: string
+    quoteInsert?: string
+    onQuoteConsumed?: () => void
 }
 
-export default function PostForm({ boardSlug, threadId, onSuccess }: PostFormProps) {
+function wrapSelection(textarea: HTMLTextAreaElement, before: string, after: string) {
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const value = textarea.value
+    const selected = value.slice(start, end)
+    return {
+        next: value.slice(0, start) + before + selected + after + value.slice(end),
+        caret: start + before.length + selected.length + after.length,
+    }
+}
+
+export default function PostForm({
+    boardSlug,
+    threadId,
+    onSuccess,
+    submitLabel,
+    fileInputId,
+    placeholder,
+    quoteInsert,
+    onQuoteConsumed,
+}: PostFormProps) {
     const [subject, setSubject] = useState('')
     const [content, setContent] = useState('')
-    const [files, setFiles] = useState<FileList | null>(null)
+    const [files, setFiles] = useState<File[]>([])
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const textRef = useRef<HTMLTextAreaElement>(null)
+    const [dragOver, setDragOver] = useState(false)
 
     const [createThread, { isLoading: isCreating }] = useCreateThreadMutation()
     const [postReply, { isLoading: isReplying }] = usePostReplyMutation()
     const isLoading = isCreating || isReplying
 
+    const inputId = fileInputId || `file-upload-${threadId || 'new'}`
+    const sendLabel = submitLabel || (threadId ? 'Надіслати' : 'Створити')
+    const textPlaceholder = placeholder || (threadId ? 'Написати відповідь...' : 'Текст треду...')
+    const remaining = Math.max(0, 15000 - content.length)
+
+    useEffect(() => {
+        if (!quoteInsert) return
+        setContent((prev) => `${prev}${prev.length && !prev.endsWith('\n') ? '\n' : ''}${quoteInsert}`)
+        onQuoteConsumed?.()
+        requestAnimationFrame(() => textRef.current?.focus())
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- consume a one-shot quote insert
+    }, [quoteInsert])
+
+    const addFiles = (list: FileList | File[] | null) => {
+        if (!list) return
+        const next = Array.from(list)
+        setFiles((prev) => [...prev, ...next].slice(0, 4))
+    }
+
+    const insertTag = (before: string, after: string) => {
+        const el = textRef.current
+        if (!el) {
+            setContent((prev) => prev + before + after)
+            return
+        }
+        const { next, caret } = wrapSelection(el, before, after)
+        setContent(next)
+        requestAnimationFrame(() => {
+            el.focus()
+            el.setSelectionRange(caret, caret)
+        })
+    }
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!content.trim() && (!files || files.length === 0)) {
-            toast.error("Введіть текст або прикріпіть зображення.")
+        if (!content.trim() && files.length === 0) {
+            toast.error('Введіть текст або прикріпіть зображення.')
             return
         }
 
         const formData = new FormData()
         formData.append('content', content)
         if (!threadId && subject) formData.append('subject', subject)
-
-        if (files) {
-            for (let i = 0; i < files.length; i++) {
-                formData.append('file', files[i])
-            }
-        }
+        for (const file of files) formData.append('file', file)
 
         const promise = threadId
             ? postReply({ slug: boardSlug, id: threadId, formData }).unwrap()
@@ -47,62 +102,126 @@ export default function PostForm({ boardSlug, threadId, onSuccess }: PostFormPro
             success: () => {
                 setContent('')
                 setSubject('')
-                setFiles(null)
+                setFiles([])
                 if (fileInputRef.current) fileInputRef.current.value = ''
-                if (onSuccess) onSuccess()
-                return threadId ? "Відповідь успішно надіслано!" : "Тред успішно створено!"
+                onSuccess?.()
+                return threadId ? 'Відповідь успішно надіслано!' : 'Тред успішно створено!'
             },
-            error: (err) => `Помилка: ${err?.data?.error || "Невідома помилка"}`
+            error: (err) => `Помилка: ${err?.data?.error || 'Невідома помилка'}`,
         })
     }
 
     return (
-        <div className={cn("rounded-xl bg-card p-4 shadow-sm transition-all duration-300", isLoading && "opacity-80 pointer-events-none grayscale-[0.5]")}>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="flex flex-col gap-3">
-                    {!threadId && (
-                        <input
-                            type="text" placeholder="Тема" value={subject} disabled={isLoading}
-                            onChange={(e) => setSubject(e.target.value)}
-                            className="flex h-10 w-full rounded-md border border-input bg-muted/30 px-3 py-1 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:bg-background"
-                        />
-                    )}
-                    <textarea
-                        placeholder={threadId ? "Написати відповідь..." : "Текст треду..."}
-                        value={content} disabled={isLoading}
-                        onChange={(e) => setContent(e.target.value)}
-                        rows={threadId ? 3 : 5}
-                        className="flex min-h-[88px] w-full rounded-md border border-input bg-muted/30 px-3 py-2 text-sm shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:bg-background resize-y allow-select"
+        <div
+            id={threadId ? 'reply-form' : 'post-form'}
+            className={cn('postform', isLoading && 'pointer-events-none')}
+            onPaste={(e) => {
+                const pasted = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'))
+                if (pasted.length) addFiles(pasted)
+            }}
+        >
+            {isLoading && (
+                <div className="ib-overlay">
+                    <IbSpinner label="Відправка…" />
+                </div>
+            )}
+            <form onSubmit={handleSubmit}>
+                <div className="postform__raw postform__raw_flex">
+                    <input
+                        type="text"
+                        placeholder="опції"
+                        disabled={isLoading}
+                        className="input postform__input postform__input_m"
                     />
+                    <button type="submit" disabled={isLoading} className="button">
+                        {sendLabel}
+                    </button>
                 </div>
 
-                <AnimatePresence>
-                    {files && files.length > 0 && (
-                        <motion.div
-                            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                            className="flex gap-2 overflow-hidden"
-                        >
-                            {Array.from(files).map((file, i) => (
-                                <div key={i} className="relative rounded-md border bg-background p-1">
-                                    <div className="text-[10px] truncate max-w-[100px] text-muted-foreground">{file.name}</div>
-                                </div>
-                            ))}
-                            <button type="button" onClick={() => { setFiles(null); if(fileInputRef.current) fileInputRef.current.value='' }} className="text-destructive hover:bg-destructive/10 rounded-full p-1"><X className="h-4 w-4" /></button>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-
-                <div className="flex items-center justify-between pt-2 border-t border-border/50">
-                    <div className="flex items-center gap-2">
-                        <input type="file" ref={fileInputRef} multiple accept="image/*" disabled={isLoading} onChange={(e) => setFiles(e.target.files)} className="hidden" id={`file-upload-${threadId || 'new'}`} />
-                        <label htmlFor={`file-upload-${threadId || 'new'}`} className={cn("inline-flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground", isLoading && "pointer-events-none opacity-50")}>
-                            <ImagePlus className="h-4 w-4" />
-                            {files && files.length > 0 ? <span className="text-primary font-bold">{files.length} долучено</span> : "Додати фото"}
-                        </label>
+                {!threadId && (
+                    <div className="postform__raw">
+                        <input
+                            type="text"
+                            placeholder="Тема"
+                            value={subject}
+                            disabled={isLoading}
+                            onChange={(e) => setSubject(e.target.value)}
+                            className="input postform__input"
+                        />
                     </div>
-                    <button type="submit" disabled={isLoading} className={cn("inline-flex items-center justify-center whitespace-nowrap rounded-md bg-primary px-6 py-2 text-sm font-medium text-primary-foreground shadow transition-all hover:bg-primary/90 hover:scale-[1.02] active:scale-95 disabled:pointer-events-none disabled:opacity-50", isLoading && "cursor-wait")}>
-                        {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Обробка...</> : <><Send className="mr-2 h-4 w-4" /> {threadId ? "Відповісти" : "Створити"}</>}
-                    </button>
+                )}
+
+                <div className="postform__raw postarea">
+                    <textarea
+                        ref={textRef}
+                        placeholder={textPlaceholder}
+                        value={content}
+                        disabled={isLoading}
+                        onChange={(e) => setContent(e.target.value)}
+                        rows={10}
+                        maxLength={15000}
+                        className="input postform__input postform__comment"
+                        onKeyDown={(e) => {
+                            if (e.ctrlKey && e.key === 'Enter') {
+                                e.currentTarget.form?.requestSubmit()
+                            }
+                        }}
+                    />
+                    <div className="postform__limits">4 файли / <span className="postform__len">{remaining}</span></div>
+                </div>
+
+                <div className="postform__raw postform__mu-group">
+                    <button type="button" className="postform__mu" onClick={() => insertTag('[b]', '[/b]')}><b>B</b></button>
+                    <button type="button" className="postform__mu" onClick={() => insertTag('[i]', '[/i]')}><i>I</i></button>
+                    <button type="button" className="postform__mu" onClick={() => insertTag('>', '')}>&gt;</button>
+                    <button type="button" className="postform__mu" onClick={() => insertTag('[u]', '[/u]')}><span className="u">U</span></button>
+                    <button type="button" className="postform__mu" onClick={() => insertTag('[s]', '[/s]')}><s>S</s></button>
+                    <button type="button" className="postform__mu" onClick={() => insertTag('[spoiler]', '[/spoiler]')}>??</button>
+                </div>
+
+                {files.length > 0 && (
+                    <div className="postform__raw flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        {files.map((file, i) => (
+                            <span key={i}>{file.name}</span>
+                        ))}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setFiles([])
+                                if (fileInputRef.current) fileInputRef.current.value = ''
+                            }}
+                            className="text-destructive"
+                            aria-label="Прибрати файли"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </div>
+                )}
+
+                <div className="postform__raw filer">
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        multiple
+                        accept="image/*"
+                        disabled={isLoading}
+                        onChange={(e) => addFiles(e.target.files)}
+                        className="hidden"
+                        id={inputId}
+                    />
+                    <label
+                        htmlFor={inputId}
+                        className={cn('filer__drag-area', dragOver && 'filer_over', isLoading && 'pointer-events-none opacity-50')}
+                        onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+                        onDragLeave={() => setDragOver(false)}
+                        onDrop={(e) => {
+                            e.preventDefault()
+                            setDragOver(false)
+                            addFiles(e.dataTransfer.files)
+                        }}
+                    >
+                        {files.length > 0 ? `${files.length} долучено` : 'ДОДАТИ ФАЙЛ / CTRL-V'}
+                    </label>
                 </div>
             </form>
         </div>
